@@ -5,7 +5,7 @@
   "identifier": "dev.openplayer.app",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:23142",
+    "devUrl": "http://127.0.0.1:23142",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
@@ -13,12 +13,16 @@
     "windows": [
       {
         "title": "OpenPlayer",
+        "url": "index.html",
         "width": 1280,
         "height": 720,
         "minWidth": 960,
         "minHeight": 540,
         "resizable": true,
-        "center": true
+        "center": true,
+        "decorations": false,
+        "transparent": true,
+        "shadow": true
       }
     ],
     "security": {
