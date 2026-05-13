@@ -37,6 +37,7 @@ fn window_close(window: Window) -> Result<(), String> {
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(DesktopPlaybackState::default())
         .invoke_handler(tauri::generate_handler![
             app_health_command,

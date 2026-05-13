@@ -14,7 +14,8 @@ openplayer-core = { path = "../../../crates/core" }
 openplayer-media = { path = "../../../crates/media" }
 openplayer-shared = { path = "../../../crates/shared" }
 serde.workspace = true
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

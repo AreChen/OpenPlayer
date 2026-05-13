@@ -27,6 +27,7 @@ const frontendPlaybackCommands = [
 ];
 
 const [mainWindow] = config.app.windows;
+const assetProtocol = config.app.security.assetProtocol;
 
 assert.equal(mainWindow.url, "index.html", "packaged exe must load the bundled app entry");
 assert.equal(mainWindow.decorations, false, "window must disable native decorations for custom titlebar");
@@ -54,7 +55,15 @@ assert.match(appSource, /window_close/, "custom titlebar must wire close command
 assert.match(appSource, /playlist-drawer/, "playlist must be a collapsible drawer");
 assert.match(appSource, /togglePlaylist/, "control bar must wire a playlist toggle");
 assert.match(appSource, /<video/, "player shell must include an actual media element");
-assert.match(appSource, /type="file"/, "player shell must expose local file open support");
+assert.ok(packageJson.dependencies["@tauri-apps/plugin-dialog"], "desktop package must depend on Tauri dialog plugin");
+assert.equal(assetProtocol?.enable, true, "Tauri asset protocol must be enabled for local preview URLs");
+assert.ok(assetProtocol?.scope?.includes("**"), "asset protocol scope must allow user-selected local media paths");
+assert.ok(capability.permissions.includes("dialog:allow-open"), "capability must allow native file-open dialogs");
+assert.match(tauriLibSource, /tauri_plugin_dialog::init\(\)/, "desktop app must register the dialog plugin");
+assert.match(appSource, /from "@tauri-apps\/plugin-dialog"/, "frontend must import the Tauri dialog plugin");
+assert.match(appSource, /convertFileSrc/, "frontend must convert native paths into preview URLs");
+assert.match(appSource, /openNativeMediaFiles/, "open control must use the native media picker");
+assert.doesNotMatch(appSource, /fileInputRef/, "open control must not route through the hidden browser file input");
 assert.match(appSource, /onDrop=/, "player shell must support drag-and-drop media loading");
 assert.match(appSource, /togglePlayback/, "player shell must wire play and pause behavior");
 assert.match(appSource, /seekTo/, "player shell must wire timeline seeking behavior");
