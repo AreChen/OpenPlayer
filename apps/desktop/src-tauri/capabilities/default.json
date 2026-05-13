@@ -3,5 +3,10 @@
   "identifier": "default",
   "description": "Default permissions for OpenPlayer desktop shell",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-is-fullscreen",
+    "core:window:allow-set-fullscreen"
+  ]
 }

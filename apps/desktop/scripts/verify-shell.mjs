@@ -5,25 +5,49 @@ const config = JSON.parse(await readFile(new URL("../src-tauri/tauri.conf.json",
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 const appSource = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
+const mainSource = await readFile(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+const capability = JSON.parse(await readFile(new URL("../src-tauri/capabilities/default.json", import.meta.url), "utf8"));
 
 const [mainWindow] = config.app.windows;
 
 assert.equal(mainWindow.url, "index.html", "packaged exe must load the bundled app entry");
 assert.equal(mainWindow.decorations, false, "window must disable native decorations for custom titlebar");
-assert.equal(mainWindow.transparent, true, "window must be transparent so CSS rounded corners are visible");
+assert.equal(mainWindow.transparent, false, "window must not use transparency that exposes an outer border");
 assert.equal(mainWindow.shadow, true, "window should keep native shadow when available");
 assert.match(config.build.devUrl, /23142$/, "Tauri dev URL must use the non-reserved Windows port");
 assert.match(packageJson.scripts.dev, /23142$/, "Vite dev script must use the non-reserved Windows port");
 assert.match(packageJson.scripts.preview, /23142$/, "Vite preview script must use the non-reserved Windows port");
-assert.match(appSource, /data-tauri-drag-region/, "custom titlebar must expose a Tauri drag region");
+assert.doesNotMatch(appSource, /titlebar-brand/, "player should not show a top brand/title block");
+assert.doesNotMatch(appSource, /titlebar-center/, "player should not show a theme/status title pill");
+assert.doesNotMatch(appSource, /side-rail/, "playlist and metadata must not be a fixed right sidebar");
+assert.doesNotMatch(appSource, /status-line/, "player should not show debug/status copy over the video surface");
+assert.match(appSource, /className={`stage/, "the playback stage must be the main window surface");
+assert.doesNotMatch(appSource, /data-tauri-drag-region/, "native drag regions must not wrap player controls because they steal clicks");
+assert.match(appSource, /getCurrentWindow/, "player must use Tauri's imperative window API for reliable drag");
+assert.match(appSource, /startDragging/, "player surface must start native dragging from pointer events");
+assert.match(appSource, /drag-surface/, "player must use an isolated drag layer behind controls");
+assert.match(appSource, /beginWindowDragIntent/, "player must record drag intent before starting native drag");
+assert.match(appSource, /continueWindowDragIntent/, "player must start native dragging only after pointer movement");
+assert.match(appSource, /onDoubleClick=\{toggleFullscreen\}/, "player surface double click must toggle fullscreen");
+assert.match(appSource, /setFullscreen/, "player must call Tauri fullscreen API on double click");
 assert.match(appSource, /window_minimize/, "custom titlebar must wire minimize command");
 assert.match(appSource, /window_toggle_maximize/, "custom titlebar must wire maximize command");
 assert.match(appSource, /window_close/, "custom titlebar must wire close command");
+assert.match(appSource, /playlist-drawer/, "playlist must be a collapsible drawer");
+assert.match(appSource, /togglePlaylist/, "control bar must wire a playlist toggle");
 assert.match(appSource, /<video/, "player shell must include an actual media element");
 assert.match(appSource, /type="file"/, "player shell must expose local file open support");
 assert.match(appSource, /onDrop=/, "player shell must support drag-and-drop media loading");
 assert.match(appSource, /togglePlayback/, "player shell must wire play and pause behavior");
 assert.match(appSource, /seekTo/, "player shell must wire timeline seeking behavior");
 assert.match(appSource, /setVolume/, "player shell must wire volume behavior");
-assert.match(styles, /border-radius:\s*var\(--window-radius\)/, "window shell must own rounded corners");
-assert.match(styles, /background:\s*transparent/, "document background must allow transparent window corners");
+assert.match(styles, /\.window-shell[\s\S]*border:\s*0/, "window shell must not draw an outer border");
+assert.match(styles, /\.app-shell[\s\S]*padding:\s*0/, "window shell must not leave a transparent outer gutter");
+assert.doesNotMatch(styles, /\.status-line/, "player should not reserve status text chrome over the video surface");
+assert.match(mainSource, /windows_subsystem\s*=\s*"windows"/, "release Windows app must use GUI subsystem instead of opening a console");
+assert.ok(
+  capability.permissions.includes("core:window:allow-start-dragging"),
+  "capability must allow Tauri start_dragging for whole-window drag",
+);
+assert.ok(capability.permissions.includes("core:window:allow-set-fullscreen"), "capability must allow fullscreen toggling");
+assert.ok(capability.permissions.includes("core:window:allow-is-fullscreen"), "capability must allow reading fullscreen state");
