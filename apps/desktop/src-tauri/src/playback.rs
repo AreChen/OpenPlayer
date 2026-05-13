@@ -161,6 +161,7 @@ pub struct PlaybackSourceDto {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum PlaybackSourceKindDto {
+    LocalFilePath,
     LocalFileLabel,
     LocalFolderLabel,
     HttpUrl,
@@ -171,7 +172,9 @@ impl TryFrom<PlaybackSourceDto> for MediaSource {
 
     fn try_from(source: PlaybackSourceDto) -> Result<Self, Self::Error> {
         match source.kind {
-            PlaybackSourceKindDto::LocalFileLabel => Ok(MediaSource::local_file(source.value)),
+            PlaybackSourceKindDto::LocalFilePath | PlaybackSourceKindDto::LocalFileLabel => {
+                Ok(MediaSource::local_file(source.value))
+            }
             PlaybackSourceKindDto::LocalFolderLabel => Ok(MediaSource::local_folder(source.value)),
             PlaybackSourceKindDto::HttpUrl => MediaSource::http_url(source.value)
                 .map_err(CoreError::from)
@@ -376,6 +379,32 @@ mod tests {
 
         assert_eq!(snapshot.status, PlaybackStatusDto::Ready);
         assert_eq!(snapshot.source_label, Some("movie.mp4".to_string()));
+    }
+
+    #[test]
+    fn source_dto_converts_local_file_path() {
+        let source = MediaSource::try_from(PlaybackSourceDto {
+            kind: PlaybackSourceKindDto::LocalFilePath,
+            value: r"C:\media\movie.mp4".to_string(),
+        })
+        .expect("source");
+
+        assert_eq!(source.location(), r"C:\media\movie.mp4");
+    }
+
+    #[test]
+    fn opening_local_file_path_sets_real_path_snapshot_label() {
+        let state = DesktopPlaybackState::default();
+
+        let snapshot = state
+            .open_preview_source(PlaybackSourceDto {
+                kind: PlaybackSourceKindDto::LocalFilePath,
+                value: r"C:\media\movie.mp4".to_string(),
+            })
+            .expect("open source");
+
+        assert_eq!(snapshot.status, PlaybackStatusDto::Ready);
+        assert_eq!(snapshot.source_label, Some(r"C:\media\movie.mp4".to_string()));
     }
 
     #[test]
