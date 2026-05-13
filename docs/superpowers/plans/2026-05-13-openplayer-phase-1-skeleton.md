@@ -930,7 +930,7 @@ Use `apply_patch`:
 +  "identifier": "dev.openplayer.app",
 +  "build": {
 +    "beforeDevCommand": "npm run dev",
-+    "devUrl": "http://localhost:1420",
++    "devUrl": "http://localhost:23142",
 +    "beforeBuildCommand": "npm run build",
 +    "frontendDist": "../dist"
 +  },
@@ -1054,9 +1054,9 @@ Use `apply_patch`:
 +  "private": true,
 +  "type": "module",
 +  "scripts": {
-+    "dev": "vite --host 127.0.0.1 --port 1420",
++    "dev": "vite --host 127.0.0.1 --port 23142",
 +    "build": "tsc && vite build",
-+    "preview": "vite preview --host 127.0.0.1 --port 1420",
++    "preview": "vite preview --host 127.0.0.1 --port 23142",
 +    "tauri:dev": "tauri dev",
 +    "tauri:build": "tauri build"
 +  },
@@ -1137,7 +1137,7 @@ Use `apply_patch`:
 +  clearScreen: false,
 +  server: {
 +    host: "127.0.0.1",
-+    port: 1420,
++    port: 23142,
 +    strictPort: true,
 +    watch: {
 +      ignored: ["**/src-tauri/**"],
