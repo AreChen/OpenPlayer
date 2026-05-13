@@ -19,5 +19,11 @@ assert.match(appSource, /data-tauri-drag-region/, "custom titlebar must expose a
 assert.match(appSource, /window_minimize/, "custom titlebar must wire minimize command");
 assert.match(appSource, /window_toggle_maximize/, "custom titlebar must wire maximize command");
 assert.match(appSource, /window_close/, "custom titlebar must wire close command");
+assert.match(appSource, /<video/, "player shell must include an actual media element");
+assert.match(appSource, /type="file"/, "player shell must expose local file open support");
+assert.match(appSource, /onDrop=/, "player shell must support drag-and-drop media loading");
+assert.match(appSource, /togglePlayback/, "player shell must wire play and pause behavior");
+assert.match(appSource, /seekTo/, "player shell must wire timeline seeking behavior");
+assert.match(appSource, /setVolume/, "player shell must wire volume behavior");
 assert.match(styles, /border-radius:\s*var\(--window-radius\)/, "window shell must own rounded corners");
 assert.match(styles, /background:\s*transparent/, "document background must allow transparent window corners");

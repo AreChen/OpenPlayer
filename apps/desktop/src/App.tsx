@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 type AppInfo = {
@@ -12,10 +12,16 @@ type HealthState =
   | { status: "ready"; info: AppInfo }
   | { status: "error"; message: string };
 
+type MediaItem = {
+  name: string;
+  type: string;
+  size: number;
+  url: string;
+};
+
 type WindowCommand = "window_minimize" | "window_toggle_maximize" | "window_close";
 
-const queueItems = ["No media loaded", "Drop files here", "History will resume here"];
-const trackItems = ["Video", "Audio", "Subtitles", "Chapters"];
+const playableNamePattern = /\.(3gp|aac|avi|flac|m4a|m4v|mkv|mov|mp3|mp4|mpeg|mpg|oga|ogg|ogv|opus|wav|webm)$/i;
 
 function runWindowCommand(command: WindowCommand) {
   invoke(command).catch((error: unknown) => {
@@ -23,8 +29,39 @@ function runWindowCommand(command: WindowCommand) {
   });
 }
 
+function formatTime(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "00:00";
+  }
+
+  const totalSeconds = Math.floor(value);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+  }
+
+  return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function pickMediaFile(files: FileList | File[]) {
+  return Array.from(files).find(
+    (file) => file.type.startsWith("video/") || file.type.startsWith("audio/") || playableNamePattern.test(file.name),
+  );
+}
+
 function App() {
   const [health, setHealth] = useState<HealthState>({ status: "loading" });
+  const [media, setMedia] = useState<MediaItem | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [volumeLevel, setVolumeLevel] = useState(0.82);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -49,6 +86,85 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (media?.url) {
+        URL.revokeObjectURL(media.url);
+      }
+    };
+  }, [media?.url]);
+
+  function openFiles(files: FileList | File[]) {
+    const file = pickMediaFile(files);
+    if (!file) {
+      setPlaybackError("No supported media file was found in that selection.");
+      return;
+    }
+
+    setMedia({
+      name: file.name,
+      type: file.type || "media file",
+      size: file.size,
+      url: URL.createObjectURL(file),
+    });
+    setCurrentTime(0);
+    setDuration(0);
+    setIsPlaying(false);
+    setPlaybackError(null);
+  }
+
+  function handleFileInput(event: ChangeEvent<HTMLInputElement>) {
+    if (event.currentTarget.files?.length) {
+      openFiles(event.currentTarget.files);
+      event.currentTarget.value = "";
+    }
+  }
+
+  function handleDrop(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer.files.length) {
+      openFiles(event.dataTransfer.files);
+    }
+  }
+
+  function togglePlayback() {
+    const video = videoRef.current;
+    if (!media || !video) {
+      fileInputRef.current?.click();
+      return;
+    }
+
+    if (video.paused) {
+      video.play().catch((error: unknown) => {
+        setPlaybackError(error instanceof Error ? error.message : String(error));
+      });
+    } else {
+      video.pause();
+    }
+  }
+
+  function seekTo(value: number) {
+    const video = videoRef.current;
+    if (!video || !Number.isFinite(value)) {
+      return;
+    }
+    video.currentTime = value;
+    setCurrentTime(value);
+  }
+
+  function setVolume(value: number) {
+    const nextVolume = Math.min(1, Math.max(0, value));
+    setVolumeLevel(nextVolume);
+    if (videoRef.current) {
+      videoRef.current.volume = nextVolume;
+    }
+  }
+
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const queueItems = media ? [media.name, media.type, `${(media.size / (1024 * 1024)).toFixed(1)} MiB`] : ["No media loaded", "Drop files here", "Open a local file"];
+  const trackItems = media ? ["Local file", "HTML5 renderer", isPlaying ? "Playing" : "Paused", "Subtitles later"] : ["Video", "Audio", "Subtitles", "Chapters"];
+
   return (
     <main className="app-shell">
       <section className="window-shell" aria-label="OpenPlayer desktop shell">
@@ -59,12 +175,12 @@ function App() {
             </span>
             <div data-tauri-drag-region>
               <strong>OpenPlayer</strong>
-              <span>No media loaded</span>
+              <span>{media?.name ?? "No media loaded"}</span>
             </div>
           </div>
 
           <div className="titlebar-center" data-tauri-drag-region>
-            <span>Studio Dark</span>
+            <span>{isPlaying ? "Playing" : "Studio Dark"}</span>
             <span className={`connection-dot connection-dot--${health.status}`} aria-hidden="true" />
           </div>
 
@@ -91,28 +207,87 @@ function App() {
         </header>
 
         <div className="player-layout">
-          <section className="stage" aria-label="Player surface placeholder">
+          <section
+            className={`stage ${media ? "stage--loaded" : ""}`}
+            aria-label="Player surface"
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={handleDrop}
+          >
             <div className="stage-vignette" aria-hidden="true" />
-            <div className="drop-hint">
-              <p className="eyebrow">Ready for playback core</p>
-              <strong>Open a file, stream, or playlist.</strong>
-              <span>Media controls are staged visually; engine wiring starts after this shell fix.</span>
-            </div>
+            <input
+              ref={fileInputRef}
+              className="media-file-input"
+              type="file"
+              tabIndex={-1}
+              aria-hidden="true"
+              accept="audio/*,video/*,.mkv,.avi,.mov,.mp4,.webm,.mp3,.flac,.wav,.m4a"
+              onChange={handleFileInput}
+            />
 
-            <div className="transport" aria-label="Inactive transport preview">
-              <div className="transport-row" aria-hidden="true">
-                <span className="transport-time">00:00</span>
-                <div className="timeline">
-                  <span />
-                </div>
-                <span className="transport-time">00:00</span>
+            {media ? (
+              <video
+                ref={videoRef}
+                className="media-view"
+                src={media.url}
+                onLoadedMetadata={(event) => {
+                  event.currentTarget.volume = volumeLevel;
+                  setDuration(event.currentTarget.duration);
+                }}
+                onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+                onPlay={() => setIsPlaying(true)}
+                onPause={() => setIsPlaying(false)}
+                onEnded={() => setIsPlaying(false)}
+                onError={() => setPlaybackError("This file could not be decoded by the current preview renderer.")}
+              />
+            ) : (
+              <div className="drop-hint">
+                <p className="eyebrow">Local playback preview</p>
+                <strong>Open or drop a media file.</strong>
+                <span>MP4, WebM, MP3, WAV and other WebView-supported formats can play here now.</span>
               </div>
-              <div className="control-strip" aria-hidden="true">
-                <span>Prev</span>
-                <span className="control-primary">Play</span>
-                <span>Next</span>
-                <span>Sub</span>
-                <span>1.0x</span>
+            )}
+
+            {playbackError && <div className="playback-error">{playbackError}</div>}
+
+            <div className="transport" aria-label="Playback controls">
+              <div className="transport-row">
+                <span className="transport-time">{formatTime(currentTime)}</span>
+                <input
+                  className="seek-slider"
+                  type="range"
+                  min="0"
+                  max={duration || 0}
+                  step="0.1"
+                  value={Math.min(currentTime, duration || 0)}
+                  aria-label="Seek playback position"
+                  style={{ "--progress": `${progress}%` } as React.CSSProperties}
+                  onChange={(event) => seekTo(Number(event.currentTarget.value))}
+                  disabled={!media || duration <= 0}
+                />
+                <span className="transport-time">{formatTime(duration)}</span>
+              </div>
+              <div className="control-strip">
+                <button type="button" onClick={() => fileInputRef.current?.click()}>
+                  Open
+                </button>
+                <button className="control-primary" type="button" onClick={togglePlayback}>
+                  {isPlaying ? "Pause" : media ? "Play" : "Open"}
+                </button>
+                <button type="button" onClick={() => seekTo(0)} disabled={!media}>
+                  Restart
+                </button>
+                <label className="volume-control">
+                  <span>Vol</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={volumeLevel}
+                    aria-label="Volume"
+                    onChange={(event) => setVolume(Number(event.currentTarget.value))}
+                  />
+                </label>
               </div>
             </div>
           </section>
@@ -121,7 +296,7 @@ function App() {
             <section className="panel queue-panel" aria-label="Queue panel">
               <div className="panel-heading">
                 <p className="eyebrow">Queue</p>
-                <strong>Session</strong>
+                <strong>{media ? "Current media" : "Session"}</strong>
               </div>
               <ol className="queue-list">
                 {queueItems.map((item) => (
