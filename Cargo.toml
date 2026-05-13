@@ -1,0 +1,23 @@
+[workspace]
+members = [
+    "crates/core",
+    "crates/media",
+    "crates/mpv",
+    "crates/plugin",
+    "crates/shared",
+    "crates/storage",
+    "crates/theme",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["OpenPlayer contributors"]
+
+[workspace.dependencies]
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
