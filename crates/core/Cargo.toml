@@ -6,4 +6,6 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+openplayer-media = { path = "../media" }
 openplayer-shared = { path = "../shared" }
+thiserror.workspace = true

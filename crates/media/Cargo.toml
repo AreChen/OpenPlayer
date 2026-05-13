@@ -7,3 +7,4 @@ authors.workspace = true
 
 [dependencies]
 thiserror.workspace = true
+url.workspace = true

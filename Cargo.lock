@@ -2045,7 +2045,9 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 name = "openplayer-core"
 version = "0.1.0"
 dependencies = [
+ "openplayer-media",
  "openplayer-shared",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -2064,6 +2066,7 @@ name = "openplayer-media"
 version = "0.1.0"
 dependencies = [
  "thiserror 2.0.18",
+ "url",
 ]
 
 [[package]]
