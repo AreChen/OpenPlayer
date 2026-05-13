@@ -404,7 +404,10 @@ mod tests {
             .expect("open source");
 
         assert_eq!(snapshot.status, PlaybackStatusDto::Ready);
-        assert_eq!(snapshot.source_label, Some(r"C:\media\movie.mp4".to_string()));
+        assert_eq!(
+            snapshot.source_label,
+            Some(r"C:\media\movie.mp4".to_string())
+        );
     }
 
     #[test]
