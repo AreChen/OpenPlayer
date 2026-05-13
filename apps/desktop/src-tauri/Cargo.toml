@@ -1,0 +1,19 @@
+[package]
+name = "openplayer-desktop"
+version.workspace = true
+edition = "2021"
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "openplayer_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+openplayer-core = { path = "../../../crates/core" }
+openplayer-shared = { path = "../../../crates/shared" }
+serde.workspace = true
+tauri = { version = "2", features = [] }
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
