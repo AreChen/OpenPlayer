@@ -2055,6 +2055,7 @@ name = "openplayer-desktop"
 version = "0.1.0"
 dependencies = [
  "openplayer-core",
+ "openplayer-media",
  "openplayer-shared",
  "serde",
  "tauri",

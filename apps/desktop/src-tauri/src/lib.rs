@@ -1,4 +1,10 @@
+mod playback;
+
 use openplayer_shared::AppInfo;
+use playback::{
+    DesktopPlaybackState, playback_open_preview_source, playback_pause, playback_play,
+    playback_seek, playback_set_volume, playback_snapshot, playback_stop,
+};
 use tauri::Window;
 
 pub fn app_health() -> AppInfo {
@@ -31,11 +37,19 @@ fn window_close(window: Window) -> Result<(), String> {
 
 pub fn run() {
     tauri::Builder::default()
+        .manage(DesktopPlaybackState::default())
         .invoke_handler(tauri::generate_handler![
             app_health_command,
             window_minimize,
             window_toggle_maximize,
-            window_close
+            window_close,
+            playback_snapshot,
+            playback_open_preview_source,
+            playback_play,
+            playback_pause,
+            playback_stop,
+            playback_seek,
+            playback_set_volume
         ])
         .run(tauri::generate_context!())
         .expect("failed to run OpenPlayer desktop app");

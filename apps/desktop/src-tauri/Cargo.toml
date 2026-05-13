@@ -11,6 +11,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [dependencies]
 openplayer-core = { path = "../../../crates/core" }
+openplayer-media = { path = "../../../crates/media" }
 openplayer-shared = { path = "../../../crates/shared" }
 serde.workspace = true
 tauri = { version = "2", features = [] }

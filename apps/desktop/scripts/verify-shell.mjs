@@ -6,7 +6,25 @@ const packageJson = JSON.parse(await readFile(new URL("../package.json", import.
 const appSource = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
 const mainSource = await readFile(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+const tauriLibSource = await readFile(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
 const capability = JSON.parse(await readFile(new URL("../src-tauri/capabilities/default.json", import.meta.url), "utf8"));
+
+function extractGenerateHandler(source) {
+  const match = source.match(/tauri::generate_handler!\[([\s\S]*?)\]\)/);
+  assert.ok(match, "Tauri invoke handler must be registered with generate_handler");
+  return match[1];
+}
+
+const tauriGenerateHandler = extractGenerateHandler(tauriLibSource);
+
+const frontendPlaybackCommands = [
+  "playback_open_preview_source",
+  "playback_play",
+  "playback_pause",
+  "playback_stop",
+  "playback_seek",
+  "playback_set_volume",
+];
 
 const [mainWindow] = config.app.windows;
 
@@ -41,6 +59,33 @@ assert.match(appSource, /onDrop=/, "player shell must support drag-and-drop medi
 assert.match(appSource, /togglePlayback/, "player shell must wire play and pause behavior");
 assert.match(appSource, /seekTo/, "player shell must wire timeline seeking behavior");
 assert.match(appSource, /setVolume/, "player shell must wire volume behavior");
+assert.match(appSource, /type PlaybackSourceDto/, "frontend must define playback source DTO");
+assert.match(appSource, /type PlaybackStatusDto/, "frontend must define playback status DTO");
+assert.match(appSource, /type PlaybackSnapshotDto/, "frontend must define playback snapshot DTO");
+assert.match(appSource, /type PlaybackCommandError/, "frontend must define playback command error DTO");
+assert.match(appSource, /playbackErrorMessage/, "frontend must normalize playback command errors");
+assert.match(appSource, /runPlaybackCommand/, "frontend must use a playback command helper");
+assert.match(appSource, /mirrorPlaybackCommand/, "frontend must mirror preview actions to playback commands");
+assert.match(appSource, /playbackCommandIdRef/, "frontend must ignore stale playback command responses");
+assert.match(appSource, /setPlaybackSnapshot\(snapshot\)/, "frontend must only store latest playback command snapshot");
+assert.match(appSource, /commitSeekTo/, "frontend must commit backend seek separately from preview seek");
+assert.match(appSource, /commitVolume/, "frontend must commit backend volume separately from preview volume");
+assert.match(appSource, /role="alert"/, "playback errors must be announced to assistive technology");
+for (const command of frontendPlaybackCommands) {
+  assert.match(
+    appSource,
+    new RegExp(`invoke<PlaybackSnapshotDto>\\("${command}"|mirrorPlaybackCommand\\("${command}"`),
+    `frontend must invoke ${command}`,
+  );
+}
+assert.match(tauriLibSource, /DesktopPlaybackState::default\(\)/, "desktop app must manage playback state");
+assert.match(tauriGenerateHandler, /playback_snapshot/, "Tauri must register playback snapshot command");
+assert.match(tauriGenerateHandler, /playback_open_preview_source/, "Tauri must register preview open command");
+assert.match(tauriGenerateHandler, /playback_play/, "Tauri must register playback play command");
+assert.match(tauriGenerateHandler, /playback_pause/, "Tauri must register playback pause command");
+assert.match(tauriGenerateHandler, /playback_stop/, "Tauri must register playback stop command");
+assert.match(tauriGenerateHandler, /playback_seek/, "Tauri must register playback seek command");
+assert.match(tauriGenerateHandler, /playback_set_volume/, "Tauri must register playback volume command");
 assert.match(styles, /\.window-shell[\s\S]*border:\s*0/, "window shell must not draw an outer border");
 assert.match(styles, /\.app-shell[\s\S]*padding:\s*0/, "window shell must not leave a transparent outer gutter");
 assert.doesNotMatch(styles, /\.status-line/, "player should not reserve status text chrome over the video surface");

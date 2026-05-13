@@ -9,6 +9,29 @@ type MediaItem = {
   url: string;
 };
 
+type PlaybackSourceDto = {
+  kind: "localFileLabel" | "localFolderLabel" | "httpUrl";
+  value: string;
+};
+
+type PlaybackStatusDto = "idle" | "loading" | "ready" | "playing" | "paused" | "stopped" | "ended" | "error";
+
+type PlaybackSnapshotDto = {
+  sourceLabel: string | null;
+  status: PlaybackStatusDto;
+  positionMs: number;
+  durationMs: number | null;
+  volumePercent: number;
+  muted: boolean;
+  speedMilli: number;
+  latestError: PlaybackCommandError | null;
+};
+
+type PlaybackCommandError = {
+  code: string;
+  message: string;
+};
+
 type DragIntent = {
   pointerId: number;
   startX: number;
@@ -23,6 +46,19 @@ const playableNamePattern = /\.(3gp|aac|avi|flac|m4a|m4v|mkv|mov|mp3|mp4|mpeg|mp
 function runWindowCommand(command: WindowCommand) {
   invoke(command).catch((error: unknown) => {
     console.error(`Window command failed: ${command}`, error);
+  });
+}
+
+function playbackErrorMessage(error: unknown) {
+  if (typeof error === "object" && error && "message" in error) {
+    return String((error as PlaybackCommandError).message);
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
+function runPlaybackCommand(command: string, args?: Record<string, unknown>) {
+  return invoke<PlaybackSnapshotDto>(command, args).catch((error: unknown) => {
+    throw new Error(playbackErrorMessage(error));
   });
 }
 
@@ -77,9 +113,11 @@ function App() {
   const [currentTime, setCurrentTime] = useState(0);
   const [volumeLevel, setVolumeLevel] = useState(0.82);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [playbackSnapshot, setPlaybackSnapshot] = useState<PlaybackSnapshotDto | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dragIntentRef = useRef<DragIntent | null>(null);
+  const playbackCommandIdRef = useRef(0);
 
   useEffect(() => {
     return () => {
@@ -88,6 +126,22 @@ function App() {
       }
     };
   }, [media?.url]);
+
+  function mirrorPlaybackCommand(command: string, args?: Record<string, unknown>) {
+    const commandId = playbackCommandIdRef.current + 1;
+    playbackCommandIdRef.current = commandId;
+    runPlaybackCommand(command, args)
+      .then((snapshot) => {
+        if (commandId === playbackCommandIdRef.current) {
+          setPlaybackSnapshot(snapshot);
+        }
+      })
+      .catch((error: unknown) => {
+        if (commandId === playbackCommandIdRef.current) {
+          setPlaybackError(error instanceof Error ? error.message : String(error));
+        }
+      });
+  }
 
   function openFiles(files: FileList | File[]) {
     const file = pickMediaFile(files);
@@ -106,6 +160,9 @@ function App() {
     setDuration(0);
     setIsPlaying(false);
     setPlaybackError(null);
+    mirrorPlaybackCommand("playback_open_preview_source", {
+      source: { kind: "localFileLabel", value: file.name } satisfies PlaybackSourceDto,
+    });
   }
 
   function handleFileInput(event: ChangeEvent<HTMLInputElement>) {
@@ -178,11 +235,15 @@ function App() {
     }
 
     if (video.paused) {
-      video.play().catch((error: unknown) => {
-        setPlaybackError(error instanceof Error ? error.message : String(error));
-      });
+      video
+        .play()
+        .then(() => mirrorPlaybackCommand("playback_play"))
+        .catch((error: unknown) => {
+          setPlaybackError(error instanceof Error ? error.message : String(error));
+        });
     } else {
       video.pause();
+      mirrorPlaybackCommand("playback_pause");
     }
   }
 
@@ -199,6 +260,13 @@ function App() {
     setCurrentTime(value);
   }
 
+  function commitSeekTo(value: number) {
+    seekTo(value);
+    if (Number.isFinite(value)) {
+      mirrorPlaybackCommand("playback_seek", { positionMs: Math.round(value * 1000) });
+    }
+  }
+
   function setVolume(value: number) {
     const nextVolume = Math.min(1, Math.max(0, value));
     setVolumeLevel(nextVolume);
@@ -207,8 +275,14 @@ function App() {
     }
   }
 
+  function commitVolume(value: number) {
+    const nextVolume = Math.min(1, Math.max(0, value));
+    setVolume(nextVolume);
+    mirrorPlaybackCommand("playback_set_volume", { percent: Math.round(nextVolume * 100) });
+  }
+
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
-  const queueItems = media ? [media.name] : ["No media loaded"];
+  const queueItems = media ? [playbackSnapshot?.sourceLabel ?? media.name] : ["No media loaded"];
 
   return (
     <main className="app-shell">
@@ -242,7 +316,10 @@ function App() {
               onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
-              onEnded={() => setIsPlaying(false)}
+              onEnded={() => {
+                setIsPlaying(false);
+                mirrorPlaybackCommand("playback_stop");
+              }}
               onError={() => setPlaybackError("This file could not be decoded by the current preview renderer.")}
             />
           ) : (
@@ -274,7 +351,7 @@ function App() {
             </button>
           </div>
 
-          {playbackError && <div className="playback-error">{playbackError}</div>}
+          {playbackError && <div className="playback-error" role="alert">{playbackError}</div>}
 
           <div className="transport" aria-label="Playback controls">
             <div className="transport-row">
@@ -289,6 +366,9 @@ function App() {
                 aria-label="Seek playback position"
                 style={{ "--progress": `${progress}%` } as CSSProperties}
                 onChange={(event) => seekTo(Number(event.currentTarget.value))}
+                onPointerUp={(event) => commitSeekTo(Number(event.currentTarget.value))}
+                onKeyUp={(event) => commitSeekTo(Number(event.currentTarget.value))}
+                onBlur={(event) => commitSeekTo(Number(event.currentTarget.value))}
                 disabled={!media || duration <= 0}
               />
               <span className="transport-time">{formatTime(duration)}</span>
@@ -301,12 +381,23 @@ function App() {
               <button className="control-primary" type="button" aria-label={isPlaying ? "Pause" : media ? "Play" : "Open media"} onClick={togglePlayback}>
                 <Icon name={isPlaying ? "pause" : "play"} />
               </button>
-              <button type="button" aria-label="Restart" onClick={() => seekTo(0)} disabled={!media}>
+              <button type="button" aria-label="Restart" onClick={() => commitSeekTo(0)} disabled={!media}>
                 <Icon name="restart" />
               </button>
               <label className="volume-control" aria-label="Volume">
                 <Icon name="volume" />
-                <input type="range" min="0" max="1" step="0.01" value={volumeLevel} aria-label="Volume" onChange={(event) => setVolume(Number(event.currentTarget.value))} />
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={volumeLevel}
+                  aria-label="Volume"
+                  onChange={(event) => setVolume(Number(event.currentTarget.value))}
+                  onPointerUp={(event) => commitVolume(Number(event.currentTarget.value))}
+                  onKeyUp={(event) => commitVolume(Number(event.currentTarget.value))}
+                  onBlur={(event) => commitVolume(Number(event.currentTarget.value))}
+                />
               </label>
               <button
                 className={`playlist-toggle ${isPlaylistOpen ? "playlist-toggle--open" : ""}`}
