@@ -1,16 +1,22 @@
-import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type DragEvent, type PointerEvent } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent, type SyntheticEvent } from "react";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
+type MediaSourceKind = "localFilePath" | "localFileLabel";
+
 type MediaItem = {
+  id: string;
   name: string;
+  path: string | null;
   type: string;
-  size: number;
+  size: number | null;
   url: string;
+  sourceKind: MediaSourceKind;
 };
 
 type PlaybackSourceDto = {
-  kind: "localFileLabel" | "localFolderLabel" | "httpUrl";
+  kind: "localFilePath" | "localFileLabel" | "localFolderLabel" | "httpUrl";
   value: string;
 };
 
@@ -41,7 +47,8 @@ type DragIntent = {
 type WindowCommand = "window_minimize" | "window_toggle_maximize" | "window_close";
 type IconName = "close" | "folder" | "list" | "maximize" | "minimize" | "pause" | "play" | "restart" | "volume";
 
-const playableNamePattern = /\.(3gp|aac|avi|flac|m4a|m4v|mkv|mov|mp3|mp4|mpeg|mpg|oga|ogg|ogv|opus|wav|webm)$/i;
+const playableExtensions = ["3gp", "aac", "avi", "flac", "m4a", "m4v", "mkv", "mov", "mp3", "mp4", "mpeg", "mpg", "oga", "ogg", "ogv", "opus", "wav", "webm"];
+const playableNamePattern = new RegExp(`\\.(${playableExtensions.join("|")})$`, "i");
 
 function runWindowCommand(command: WindowCommand) {
   invoke(command).catch((error: unknown) => {
@@ -79,10 +86,49 @@ function formatTime(value: number) {
   return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 }
 
-function pickMediaFile(files: FileList | File[]) {
-  return Array.from(files).find(
-    (file) => file.type.startsWith("video/") || file.type.startsWith("audio/") || playableNamePattern.test(file.name),
-  );
+function isSupportedMediaName(name: string) {
+  return playableNamePattern.test(name);
+}
+
+function pickMediaFiles(files: FileList | File[]) {
+  return Array.from(files).filter((file) => file.type.startsWith("video/") || file.type.startsWith("audio/") || isSupportedMediaName(file.name));
+}
+
+function fileNameFromPath(path: string) {
+  return path.replace(/\\/g, "/").split("/").filter(Boolean).pop() ?? path;
+}
+
+function mediaItemFromNativePath(path: string, index: number): MediaItem {
+  const name = fileNameFromPath(path);
+  return {
+    id: `native:${path}:${index}`,
+    name,
+    path,
+    type: "media file",
+    size: null,
+    url: convertFileSrc(path),
+    sourceKind: "localFilePath",
+  };
+}
+
+function mediaItemFromBrowserFile(file: File, index: number): MediaItem {
+  return {
+    id: `preview:${file.name}:${file.size}:${file.lastModified}:${index}`,
+    name: file.name,
+    path: null,
+    type: file.type || "media file",
+    size: file.size,
+    url: URL.createObjectURL(file),
+    sourceKind: "localFileLabel",
+  };
+}
+
+function revokePreviewUrls(items: MediaItem[]) {
+  for (const item of items) {
+    if (item.sourceKind === "localFileLabel") {
+      URL.revokeObjectURL(item.url);
+    }
+  }
 }
 
 function Icon({ name }: { name: IconName }) {
@@ -106,7 +152,8 @@ function Icon({ name }: { name: IconName }) {
 }
 
 function App() {
-  const [media, setMedia] = useState<MediaItem | null>(null);
+  const [queue, setQueue] = useState<MediaItem[]>([]);
+  const [currentIndex, setCurrentIndex] = useState<number | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -115,17 +162,26 @@ function App() {
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [playbackSnapshot, setPlaybackSnapshot] = useState<PlaybackSnapshotDto | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dragIntentRef = useRef<DragIntent | null>(null);
   const playbackCommandIdRef = useRef(0);
+  const pendingAutoplayRef = useRef(false);
+  const media = currentIndex === null ? null : (queue[currentIndex] ?? null);
 
   useEffect(() => {
-    return () => {
-      if (media?.url) {
-        URL.revokeObjectURL(media.url);
-      }
-    };
-  }, [media?.url]);
+    return () => revokePreviewUrls(queue);
+  }, [queue]);
+
+  useEffect(() => {
+    if (!media) {
+      return;
+    }
+
+    setCurrentTime(0);
+    setDuration(0);
+    setIsPlaying(false);
+    setPlaybackError(null);
+    mirrorOpenMedia(media);
+  }, [media?.id]);
 
   function mirrorPlaybackCommand(command: string, args?: Record<string, unknown>) {
     const commandId = playbackCommandIdRef.current + 1;
@@ -143,33 +199,59 @@ function App() {
       });
   }
 
+  function playbackSourceFromMedia(item: MediaItem): PlaybackSourceDto {
+    return {
+      kind: item.sourceKind,
+      value: item.path ?? item.name,
+    };
+  }
+
+  function mirrorOpenMedia(item: MediaItem) {
+    mirrorPlaybackCommand("playback_open_preview_source", {
+      source: playbackSourceFromMedia(item),
+    });
+  }
+
+  function replaceQueue(nextQueue: MediaItem[]) {
+    pendingAutoplayRef.current = false;
+    setQueue(nextQueue);
+    setCurrentIndex(nextQueue.length ? 0 : null);
+    setIsPlaylistOpen(nextQueue.length > 1);
+  }
+
+  async function openNativeMediaFiles() {
+    try {
+      const selected = await open({
+        multiple: true,
+        filters: [{ name: "Media", extensions: playableExtensions }],
+      });
+      const paths = Array.isArray(selected) ? selected : selected ? [selected] : [];
+      if (!paths.length) {
+        return;
+      }
+
+      const nextQueue = paths.filter(isSupportedMediaName).map(mediaItemFromNativePath);
+      if (!nextQueue.length) {
+        setPlaybackError("No supported media file was found in that selection.");
+        return;
+      }
+
+      setPlaybackError(null);
+      replaceQueue(nextQueue);
+    } catch (error: unknown) {
+      setPlaybackError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   function openFiles(files: FileList | File[]) {
-    const file = pickMediaFile(files);
-    if (!file) {
+    const nextQueue = pickMediaFiles(files).map(mediaItemFromBrowserFile);
+    if (!nextQueue.length) {
       setPlaybackError("No supported media file was found in that selection.");
       return;
     }
 
-    setMedia({
-      name: file.name,
-      type: file.type || "media file",
-      size: file.size,
-      url: URL.createObjectURL(file),
-    });
-    setCurrentTime(0);
-    setDuration(0);
-    setIsPlaying(false);
     setPlaybackError(null);
-    mirrorPlaybackCommand("playback_open_preview_source", {
-      source: { kind: "localFileLabel", value: file.name } satisfies PlaybackSourceDto,
-    });
-  }
-
-  function handleFileInput(event: ChangeEvent<HTMLInputElement>) {
-    if (event.currentTarget.files?.length) {
-      openFiles(event.currentTarget.files);
-      event.currentTarget.value = "";
-    }
+    replaceQueue(nextQueue);
   }
 
   function handleDrop(event: DragEvent<HTMLElement>) {
@@ -178,6 +260,45 @@ function App() {
     if (event.dataTransfer.files.length) {
       openFiles(event.dataTransfer.files);
     }
+  }
+
+  function chooseQueueItem(index: number) {
+    if (!queue[index] || index === currentIndex) {
+      return;
+    }
+
+    pendingAutoplayRef.current = false;
+    setCurrentIndex(index);
+  }
+
+  function advanceToNextQueueItem() {
+    if (currentIndex === null) {
+      return false;
+    }
+
+    const nextIndex = currentIndex + 1;
+    if (!queue[nextIndex]) {
+      return false;
+    }
+
+    pendingAutoplayRef.current = true;
+    setCurrentIndex(nextIndex);
+    return true;
+  }
+
+  function handleCanPlay(event: SyntheticEvent<HTMLVideoElement>) {
+    event.currentTarget.volume = volumeLevel;
+    if (!pendingAutoplayRef.current) {
+      return;
+    }
+
+    pendingAutoplayRef.current = false;
+    event.currentTarget
+      .play()
+      .then(() => mirrorPlaybackCommand("playback_play"))
+      .catch((error: unknown) => {
+        setPlaybackError(error instanceof Error ? error.message : String(error));
+      });
   }
 
   function beginWindowDragIntent(event: PointerEvent<HTMLElement>) {
@@ -230,7 +351,7 @@ function App() {
   function togglePlayback() {
     const video = videoRef.current;
     if (!media || !video) {
-      fileInputRef.current?.click();
+      void openNativeMediaFiles();
       return;
     }
 
@@ -282,7 +403,7 @@ function App() {
   }
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
-  const queueItems = media ? [playbackSnapshot?.sourceLabel ?? media.name] : ["No media loaded"];
+  const queueItems = queue.length ? queue : media ? [media] : [];
 
   return (
     <main className="app-shell">
@@ -293,22 +414,12 @@ function App() {
           onDragOver={(event) => event.preventDefault()}
           onDrop={handleDrop}
         >
-          <input
-            ref={fileInputRef}
-            className="media-file-input"
-            type="file"
-            hidden
-            tabIndex={-1}
-            aria-hidden="true"
-            accept="audio/*,video/*,.mkv,.avi,.mov,.mp4,.webm,.mp3,.flac,.wav,.m4a"
-            onChange={handleFileInput}
-          />
-
           {media ? (
             <video
               ref={videoRef}
               className="media-view"
               src={media.url}
+              onCanPlay={handleCanPlay}
               onLoadedMetadata={(event) => {
                 event.currentTarget.volume = volumeLevel;
                 setDuration(event.currentTarget.duration);
@@ -318,7 +429,9 @@ function App() {
               onPause={() => setIsPlaying(false)}
               onEnded={() => {
                 setIsPlaying(false);
-                mirrorPlaybackCommand("playback_stop");
+                if (!advanceToNextQueueItem()) {
+                  mirrorPlaybackCommand("playback_stop");
+                }
               }}
               onError={() => setPlaybackError("This file could not be decoded by the current preview renderer.")}
             />
@@ -375,7 +488,7 @@ function App() {
             </div>
 
             <div className="control-strip">
-              <button type="button" aria-label="Open media" onClick={() => fileInputRef.current?.click()}>
+              <button type="button" aria-label="Open media" onClick={() => void openNativeMediaFiles()}>
                 <Icon name="folder" />
               </button>
               <button className="control-primary" type="button" aria-label={isPlaying ? "Pause" : media ? "Play" : "Open media"} onClick={togglePlayback}>
@@ -414,8 +527,17 @@ function App() {
           {isPlaylistOpen && (
             <aside className="playlist-drawer playlist-drawer--open" aria-label="Playlist">
               <ol>
-                {queueItems.map((item) => (
-                  <li key={item}>{item}</li>
+                {queueItems.map((item, index) => (
+                  <li key={item.id}>
+                    <button
+                      className={`playlist-item ${index === currentIndex ? "playlist-item--active" : ""}`}
+                      type="button"
+                      aria-current={index === currentIndex ? "true" : undefined}
+                      onClick={() => chooseQueueItem(index)}
+                    >
+                      <span>{playbackSnapshot?.sourceLabel === item.path ? item.path : item.name}</span>
+                    </button>
+                  </li>
                 ))}
               </ol>
             </aside>

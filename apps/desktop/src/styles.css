@@ -75,15 +75,6 @@ button {
   background: #000;
 }
 
-.media-file-input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-}
-
 .media-view {
   position: absolute;
   inset: 0;
@@ -328,15 +319,33 @@ button {
 }
 
 .playlist-drawer li {
+  min-width: 0;
+}
+
+.playlist-item {
+  display: block;
+  width: 100%;
   overflow: hidden;
+  border: 0;
   border-radius: 8px;
+  background: transparent;
   color: var(--muted);
+  cursor: pointer;
   padding: 9px 10px;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.playlist-drawer li:first-child {
+.playlist-item span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.playlist-item:hover,
+.playlist-item--active {
   background: rgba(236, 231, 221, 0.08);
   color: var(--text);
 }

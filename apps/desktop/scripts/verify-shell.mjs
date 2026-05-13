@@ -73,9 +73,20 @@ assert.match(appSource, /togglePlayback/, "player shell must wire play and pause
 assert.match(appSource, /seekTo/, "player shell must wire timeline seeking behavior");
 assert.match(appSource, /setVolume/, "player shell must wire volume behavior");
 assert.match(appSource, /type PlaybackSourceDto/, "frontend must define playback source DTO");
+assert.match(appSource, /type MediaSourceKind = "localFilePath" \| "localFileLabel"/, "frontend must model native and preview-only media sources");
+assert.match(appSource, /kind: "localFilePath" \| "localFileLabel" \| "localFolderLabel" \| "httpUrl"/, "frontend playback DTO must include localFilePath");
 assert.match(appSource, /type PlaybackStatusDto/, "frontend must define playback status DTO");
 assert.match(appSource, /type PlaybackSnapshotDto/, "frontend must define playback snapshot DTO");
 assert.match(appSource, /type PlaybackCommandError/, "frontend must define playback command error DTO");
+assert.match(appSource, /const \[queue, setQueue\]/, "frontend must keep queue state");
+assert.match(appSource, /const \[currentIndex, setCurrentIndex\]/, "frontend must track the current queue index");
+assert.match(appSource, /mediaItemFromNativePath/, "frontend must build queue items from native paths");
+assert.match(appSource, /mediaItemFromBrowserFile/, "frontend must keep drag-and-drop preview file support");
+assert.match(appSource, /open\(\{[\s\S]*multiple:\s*true/, "native picker must allow selecting multiple files");
+assert.match(appSource, /chooseQueueItem/, "playlist drawer must allow choosing queued files");
+assert.match(appSource, /advanceToNextQueueItem/, "player must advance to the next queued file on media end");
+assert.match(appSource, /pendingAutoplayRef/, "auto-advance must remember when to start the next item");
+assert.match(appSource, /onCanPlay=\{handleCanPlay\}/, "auto-advance playback must wait until the next preview can play");
 assert.match(appSource, /playbackErrorMessage/, "frontend must normalize playback command errors");
 assert.match(appSource, /runPlaybackCommand/, "frontend must use a playback command helper");
 assert.match(appSource, /mirrorPlaybackCommand/, "frontend must mirror preview actions to playback commands");
@@ -101,6 +112,7 @@ assert.match(tauriGenerateHandler, /playback_set_volume/, "Tauri must register p
 assert.match(styles, /\.window-shell[\s\S]*border:\s*0/, "window shell must not draw an outer border");
 assert.match(styles, /\.app-shell[\s\S]*padding:\s*0/, "window shell must not leave a transparent outer gutter");
 assert.doesNotMatch(styles, /\.status-line/, "player should not reserve status text chrome over the video surface");
+assert.match(styles, /playlist-item--active/, "playlist styles must mark the active queue item");
 assert.match(mainSource, /windows_subsystem\s*=\s*"windows"/, "release Windows app must use GUI subsystem instead of opening a console");
 assert.ok(
   capability.permissions.includes("core:window:allow-start-dragging"),
