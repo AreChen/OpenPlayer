@@ -1,0 +1,44 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Node / frontend
+/apps/desktop/node_modules/
+/apps/desktop/dist/
+/apps/desktop/.vite/
+
+# Tauri generated output
+/apps/desktop/src-tauri/target/
+/apps/desktop/src-tauri/gen/
+/apps/desktop/src-tauri/target-*/
+
+# Local media and generated assets
+/ANI/
+/media/
+/local-media/
+/fixtures/local/
+*.anim
+
+# Native dependency downloads and bundles
+/vendor/native/
+/dist/
+/bundle/
+*.dll
+*.dylib
+*.so
+*.so.*
+
+# Logs and local environment
+*.log
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Superpowers brainstorming artifacts
+/.superpowers/
