@@ -56,7 +56,7 @@ function App() {
 
         <div className="workspace-grid">
           <section className="player-surface" aria-label="Player surface placeholder">
-            <div className="surface-mark">
+            <div className="surface-mark" aria-hidden="true">
               <span>OP</span>
             </div>
             <div className="surface-copy">
@@ -116,7 +116,7 @@ function App() {
           </section>
         </div>
 
-        <footer className={`health-row health-row--${health.status}`}>
+        <footer className={`health-row health-row--${health.status}`} role="status" aria-live="polite">
           {health.status === "ready" && (
             <span>
               Rust core connected: {health.info.name} is in {health.info.stage} stage.
