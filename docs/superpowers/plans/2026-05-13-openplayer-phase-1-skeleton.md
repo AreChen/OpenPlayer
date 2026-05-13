@@ -176,41 +176,7 @@ Use `apply_patch`:
 +
 +## Development
 +
-+Prerequisites:
-+
-+- Rust stable toolchain with edition 2024 support.
-+- Node.js 20 or newer.
-+- npm 10 or newer.
-+- Tauri v2 system dependencies for your platform.
-+
-+Install frontend dependencies:
-+
-+```powershell
-+Set-Location apps/desktop
-+npm install
-+```
-+
-+Run Rust checks:
-+
-+```powershell
-+cargo fmt --check
-+cargo clippy --workspace --all-targets -- -D warnings
-+cargo test --workspace
-+```
-+
-+Run frontend build:
-+
-+```powershell
-+Set-Location apps/desktop
-+npm run build
-+```
-+
-+Run the desktop app during development:
-+
-+```powershell
-+Set-Location apps/desktop
-+npm run tauri:dev
-+```
++This Task 1 checkpoint contains repository metadata and planning documents only. The buildable Rust workspace begins in Phase 1 Task 2, and desktop/frontend commands will be documented once `apps/desktop` is added in later Phase 1 tasks.
 +
 +## License
 +
