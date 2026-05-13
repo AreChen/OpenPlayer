@@ -49,6 +49,12 @@ type IconName = "close" | "folder" | "list" | "maximize" | "minimize" | "pause" 
 
 const playableExtensions = ["3gp", "aac", "avi", "flac", "m4a", "m4v", "mkv", "mov", "mp3", "mp4", "mpeg", "mpg", "oga", "ogg", "ogv", "opus", "wav", "webm"];
 const playableNamePattern = new RegExp(`\\.(${playableExtensions.join("|")})$`, "i");
+let mediaItemIdCounter = 0;
+
+function nextMediaItemId(prefix: string) {
+  mediaItemIdCounter += 1;
+  return `${prefix}:${mediaItemIdCounter}`;
+}
 
 function runWindowCommand(command: WindowCommand) {
   invoke(command).catch((error: unknown) => {
@@ -101,7 +107,7 @@ function fileNameFromPath(path: string) {
 function mediaItemFromNativePath(path: string, index: number): MediaItem {
   const name = fileNameFromPath(path);
   return {
-    id: `native:${path}:${index}`,
+    id: nextMediaItemId("native"),
     name,
     path,
     type: "media file",
@@ -113,7 +119,7 @@ function mediaItemFromNativePath(path: string, index: number): MediaItem {
 
 function mediaItemFromBrowserFile(file: File, index: number): MediaItem {
   return {
-    id: `preview:${file.name}:${file.size}:${file.lastModified}:${index}`,
+    id: nextMediaItemId("preview"),
     name: file.name,
     path: null,
     type: file.type || "media file",
@@ -164,6 +170,7 @@ function App() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const dragIntentRef = useRef<DragIntent | null>(null);
   const playbackCommandIdRef = useRef(0);
+  const nativeOpenRequestIdRef = useRef(0);
   const pendingAutoplayRef = useRef(false);
   const media = currentIndex === null ? null : (queue[currentIndex] ?? null);
 
@@ -220,11 +227,18 @@ function App() {
   }
 
   async function openNativeMediaFiles() {
+    const requestId = nativeOpenRequestIdRef.current + 1;
+    nativeOpenRequestIdRef.current = requestId;
+
     try {
       const selected = await open({
         multiple: true,
         filters: [{ name: "Media", extensions: playableExtensions }],
       });
+      if (requestId !== nativeOpenRequestIdRef.current) {
+        return;
+      }
+
       const paths = Array.isArray(selected) ? selected : selected ? [selected] : [];
       if (!paths.length) {
         return;
@@ -239,6 +253,10 @@ function App() {
       setPlaybackError(null);
       replaceQueue(nextQueue);
     } catch (error: unknown) {
+      if (requestId !== nativeOpenRequestIdRef.current) {
+        return;
+      }
+
       setPlaybackError(error instanceof Error ? error.message : String(error));
     }
   }
@@ -416,6 +434,7 @@ function App() {
         >
           {media ? (
             <video
+              key={media.id}
               ref={videoRef}
               className="media-view"
               src={media.url}

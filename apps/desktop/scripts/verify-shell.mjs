@@ -82,10 +82,15 @@ assert.match(appSource, /const \[queue, setQueue\]/, "frontend must keep queue s
 assert.match(appSource, /const \[currentIndex, setCurrentIndex\]/, "frontend must track the current queue index");
 assert.match(appSource, /mediaItemFromNativePath/, "frontend must build queue items from native paths");
 assert.match(appSource, /mediaItemFromBrowserFile/, "frontend must keep drag-and-drop preview file support");
+assert.match(appSource, /function nextMediaItemId/, "frontend must assign fresh media item IDs for repeated selections");
+assert.match(appSource, /id: nextMediaItemId\("native"\)/, "native media item IDs must not be derived from stable file paths");
+assert.match(appSource, /id: nextMediaItemId\("preview"\)/, "preview media item IDs must not be derived from stable browser file metadata");
 assert.match(appSource, /open\(\{[\s\S]*multiple:\s*true/, "native picker must allow selecting multiple files");
+assert.match(appSource, /nativeOpenRequestIdRef/, "native picker must ignore stale dialog completions");
 assert.match(appSource, /chooseQueueItem/, "playlist drawer must allow choosing queued files");
 assert.match(appSource, /advanceToNextQueueItem/, "player must advance to the next queued file on media end");
 assert.match(appSource, /pendingAutoplayRef/, "auto-advance must remember when to start the next item");
+assert.match(appSource, /<video[\s\S]*key=\{media\.id\}/, "media element must remount when the current queue item changes");
 assert.match(appSource, /onCanPlay=\{handleCanPlay\}/, "auto-advance playback must wait until the next preview can play");
 assert.match(appSource, /playbackErrorMessage/, "frontend must normalize playback command errors");
 assert.match(appSource, /runPlaybackCommand/, "frontend must use a playback command helper");
