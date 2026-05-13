@@ -28,6 +28,8 @@ const frontendPlaybackCommands = [
 
 const [mainWindow] = config.app.windows;
 const assetProtocol = config.app.security.assetProtocol;
+const dialogPluginIndex = tauriLibSource.indexOf(".plugin(tauri_plugin_dialog::init())");
+const playbackStateIndex = tauriLibSource.indexOf(".manage(DesktopPlaybackState::default())");
 
 assert.equal(mainWindow.url, "index.html", "packaged exe must load the bundled app entry");
 assert.equal(mainWindow.decorations, false, "window must disable native decorations for custom titlebar");
@@ -59,7 +61,9 @@ assert.ok(packageJson.dependencies["@tauri-apps/plugin-dialog"], "desktop packag
 assert.equal(assetProtocol?.enable, true, "Tauri asset protocol must be enabled for local preview URLs");
 assert.ok(assetProtocol?.scope?.includes("**"), "asset protocol scope must allow user-selected local media paths");
 assert.ok(capability.permissions.includes("dialog:allow-open"), "capability must allow native file-open dialogs");
-assert.match(tauriLibSource, /tauri_plugin_dialog::init\(\)/, "desktop app must register the dialog plugin");
+assert.notEqual(dialogPluginIndex, -1, "desktop app must register the dialog plugin");
+assert.notEqual(playbackStateIndex, -1, "desktop app must manage playback state");
+assert.ok(dialogPluginIndex < playbackStateIndex, "desktop app must register the dialog plugin before managed playback state");
 assert.match(appSource, /from "@tauri-apps\/plugin-dialog"/, "frontend must import the Tauri dialog plugin");
 assert.match(appSource, /convertFileSrc/, "frontend must convert native paths into preview URLs");
 assert.match(appSource, /openNativeMediaFiles/, "open control must use the native media picker");
@@ -87,7 +91,6 @@ for (const command of frontendPlaybackCommands) {
     `frontend must invoke ${command}`,
   );
 }
-assert.match(tauriLibSource, /DesktopPlaybackState::default\(\)/, "desktop app must manage playback state");
 assert.match(tauriGenerateHandler, /playback_snapshot/, "Tauri must register playback snapshot command");
 assert.match(tauriGenerateHandler, /playback_open_preview_source/, "Tauri must register preview open command");
 assert.match(tauriGenerateHandler, /playback_play/, "Tauri must register playback play command");
