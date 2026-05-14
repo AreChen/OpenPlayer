@@ -150,6 +150,15 @@ pub struct RecentMediaRepository<'a> {
 
 impl RecentMediaRepository<'_> {
     pub fn record(&self, path: &str, name: &str, now_ms: i64) -> Result<(), StorageError> {
+        self.record_and_get(path, name, now_ms).map(|_| ())
+    }
+
+    pub fn record_and_get(
+        &self,
+        path: &str,
+        name: &str,
+        now_ms: i64,
+    ) -> Result<RecentMedia, StorageError> {
         validate_non_empty(path, "path")?;
         validate_non_empty(name, "name")?;
 
@@ -165,7 +174,11 @@ impl RecentMediaRepository<'_> {
                     params![path, name, now_ms],
                 )
                 .map_err(StorageError::from)?;
-            Ok(())
+            Self::get_with_connection(connection, path).and_then(|item| {
+                item.ok_or_else(|| {
+                    StorageError::QueryFailed("recent media row missing".to_string())
+                })
+            })
         })
     }
 
@@ -198,25 +211,31 @@ impl RecentMediaRepository<'_> {
 
     pub fn get(&self, path: &str) -> Result<Option<RecentMedia>, StorageError> {
         validate_non_empty(path, "path")?;
-        self.database.with_connection(|connection| {
-            connection
-                .query_row(
-                    "SELECT path, name, last_opened_at_ms, open_count
-                     FROM recent_media
-                     WHERE path = ?1",
-                    params![path],
-                    |row| {
-                        Ok(RecentMedia {
-                            path: row.get(0)?,
-                            name: row.get(1)?,
-                            last_opened_at_ms: row.get(2)?,
-                            open_count: row.get(3)?,
-                        })
-                    },
-                )
-                .optional()
-                .map_err(StorageError::from)
-        })
+        self.database
+            .with_connection(|connection| Self::get_with_connection(connection, path))
+    }
+
+    fn get_with_connection(
+        connection: &Connection,
+        path: &str,
+    ) -> Result<Option<RecentMedia>, StorageError> {
+        connection
+            .query_row(
+                "SELECT path, name, last_opened_at_ms, open_count
+                 FROM recent_media
+                 WHERE path = ?1",
+                params![path],
+                |row| {
+                    Ok(RecentMedia {
+                        path: row.get(0)?,
+                        name: row.get(1)?,
+                        last_opened_at_ms: row.get(2)?,
+                        open_count: row.get(3)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(StorageError::from)
     }
 }
 
@@ -443,6 +462,24 @@ mod tests {
         assert_eq!(found.path, target_path);
         assert_eq!(found.name, "target.mp4");
         assert_eq!(found.last_opened_at_ms, 1);
+    }
+
+    #[test]
+    fn recent_media_record_and_get_returns_updated_row() {
+        let database = StorageDatabase::in_memory().expect("database");
+        let recent = database.recent_media();
+
+        recent
+            .record_and_get("C:/media/a.mp4", "a.mp4", 100)
+            .expect("record a");
+        let updated = recent
+            .record_and_get("C:/media/a.mp4", "a-renamed.mp4", 200)
+            .expect("record a again");
+
+        assert_eq!(updated.path, "C:/media/a.mp4");
+        assert_eq!(updated.name, "a-renamed.mp4");
+        assert_eq!(updated.last_opened_at_ms, 200);
+        assert_eq!(updated.open_count, 2);
     }
 
     #[test]

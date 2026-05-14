@@ -62,14 +62,9 @@ impl DesktopStorageState {
         let database = self.database()?;
         database
             .recent_media()
-            .record(&path, &name, now_millis()?)
-            .map_err(StorageCommandError::from)?;
-        database
-            .recent_media()
-            .get(&path)
-            .map_err(StorageCommandError::from)?
+            .record_and_get(&path, &name, now_millis()?)
             .map(RecentMediaDto::from)
-            .ok_or_else(|| StorageCommandError::query_failed("Recent media item could not be read"))
+            .map_err(StorageCommandError::from)
     }
 
     pub fn get_progress(
