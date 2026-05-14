@@ -58,11 +58,22 @@ impl DesktopStorageState {
         &self,
         path: String,
         name: String,
+        opened_at_ms: Option<i64>,
     ) -> Result<RecentMediaDto, StorageCommandError> {
         let database = self.database()?;
+        let opened_at_ms = match opened_at_ms {
+            Some(value) if value < 0 => {
+                return Err(StorageCommandError::new(
+                    "storage.invalidInput",
+                    "Storage input is invalid",
+                ));
+            }
+            Some(value) => value,
+            None => now_millis()?,
+        };
         database
             .recent_media()
-            .record_and_get(&path, &name, now_millis()?)
+            .record_and_get(&path, &name, opened_at_ms)
             .map(RecentMediaDto::from)
             .map_err(StorageCommandError::from)
     }
@@ -222,8 +233,9 @@ pub fn storage_recent_media_record(
     state: State<'_, DesktopStorageState>,
     path: String,
     name: String,
+    opened_at_ms: Option<i64>,
 ) -> Result<RecentMediaDto, StorageCommandError> {
-    state.record_recent_media(path, name)
+    state.record_recent_media(path, name, opened_at_ms)
 }
 
 #[tauri::command]
@@ -278,7 +290,11 @@ mod tests {
         let state = DesktopStorageState::in_memory_for_tests();
 
         let recorded = state
-            .record_recent_media("C:/media/movie.mp4".to_string(), "movie.mp4".to_string())
+            .record_recent_media(
+                "C:/media/movie.mp4".to_string(),
+                "movie.mp4".to_string(),
+                None,
+            )
             .expect("record recent media");
         let items = state
             .list_recent_media(Some(10))
@@ -288,6 +304,42 @@ mod tests {
         assert_eq!(recorded.name, "movie.mp4");
         assert_eq!(recorded.open_count, 1);
         assert_eq!(items, vec![recorded]);
+    }
+
+    #[test]
+    fn recent_media_uses_frontend_open_time_for_ordering() {
+        let state = DesktopStorageState::in_memory_for_tests();
+
+        state
+            .record_recent_media(
+                "C:/media/a.mp4".to_string(),
+                "a.mp4".to_string(),
+                Some(2_000),
+            )
+            .expect("record a");
+        state
+            .record_recent_media(
+                "C:/media/b.mp4".to_string(),
+                "b.mp4".to_string(),
+                Some(3_000),
+            )
+            .expect("record b");
+        state
+            .record_recent_media(
+                "C:/media/a.mp4".to_string(),
+                "a.mp4".to_string(),
+                Some(2_000),
+            )
+            .expect("late duplicate a");
+
+        let items = state
+            .list_recent_media(Some(10))
+            .expect("list recent media");
+
+        assert_eq!(items[0].path, "C:/media/b.mp4");
+        assert_eq!(items[0].last_opened_at_ms, 3_000);
+        assert_eq!(items[1].path, "C:/media/a.mp4");
+        assert_eq!(items[1].last_opened_at_ms, 2_000);
     }
 
     #[test]
@@ -342,8 +394,24 @@ mod tests {
         let state = DesktopStorageState::in_memory_for_tests();
 
         let error = state
-            .record_recent_media("".to_string(), "movie.mp4".to_string())
+            .record_recent_media("".to_string(), "movie.mp4".to_string(), None)
             .expect_err("invalid path");
+
+        assert_eq!(error.code, "storage.invalidInput");
+        assert_eq!(error.message, "Storage input is invalid");
+    }
+
+    #[test]
+    fn negative_recent_media_open_time_maps_to_stable_error() {
+        let state = DesktopStorageState::in_memory_for_tests();
+
+        let error = state
+            .record_recent_media(
+                "C:/media/movie.mp4".to_string(),
+                "movie.mp4".to_string(),
+                Some(-1),
+            )
+            .expect_err("invalid open time");
 
         assert_eq!(error.code, "storage.invalidInput");
         assert_eq!(error.message, "Storage input is invalid");

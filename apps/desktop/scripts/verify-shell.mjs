@@ -95,6 +95,8 @@ assert.match(appSource, /const \[currentIndex, setCurrentIndex\]/, "frontend mus
 assert.match(appSource, /runStorageCommand/, "frontend must use a storage command helper");
 assert.match(appSource, /storage_recent_media_list/, "frontend must load recent media from storage");
 assert.match(appSource, /storage_recent_media_record/, "frontend must record native media in recent storage");
+assert.match(appSource, /openedAtMs/, "frontend must send media-open timestamps to recent storage");
+assert.match(appSource, /storage_recent_media_record", \{ path: item\.path, name: item\.name, openedAtMs: item\.openedAtMs \}/, "frontend recent record payload must include openedAtMs");
 assert.match(appSource, /storage_progress_get/, "frontend must load playback progress for auto-resume");
 assert.match(appSource, /storage_progress_save/, "frontend must save playback progress");
 assert.match(appSource, /storage_progress_clear/, "frontend must clear playback progress at media end");
@@ -102,6 +104,7 @@ assert.match(appSource, /recentMedia/, "frontend must keep recent media state");
 assert.match(appSource, /recentMediaRequestIdRef/, "frontend must ignore stale recent media refresh responses");
 assert.match(appSource, /openRecentMedia/, "frontend must open recent media shortcuts");
 assert.match(appSource, /maybeResumePlayback/, "frontend must auto-resume saved progress");
+assert.match(appSource, /resumeRequestIdRef/, "frontend must invalidate stale resume lookup responses");
 assert.match(appSource, /resumeLookupCompletedMediaIdRef/, "frontend must track completed resume lookups before saving progress");
 assert.match(appSource, /maybeSavePlaybackProgress/, "frontend must throttle progress saves");
 assert.match(appSource, /!force[\s\S]*resumeLookupCompletedMediaIdRef\.current !== media\.id/, "frontend must suppress automatic progress saves until resume lookup completes");

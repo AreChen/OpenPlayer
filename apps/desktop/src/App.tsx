@@ -13,6 +13,7 @@ type MediaItem = {
   size: number | null;
   url: string;
   sourceKind: MediaSourceKind;
+  openedAtMs: number;
 };
 
 type PlaybackSourceDto = {
@@ -136,7 +137,7 @@ function fileNameFromPath(path: string) {
   return path.replace(/\\/g, "/").split("/").filter(Boolean).pop() ?? path;
 }
 
-function mediaItemFromNativePath(path: string, index: number, displayName = fileNameFromPath(path)): MediaItem {
+function mediaItemFromNativePath(path: string, index: number, displayName = fileNameFromPath(path), openedAtMs = Date.now()): MediaItem {
   return {
     id: nextMediaItemId("native"),
     name: displayName,
@@ -145,6 +146,7 @@ function mediaItemFromNativePath(path: string, index: number, displayName = file
     size: null,
     url: convertFileSrc(path),
     sourceKind: "localFilePath",
+    openedAtMs,
   };
 }
 
@@ -157,6 +159,7 @@ function mediaItemFromBrowserFile(file: File, index: number): MediaItem {
     size: file.size,
     url: URL.createObjectURL(file),
     sourceKind: "localFileLabel",
+    openedAtMs: Date.now(),
   };
 }
 
@@ -204,6 +207,7 @@ function App() {
   const playbackCommandIdRef = useRef(0);
   const nativeOpenRequestIdRef = useRef(0);
   const recentMediaRequestIdRef = useRef(0);
+  const resumeRequestIdRef = useRef(0);
   const pendingAutoplayRef = useRef(false);
   const currentMediaIdRef = useRef<string | null>(null);
   const resumedMediaIdRef = useRef<string | null>(null);
@@ -261,7 +265,7 @@ function App() {
       return;
     }
 
-    runStorageCommand<RecentMediaDto>("storage_recent_media_record", { path: item.path, name: item.name })
+    runStorageCommand<RecentMediaDto>("storage_recent_media_record", { path: item.path, name: item.name, openedAtMs: item.openedAtMs })
       .then(() => refreshRecentMedia())
       .catch((error: unknown) => {
         console.error("Recent media record failed", error);
@@ -341,7 +345,7 @@ function App() {
 
   function openRecentMedia(item: RecentMediaDto) {
     setPlaybackError(null);
-    replaceQueue([mediaItemFromNativePath(item.path, 0, item.name)]);
+    replaceQueue([mediaItemFromNativePath(item.path, 0, item.name, Date.now())]);
   }
 
   function openFiles(files: FileList | File[]) {
@@ -398,6 +402,8 @@ function App() {
     if (item.sourceKind !== "localFilePath" || !item.path || resumedMediaIdRef.current === item.id) return;
 
     resumedMediaIdRef.current = item.id;
+    const requestId = resumeRequestIdRef.current + 1;
+    resumeRequestIdRef.current = requestId;
     const durationMs = Number.isFinite(durationSeconds) && durationSeconds > 0 ? Math.round(durationSeconds * 1000) : null;
     const markResumeLookupCompleted = () => {
       if (currentMediaIdRef.current === item.id) {
@@ -409,6 +415,7 @@ function App() {
       .then((savedProgress) => {
         if (currentMediaIdRef.current !== item.id || videoRef.current !== video) return;
         markResumeLookupCompleted();
+        if (requestId !== resumeRequestIdRef.current) return;
         if (!savedProgress) return;
         if (!isResumePositionValid(savedProgress, durationMs)) return;
 
@@ -558,6 +565,10 @@ function App() {
   function commitSeekTo(value: number) {
     seekTo(value);
     if (Number.isFinite(value)) {
+      resumeRequestIdRef.current += 1;
+      if (media) {
+        resumeLookupCompletedMediaIdRef.current = media.id;
+      }
       mirrorPlaybackCommand("playback_seek", { positionMs: Math.round(value * 1000) });
       maybeSavePlaybackProgress(value, videoRef.current?.duration ?? duration, true);
     }

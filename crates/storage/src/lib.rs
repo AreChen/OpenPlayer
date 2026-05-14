@@ -167,9 +167,13 @@ impl RecentMediaRepository<'_> {
                 .execute(
                     "INSERT INTO recent_media (path, name, last_opened_at_ms, open_count)
                      VALUES (?1, ?2, ?3, 1)
-                     ON CONFLICT(path) DO UPDATE SET
-                       name = excluded.name,
-                       last_opened_at_ms = excluded.last_opened_at_ms,
+                      ON CONFLICT(path) DO UPDATE SET
+                       name = CASE
+                         WHEN excluded.last_opened_at_ms >= recent_media.last_opened_at_ms
+                         THEN excluded.name
+                         ELSE recent_media.name
+                       END,
+                       last_opened_at_ms = MAX(recent_media.last_opened_at_ms, excluded.last_opened_at_ms),
                        open_count = recent_media.open_count + 1",
                     params![path, name, now_ms],
                 )
@@ -478,6 +482,24 @@ mod tests {
 
         assert_eq!(updated.path, "C:/media/a.mp4");
         assert_eq!(updated.name, "a-renamed.mp4");
+        assert_eq!(updated.last_opened_at_ms, 200);
+        assert_eq!(updated.open_count, 2);
+    }
+
+    #[test]
+    fn recent_media_record_keeps_newest_open_time_for_delayed_records() {
+        let database = StorageDatabase::in_memory().expect("database");
+        let recent = database.recent_media();
+
+        recent
+            .record_and_get("C:/media/a.mp4", "a-new.mp4", 200)
+            .expect("record newer a");
+        let updated = recent
+            .record_and_get("C:/media/a.mp4", "a-old.mp4", 100)
+            .expect("record delayed older a");
+
+        assert_eq!(updated.path, "C:/media/a.mp4");
+        assert_eq!(updated.name, "a-new.mp4");
         assert_eq!(updated.last_opened_at_ms, 200);
         assert_eq!(updated.open_count, 2);
     }
