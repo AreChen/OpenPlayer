@@ -203,9 +203,11 @@ function App() {
   const dragIntentRef = useRef<DragIntent | null>(null);
   const playbackCommandIdRef = useRef(0);
   const nativeOpenRequestIdRef = useRef(0);
+  const recentMediaRequestIdRef = useRef(0);
   const pendingAutoplayRef = useRef(false);
   const currentMediaIdRef = useRef<string | null>(null);
   const resumedMediaIdRef = useRef<string | null>(null);
+  const resumeLookupCompletedMediaIdRef = useRef<string | null>(null);
   const lastProgressSaveRef = useRef<{ mediaId: string; positionMs: number } | null>(null);
   const media = currentIndex === null ? null : (queue[currentIndex] ?? null);
 
@@ -227,6 +229,7 @@ function App() {
     }
 
     resumedMediaIdRef.current = null;
+    resumeLookupCompletedMediaIdRef.current = null;
     lastProgressSaveRef.current = null;
     setCurrentTime(0);
     setDuration(0);
@@ -237,10 +240,19 @@ function App() {
   }, [media?.id]);
 
   function refreshRecentMedia() {
+    const requestId = recentMediaRequestIdRef.current + 1;
+    recentMediaRequestIdRef.current = requestId;
+
     return runStorageCommand<RecentMediaDto[]>("storage_recent_media_list", { limit: 12 })
-      .then(setRecentMedia)
+      .then((items) => {
+        if (requestId === recentMediaRequestIdRef.current) {
+          setRecentMedia(items);
+        }
+      })
       .catch((error: unknown) => {
-        console.error("Recent media load failed", error);
+        if (requestId === recentMediaRequestIdRef.current) {
+          console.error("Recent media load failed", error);
+        }
       });
   }
 
@@ -387,10 +399,17 @@ function App() {
 
     resumedMediaIdRef.current = item.id;
     const durationMs = Number.isFinite(durationSeconds) && durationSeconds > 0 ? Math.round(durationSeconds * 1000) : null;
+    const markResumeLookupCompleted = () => {
+      if (currentMediaIdRef.current === item.id) {
+        resumeLookupCompletedMediaIdRef.current = item.id;
+      }
+    };
 
     runStorageCommand<PlaybackProgressDto | null>("storage_progress_get", { path: item.path })
       .then((savedProgress) => {
-        if (!savedProgress || currentMediaIdRef.current !== item.id || videoRef.current !== video) return;
+        if (currentMediaIdRef.current !== item.id || videoRef.current !== video) return;
+        markResumeLookupCompleted();
+        if (!savedProgress) return;
         if (!isResumePositionValid(savedProgress, durationMs)) return;
 
         const resumeSeconds = savedProgress.positionMs / 1000;
@@ -399,12 +418,14 @@ function App() {
         mirrorPlaybackCommand("playback_seek", { positionMs: savedProgress.positionMs });
       })
       .catch((error: unknown) => {
+        markResumeLookupCompleted();
         console.error("Playback progress load failed", error);
       });
   }
 
   function maybeSavePlaybackProgress(positionSeconds: number, durationSeconds: number, force = false) {
     if (!media?.path || media.sourceKind !== "localFilePath" || !Number.isFinite(positionSeconds)) return;
+    if (!force && resumeLookupCompletedMediaIdRef.current !== media.id) return;
 
     const positionMs = Math.max(0, Math.round(positionSeconds * 1000));
     const durationMs = Number.isFinite(durationSeconds) && durationSeconds > 0 ? Math.round(durationSeconds * 1000) : null;

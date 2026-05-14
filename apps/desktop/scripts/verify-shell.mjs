@@ -99,9 +99,13 @@ assert.match(appSource, /storage_progress_get/, "frontend must load playback pro
 assert.match(appSource, /storage_progress_save/, "frontend must save playback progress");
 assert.match(appSource, /storage_progress_clear/, "frontend must clear playback progress at media end");
 assert.match(appSource, /recentMedia/, "frontend must keep recent media state");
+assert.match(appSource, /recentMediaRequestIdRef/, "frontend must ignore stale recent media refresh responses");
 assert.match(appSource, /openRecentMedia/, "frontend must open recent media shortcuts");
 assert.match(appSource, /maybeResumePlayback/, "frontend must auto-resume saved progress");
+assert.match(appSource, /resumeLookupCompletedMediaIdRef/, "frontend must track completed resume lookups before saving progress");
 assert.match(appSource, /maybeSavePlaybackProgress/, "frontend must throttle progress saves");
+assert.match(appSource, /!force[\s\S]*resumeLookupCompletedMediaIdRef\.current !== media\.id/, "frontend must suppress automatic progress saves until resume lookup completes");
+assert.match(appSource, /sourceKind !== "localFilePath"/, "frontend must not persist preview-only files");
 assert.match(appSource, /mediaItemFromNativePath/, "frontend must build queue items from native paths");
 assert.match(appSource, /mediaItemFromBrowserFile/, "frontend must keep drag-and-drop preview file support");
 assert.match(appSource, /function nextMediaItemId/, "frontend must assign fresh media item IDs for repeated selections");
