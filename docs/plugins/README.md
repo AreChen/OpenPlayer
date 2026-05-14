@@ -1,14 +1,65 @@
-# Plugins
+# OpenPlayer Plugins
 
-OpenPlayer V0 supports application-level plugin concepts only.
+OpenPlayer plugin support is currently a manifest-only V0 contract. The Rust crate can parse and validate plugin manifest JSON strings, but the desktop app does not scan plugin folders, load files, execute plugins, or expose plugin UI yet.
 
-Supported extension categories for the first plugin design are:
+## V0 Manifest
 
-- Manifest metadata.
-- Command registrations.
-- Menu or command-palette entries.
-- Settings page entries.
-- Metadata extension points.
-- Subtitle-source extension points.
+```json
+{
+  "id": "dev.openplayer.metadata",
+  "name": "Metadata Helper",
+  "version": "1.0.0",
+  "description": "Adds metadata lookup commands.",
+  "entry": "builtIn",
+  "permissions": ["metadata.read", "settings.read"],
+  "contributes": {
+    "commands": [
+      { "id": "dev.openplayer.metadata.refresh", "title": "Refresh metadata" }
+    ],
+    "settingsPages": [
+      { "id": "dev.openplayer.metadata.settings", "title": "Metadata settings" }
+    ],
+    "metadataProviders": [
+      { "id": "dev.openplayer.metadata.provider", "title": "Local metadata" }
+    ],
+    "subtitleSources": [
+      { "id": "dev.openplayer.metadata.subtitles", "title": "Subtitle search" }
+    ]
+  }
+}
+```
 
-Decoder, filter, renderer, and media-pipeline plugins are outside the V0 plugin boundary.
+## Validation Rules
+
+- `id`, `name`, and `version` are required and cannot be blank.
+- `id` must be a dotted lowercase identifier with at least two segments, such as `dev.openplayer.metadata`.
+- Identifier segments must start with `a-z` and may contain lowercase letters, digits, and `-`.
+- `version` must use simple `major.minor.patch` numeric semver, such as `1.0.0`.
+- `description` is optional, but cannot be blank when present.
+- Unknown manifest and contribution fields are rejected.
+- Unknown permissions are rejected.
+- Contribution `id` and `title` values cannot be blank.
+- Contribution IDs must use the same dotted lowercase identifier syntax as plugin IDs.
+- Contribution IDs must be unique across all contribution groups.
+
+## Permissions
+
+- `metadata.read`
+- `subtitle.search`
+- `settings.read`
+- `settings.write`
+
+## Contributions
+
+- `commands`
+- `settingsPages`
+- `metadataProviders`
+- `subtitleSources`
+
+## Non-Goals For V0
+
+- No plugin directory scanning.
+- No manifest file IO.
+- No JavaScript, WASM, or native plugin runtime.
+- No decoder, filter, renderer, or media pipeline extension points.
+- No Tauri command or desktop UI integration.
