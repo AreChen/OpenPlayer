@@ -31,10 +31,11 @@ OpenPlayer plugin support is currently a manifest-only V0 contract. The Rust cra
 
 ## Validation Rules
 
-- `id`, `name`, and `version` are required and cannot be blank.
+- `id`, `name`, `version`, and `entry` are required; `id`, `name`, and `version` cannot be blank.
 - `id` must be a dotted lowercase identifier with at least two segments, such as `dev.openplayer.metadata`.
 - Identifier segments must start with `a-z` and may contain lowercase letters, digits, and `-`.
 - `version` must use simple `major.minor.patch` numeric semver, such as `1.0.0`.
+- V0 only accepts `"builtIn"` for `entry`.
 - `description` is optional, but cannot be blank when present.
 - Unknown manifest and contribution fields are rejected.
 - Unknown permissions are rejected.

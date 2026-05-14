@@ -25,7 +25,7 @@ OpenPlayer theme support is currently a manifest-only V0 contract. The Rust crat
 
 ## Validation Rules
 
-- `id`, `name`, `version`, and `tokens` are required.
+- `id`, `name`, `version`, and `tokens` are required; `id`, `name`, and `version` cannot be blank.
 - `id` may be a single lowercase identifier such as `studio-dark` or a dotted identifier such as `dev.openplayer.studio-dark`.
 - Identifier segments must start with `a-z` and may contain lowercase letters, digits, and `-`.
 - `version` must use simple `major.minor.patch` numeric semver, such as `1.0.0`.
