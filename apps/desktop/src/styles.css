@@ -93,6 +93,7 @@ button {
 .empty-open {
   position: absolute;
   inset: 0;
+  z-index: 6;
   display: grid;
   place-content: center;
   background: transparent;
@@ -111,6 +112,36 @@ button {
 .empty-open small {
   color: var(--muted);
   font-size: 0.95rem;
+}
+
+.recent-shortcuts {
+  position: absolute;
+  right: 50%;
+  bottom: calc(50% - 118px);
+  z-index: 8;
+  display: flex;
+  max-width: min(560px, calc(100vw - 40px));
+  transform: translateX(50%);
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.recent-shortcuts button {
+  max-width: 150px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(8, 10, 12, 0.66);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 8px 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-shortcuts button:hover {
+  border-color: rgba(202, 160, 93, 0.42);
+  color: var(--text);
 }
 
 .window-controls {
@@ -350,6 +381,48 @@ button {
   color: var(--text);
 }
 
+.recent-drawer-section {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.recent-drawer-section h2 {
+  margin: 0 0 2px;
+  color: var(--faint);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.recent-drawer-section button {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.recent-drawer-section button span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-drawer-section button:hover {
+  background: rgba(236, 231, 221, 0.08);
+  color: var(--text);
+}
+
 @media (max-width: 640px) {
   .window-controls {
     top: 8px;
@@ -368,6 +441,14 @@ button {
 
   .volume-control {
     grid-column: 1 / -1;
+  }
+
+  .recent-shortcuts {
+    right: 16px;
+    left: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+    transform: none;
   }
 
 }

@@ -88,8 +88,20 @@ assert.match(appSource, /kind: "localFilePath" \| "localFileLabel" \| "localFold
 assert.match(appSource, /type PlaybackStatusDto/, "frontend must define playback status DTO");
 assert.match(appSource, /type PlaybackSnapshotDto/, "frontend must define playback snapshot DTO");
 assert.match(appSource, /type PlaybackCommandError/, "frontend must define playback command error DTO");
+assert.match(appSource, /type RecentMediaDto/, "frontend must define recent media DTO");
+assert.match(appSource, /type PlaybackProgressDto/, "frontend must define playback progress DTO");
 assert.match(appSource, /const \[queue, setQueue\]/, "frontend must keep queue state");
 assert.match(appSource, /const \[currentIndex, setCurrentIndex\]/, "frontend must track the current queue index");
+assert.match(appSource, /runStorageCommand/, "frontend must use a storage command helper");
+assert.match(appSource, /storage_recent_media_list/, "frontend must load recent media from storage");
+assert.match(appSource, /storage_recent_media_record/, "frontend must record native media in recent storage");
+assert.match(appSource, /storage_progress_get/, "frontend must load playback progress for auto-resume");
+assert.match(appSource, /storage_progress_save/, "frontend must save playback progress");
+assert.match(appSource, /storage_progress_clear/, "frontend must clear playback progress at media end");
+assert.match(appSource, /recentMedia/, "frontend must keep recent media state");
+assert.match(appSource, /openRecentMedia/, "frontend must open recent media shortcuts");
+assert.match(appSource, /maybeResumePlayback/, "frontend must auto-resume saved progress");
+assert.match(appSource, /maybeSavePlaybackProgress/, "frontend must throttle progress saves");
 assert.match(appSource, /mediaItemFromNativePath/, "frontend must build queue items from native paths");
 assert.match(appSource, /mediaItemFromBrowserFile/, "frontend must keep drag-and-drop preview file support");
 assert.match(appSource, /function nextMediaItemId/, "frontend must assign fresh media item IDs for repeated selections");
@@ -133,6 +145,7 @@ assert.match(styles, /\.window-shell[\s\S]*border:\s*0/, "window shell must not 
 assert.match(styles, /\.app-shell[\s\S]*padding:\s*0/, "window shell must not leave a transparent outer gutter");
 assert.doesNotMatch(styles, /\.status-line/, "player should not reserve status text chrome over the video surface");
 assert.match(styles, /playlist-item--active/, "playlist styles must mark the active queue item");
+assert.match(styles, /recent-shortcuts/, "styles must include recent media shortcuts");
 assert.match(mainSource, /windows_subsystem\s*=\s*"windows"/, "release Windows app must use GUI subsystem instead of opening a console");
 assert.ok(
   capability.permissions.includes("core:window:allow-start-dragging"),
