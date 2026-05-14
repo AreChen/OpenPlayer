@@ -26,6 +26,16 @@ const frontendPlaybackCommands = [
   "playback_set_volume",
 ];
 
+const storageCommands = [
+  "storage_recent_media_list",
+  "storage_recent_media_record",
+  "storage_progress_get",
+  "storage_progress_save",
+  "storage_progress_clear",
+  "storage_setting_get",
+  "storage_setting_set",
+];
+
 const [mainWindow] = config.app.windows;
 const assetProtocol = config.app.security.assetProtocol;
 const dialogPluginIndex = tauriLibSource.indexOf(".plugin(tauri_plugin_dialog::init())");
@@ -114,6 +124,11 @@ assert.match(tauriGenerateHandler, /playback_pause/, "Tauri must register playba
 assert.match(tauriGenerateHandler, /playback_stop/, "Tauri must register playback stop command");
 assert.match(tauriGenerateHandler, /playback_seek/, "Tauri must register playback seek command");
 assert.match(tauriGenerateHandler, /playback_set_volume/, "Tauri must register playback volume command");
+assert.match(tauriLibSource, /mod storage;/, "desktop app must include storage command module");
+assert.match(tauriLibSource, /DesktopStorageState/, "desktop app must manage storage state");
+for (const command of storageCommands) {
+  assert.match(tauriGenerateHandler, new RegExp(command), `Tauri must register ${command}`);
+}
 assert.match(styles, /\.window-shell[\s\S]*border:\s*0/, "window shell must not draw an outer border");
 assert.match(styles, /\.app-shell[\s\S]*padding:\s*0/, "window shell must not leave a transparent outer gutter");
 assert.doesNotMatch(styles, /\.status-line/, "player should not reserve status text chrome over the video surface");

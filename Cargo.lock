@@ -2117,6 +2117,7 @@ dependencies = [
  "openplayer-core",
  "openplayer-media",
  "openplayer-shared",
+ "openplayer-storage",
  "serde",
  "tauri",
  "tauri-build",
