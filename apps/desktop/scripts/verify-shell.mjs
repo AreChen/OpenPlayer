@@ -105,6 +105,7 @@ assert.match(appSource, /recentMediaRequestIdRef/, "frontend must ignore stale r
 assert.match(appSource, /openRecentMedia/, "frontend must open recent media shortcuts");
 assert.match(appSource, /maybeResumePlayback/, "frontend must auto-resume saved progress");
 assert.match(appSource, /resumeRequestIdRef/, "frontend must invalidate stale resume lookup responses");
+assert.match(appSource, /function seekTo[\s\S]*resumeRequestIdRef\.current \+= 1[\s\S]*video\.currentTime = value/, "frontend seek input must invalidate stale resume lookups immediately");
 assert.match(appSource, /resumeLookupCompletedMediaIdRef/, "frontend must track completed resume lookups before saving progress");
 assert.match(appSource, /maybeSavePlaybackProgress/, "frontend must throttle progress saves");
 assert.match(appSource, /!force[\s\S]*resumeLookupCompletedMediaIdRef\.current !== media\.id/, "frontend must suppress automatic progress saves until resume lookup completes");

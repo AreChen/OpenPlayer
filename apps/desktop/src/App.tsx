@@ -558,6 +558,10 @@ function App() {
     if (!video || !Number.isFinite(value)) {
       return;
     }
+    if (media?.path && media.sourceKind === "localFilePath") {
+      resumeRequestIdRef.current += 1;
+      resumeLookupCompletedMediaIdRef.current = media.id;
+    }
     video.currentTime = value;
     setCurrentTime(value);
   }
@@ -565,10 +569,6 @@ function App() {
   function commitSeekTo(value: number) {
     seekTo(value);
     if (Number.isFinite(value)) {
-      resumeRequestIdRef.current += 1;
-      if (media) {
-        resumeLookupCompletedMediaIdRef.current = media.id;
-      }
       mirrorPlaybackCommand("playback_seek", { positionMs: Math.round(value * 1000) });
       maybeSavePlaybackProgress(value, videoRef.current?.duration ?? duration, true);
     }
