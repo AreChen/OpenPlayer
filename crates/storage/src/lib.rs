@@ -195,6 +195,29 @@ impl RecentMediaRepository<'_> {
                 .map_err(StorageError::from)
         })
     }
+
+    pub fn get(&self, path: &str) -> Result<Option<RecentMedia>, StorageError> {
+        validate_non_empty(path, "path")?;
+        self.database.with_connection(|connection| {
+            connection
+                .query_row(
+                    "SELECT path, name, last_opened_at_ms, open_count
+                     FROM recent_media
+                     WHERE path = ?1",
+                    params![path],
+                    |row| {
+                        Ok(RecentMedia {
+                            path: row.get(0)?,
+                            name: row.get(1)?,
+                            last_opened_at_ms: row.get(2)?,
+                            open_count: row.get(3)?,
+                        })
+                    },
+                )
+                .optional()
+                .map_err(StorageError::from)
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -389,6 +412,37 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].path, "C:/media/b.mp4");
+    }
+
+    #[test]
+    fn recent_media_get_finds_item_outside_list_limit() {
+        let database = StorageDatabase::in_memory().expect("database");
+        let recent = database.recent_media();
+        let target_path = "C:/media/target.mp4";
+
+        recent
+            .record(target_path, "target.mp4", 1)
+            .expect("record target");
+        for index in 0..101 {
+            recent
+                .record(
+                    &format!("C:/media/newer-{index}.mp4"),
+                    &format!("newer-{index}.mp4"),
+                    1_000 + index,
+                )
+                .expect("record newer item");
+        }
+
+        let listed = recent.list(100).expect("recent list");
+        let found = recent
+            .get(target_path)
+            .expect("get target")
+            .expect("target row");
+
+        assert!(!listed.iter().any(|item| item.path == target_path));
+        assert_eq!(found.path, target_path);
+        assert_eq!(found.name, "target.mp4");
+        assert_eq!(found.last_opened_at_ms, 1);
     }
 
     #[test]

@@ -66,10 +66,8 @@ impl DesktopStorageState {
             .map_err(StorageCommandError::from)?;
         database
             .recent_media()
-            .list(100)
+            .get(&path)
             .map_err(StorageCommandError::from)?
-            .into_iter()
-            .find(|item| item.path == path)
             .map(RecentMediaDto::from)
             .ok_or_else(|| StorageCommandError::query_failed("Recent media item could not be read"))
     }
