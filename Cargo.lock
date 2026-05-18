@@ -2061,6 +2061,8 @@ name = "openplayer-desktop"
 version = "0.1.0"
 dependencies = [
  "libmpv2",
+ "raw-window-handle",
+ "serde",
  "tauri",
  "tauri-build",
 ]

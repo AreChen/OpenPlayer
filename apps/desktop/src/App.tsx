@@ -106,6 +106,8 @@ function App() {
   const [currentTime, setCurrentTime] = useState(0);
   const [volumeLevel, setVolumeLevel] = useState(0.82);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [mpvEmbedPath, setMpvEmbedPath] = useState("");
+  const [mpvEmbedStatus, setMpvEmbedStatus] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const dragIntentRef = useRef<DragIntent | null>(null);
@@ -268,6 +270,30 @@ function App() {
     }
   }
 
+  function openMpvEmbedDebug() {
+    const path = mpvEmbedPath.trim();
+    if (!path) {
+      setMpvEmbedStatus("Enter a local path for the mpv embed spike.");
+      return;
+    }
+
+    invoke<{ hwnd: number; path: string; status: string }>("mpv_embed_open_path", { path })
+      .then((snapshot) => {
+        setMpvEmbedStatus(`mpv ${snapshot.status}: HWND ${snapshot.hwnd}`);
+      })
+      .catch((error: unknown) => {
+        setMpvEmbedStatus(error instanceof Error ? error.message : String(error));
+      });
+  }
+
+  function stopMpvEmbedDebug() {
+    invoke("mpv_embed_stop")
+      .then(() => setMpvEmbedStatus("mpv stopped"))
+      .catch((error: unknown) => {
+        setMpvEmbedStatus(error instanceof Error ? error.message : String(error));
+      });
+  }
+
   function togglePlaylist() {
     setIsPlaylistOpen((isOpen) => !isOpen);
   }
@@ -371,6 +397,19 @@ function App() {
             <button className="window-control-close" type="button" aria-label="Close window" onClick={() => runWindowCommand("window_close")}>
               <Icon name="close" />
             </button>
+          </div>
+
+          <div className="mpv-embed-debug" aria-label="MPV embed debug controls">
+            <input
+              type="text"
+              value={mpvEmbedPath}
+              placeholder="Local path for mpv embed spike"
+              aria-label="Local path for mpv embed spike"
+              onChange={(event) => setMpvEmbedPath(event.currentTarget.value)}
+            />
+            <button type="button" onClick={openMpvEmbedDebug}>MPV embed</button>
+            <button type="button" onClick={stopMpvEmbedDebug}>Stop</button>
+            {mpvEmbedStatus && <small>{mpvEmbedStatus}</small>}
           </div>
 
           {playbackError && <div className="playback-error" role="alert">{playbackError}</div>}

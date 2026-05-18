@@ -28,10 +28,19 @@ assert.equal(packageJson.dependencies["movi-player"], undefined, "minimal branch
 assert.equal(packageJson.dependencies["@tauri-apps/plugin-dialog"], undefined, "minimal branch must use browser File input instead of native dialog plugin");
 
 assert.match(tauriCargoToml, /\[features\][\s\S]*mpv-smoke = \["dep:libmpv2"\]/, "libmpv2 spike must be hidden behind the mpv-smoke feature");
+assert.match(tauriCargoToml, /mpv-embed = \["dep:libmpv2", "dep:raw-window-handle", "dep:serde"\]/, "mpv embed spike must be hidden behind the mpv-embed feature");
 assert.match(tauriCargoToml, /libmpv2 = \{ version = "6\.0\.0", optional = true, default-features = false \}/, "libmpv2 must be optional and control-only for the first smoke spike");
-assert.match(tauriBuildScript, /CARGO_FEATURE_MPV_SMOKE/, "build script must only add mpv link paths when mpv-smoke is enabled");
+assert.match(tauriCargoToml, /raw-window-handle = \{ version = "0\.6", optional = true \}/, "mpv embed spike must depend on raw window handles only when enabled");
+assert.match(tauriCargoToml, /serde = \{ version = "1", features = \["derive"\], optional = true \}/, "mpv embed command snapshots must use optional serde serialization");
+assert.match(tauriBuildScript, /CARGO_FEATURE_MPV_SMOKE[\s\S]*CARGO_FEATURE_MPV_EMBED/, "build script must only add mpv link paths when an mpv feature is enabled");
 assert.match(tauriBuildScript, /vendor[\\/]native[\\/]mpv[\\/]windows-x64/, "build script must point at the vendored Windows mpv directory");
 assert.match(tauriLibSource, /#\[cfg\(feature = "mpv-smoke"\)\]\s*mod mpv_smoke;/, "desktop crate must keep libmpv2 smoke code feature-gated");
+assert.match(tauriLibSource, /#\[cfg\(feature = "mpv-embed"\)\]\s*mod mpv_embed;/, "desktop crate must keep mpv embed code feature-gated");
+assert.match(tauriLibSource, /mpv_embed_open_path/, "desktop crate must register the mpv embed open command when the feature is enabled");
+assert.match(tauriLibSource, /mpv_embed_stop/, "desktop crate must register the mpv embed stop command when the feature is enabled");
+assert.match(tauriLibSource, /OPENPLAYER_MPV_EMBED_FILE/, "mpv embed spike must support env-driven startup playback for visual testing");
+assert.match(appSource, /mpv_embed_open_path/, "frontend must expose a minimal debug control for the mpv embed spike");
+assert.match(appSource, /mpv-embed-debug/, "mpv embed spike controls must be isolated in a debug surface");
 assert.doesNotMatch(appSource, /mpvSmoke|libmpv|libmpv2|mpv_smoke/, "libmpv2 smoke spike must not change the HTML video frontend path");
 
 assert.match(appSource, /<video[\s\S]*ref=\{videoRef\}/, "player must render a native HTML video element");

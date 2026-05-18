@@ -177,6 +177,45 @@ button {
   line-height: 1.4;
 }
 
+.mpv-embed-debug {
+  position: absolute;
+  top: 50px;
+  left: 12px;
+  z-index: 22;
+  display: grid;
+  width: min(520px, calc(100vw - 24px));
+  gap: 6px;
+  border: 1px solid rgba(202, 160, 93, 0.24);
+  border-radius: 10px;
+  background: rgba(8, 10, 12, 0.82);
+  padding: 8px;
+}
+
+.mpv-embed-debug input {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(236, 231, 221, 0.08);
+  color: var(--text);
+  padding: 7px 9px;
+}
+
+.mpv-embed-debug button {
+  border: 0;
+  border-radius: 8px;
+  background: rgba(202, 160, 93, 0.18);
+  color: var(--accent);
+  cursor: pointer;
+  padding: 7px 9px;
+}
+
+.mpv-embed-debug small {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .transport {
   position: absolute;
   right: 16px;
