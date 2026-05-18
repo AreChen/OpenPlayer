@@ -10,13 +10,7 @@ name = "openplayer_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [dependencies]
-openplayer-core = { path = "../../../crates/core" }
-openplayer-media = { path = "../../../crates/media" }
-openplayer-shared = { path = "../../../crates/shared" }
-openplayer-storage = { path = "../../../crates/storage" }
-serde.workspace = true
-tauri = { version = "2", features = ["protocol-asset"] }
-tauri-plugin-dialog = "2"
+tauri = { version = "2", features = [] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

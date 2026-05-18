@@ -1,61 +1,14 @@
-import { useEffect, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent, type SyntheticEvent } from "react";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { useEffect, useRef, useState, type CSSProperties, type ChangeEvent, type DragEvent, type PointerEvent, type SyntheticEvent } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-
-type MediaSourceKind = "localFilePath" | "localFileLabel";
 
 type MediaItem = {
   id: string;
   name: string;
-  path: string | null;
+  file: File;
   type: string;
-  size: number | null;
+  size: number;
   url: string;
-  sourceKind: MediaSourceKind;
-  openedAtMs: number;
-};
-
-type PlaybackSourceDto = {
-  kind: "localFilePath" | "localFileLabel" | "localFolderLabel" | "httpUrl";
-  value: string;
-};
-
-type PlaybackStatusDto = "idle" | "loading" | "ready" | "playing" | "paused" | "stopped" | "ended" | "error";
-
-type PlaybackSnapshotDto = {
-  sourceLabel: string | null;
-  status: PlaybackStatusDto;
-  positionMs: number;
-  durationMs: number | null;
-  volumePercent: number;
-  muted: boolean;
-  speedMilli: number;
-  latestError: PlaybackCommandError | null;
-};
-
-type PlaybackCommandError = {
-  code: string;
-  message: string;
-};
-
-type RecentMediaDto = {
-  path: string;
-  name: string;
-  lastOpenedAtMs: number;
-  openCount: number;
-};
-
-type PlaybackProgressDto = {
-  path: string;
-  positionMs: number;
-  durationMs: number | null;
-  updatedAtMs: number;
-};
-
-type StorageCommandError = {
-  code: string;
-  message: string;
 };
 
 type DragIntent = {
@@ -71,40 +24,14 @@ const playableExtensions = ["3gp", "aac", "avi", "flac", "m4a", "m4v", "mkv", "m
 const playableNamePattern = new RegExp(`\\.(${playableExtensions.join("|")})$`, "i");
 let mediaItemIdCounter = 0;
 
-function nextMediaItemId(prefix: string) {
+function nextMediaItemId() {
   mediaItemIdCounter += 1;
-  return `${prefix}:${mediaItemIdCounter}`;
+  return `file:${mediaItemIdCounter}`;
 }
 
 function runWindowCommand(command: WindowCommand) {
   invoke(command).catch((error: unknown) => {
     console.error(`Window command failed: ${command}`, error);
-  });
-}
-
-function playbackErrorMessage(error: unknown) {
-  if (typeof error === "object" && error && "message" in error) {
-    return String((error as PlaybackCommandError).message);
-  }
-  return error instanceof Error ? error.message : String(error);
-}
-
-function runPlaybackCommand(command: string, args?: Record<string, unknown>) {
-  return invoke<PlaybackSnapshotDto>(command, args).catch((error: unknown) => {
-    throw new Error(playbackErrorMessage(error));
-  });
-}
-
-function storageErrorMessage(error: unknown) {
-  if (typeof error === "object" && error && "message" in error) {
-    return String((error as StorageCommandError).message);
-  }
-  return error instanceof Error ? error.message : String(error);
-}
-
-function runStorageCommand<T>(command: string, args?: Record<string, unknown>) {
-  return invoke<T>(command, args).catch((error: unknown) => {
-    throw new Error(storageErrorMessage(error));
   });
 }
 
@@ -133,41 +60,20 @@ function pickMediaFiles(files: FileList | File[]) {
   return Array.from(files).filter((file) => file.type.startsWith("video/") || file.type.startsWith("audio/") || isSupportedMediaName(file.name));
 }
 
-function fileNameFromPath(path: string) {
-  return path.replace(/\\/g, "/").split("/").filter(Boolean).pop() ?? path;
-}
-
-function mediaItemFromNativePath(path: string, index: number, displayName = fileNameFromPath(path), openedAtMs = Date.now()): MediaItem {
+function mediaItemFromBrowserFile(file: File): MediaItem {
   return {
-    id: nextMediaItemId("native"),
-    name: displayName,
-    path,
-    type: "media file",
-    size: null,
-    url: convertFileSrc(path),
-    sourceKind: "localFilePath",
-    openedAtMs,
-  };
-}
-
-function mediaItemFromBrowserFile(file: File, index: number): MediaItem {
-  return {
-    id: nextMediaItemId("preview"),
+    id: nextMediaItemId(),
     name: file.name,
-    path: null,
+    file,
     type: file.type || "media file",
     size: file.size,
     url: URL.createObjectURL(file),
-    sourceKind: "localFileLabel",
-    openedAtMs: Date.now(),
   };
 }
 
-function revokePreviewUrls(items: MediaItem[]) {
+function revokeObjectUrls(items: MediaItem[]) {
   for (const item of items) {
-    if (item.sourceKind === "localFileLabel") {
-      URL.revokeObjectURL(item.url);
-    }
+    URL.revokeObjectURL(item.url);
   }
 }
 
@@ -200,106 +106,22 @@ function App() {
   const [currentTime, setCurrentTime] = useState(0);
   const [volumeLevel, setVolumeLevel] = useState(0.82);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
-  const [playbackSnapshot, setPlaybackSnapshot] = useState<PlaybackSnapshotDto | null>(null);
-  const [recentMedia, setRecentMedia] = useState<RecentMediaDto[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const dragIntentRef = useRef<DragIntent | null>(null);
-  const playbackCommandIdRef = useRef(0);
-  const nativeOpenRequestIdRef = useRef(0);
-  const recentMediaRequestIdRef = useRef(0);
-  const resumeRequestIdRef = useRef(0);
   const pendingAutoplayRef = useRef(false);
-  const currentMediaIdRef = useRef<string | null>(null);
-  const resumedMediaIdRef = useRef<string | null>(null);
-  const resumeLookupCompletedMediaIdRef = useRef<string | null>(null);
-  const lastProgressSaveRef = useRef<{ mediaId: string; positionMs: number } | null>(null);
   const media = currentIndex === null ? null : (queue[currentIndex] ?? null);
 
   useEffect(() => {
-    currentMediaIdRef.current = media?.id ?? null;
-  }, [media?.id]);
-
-  useEffect(() => {
-    void refreshRecentMedia();
-  }, []);
-
-  useEffect(() => {
-    return () => revokePreviewUrls(queue);
+    return () => revokeObjectUrls(queue);
   }, [queue]);
 
   useEffect(() => {
-    if (!media) {
-      return;
-    }
-
-    resumedMediaIdRef.current = null;
-    resumeLookupCompletedMediaIdRef.current = null;
-    lastProgressSaveRef.current = null;
     setCurrentTime(0);
     setDuration(0);
     setIsPlaying(false);
     setPlaybackError(null);
-    mirrorOpenMedia(media);
-    recordRecentMedia(media);
   }, [media?.id]);
-
-  function refreshRecentMedia() {
-    const requestId = recentMediaRequestIdRef.current + 1;
-    recentMediaRequestIdRef.current = requestId;
-
-    return runStorageCommand<RecentMediaDto[]>("storage_recent_media_list", { limit: 12 })
-      .then((items) => {
-        if (requestId === recentMediaRequestIdRef.current) {
-          setRecentMedia(items);
-        }
-      })
-      .catch((error: unknown) => {
-        if (requestId === recentMediaRequestIdRef.current) {
-          console.error("Recent media load failed", error);
-        }
-      });
-  }
-
-  function recordRecentMedia(item: MediaItem) {
-    if (item.sourceKind !== "localFilePath" || !item.path) {
-      return;
-    }
-
-    runStorageCommand<RecentMediaDto>("storage_recent_media_record", { path: item.path, name: item.name, openedAtMs: item.openedAtMs })
-      .then(() => refreshRecentMedia())
-      .catch((error: unknown) => {
-        console.error("Recent media record failed", error);
-      });
-  }
-
-  function mirrorPlaybackCommand(command: string, args?: Record<string, unknown>) {
-    const commandId = playbackCommandIdRef.current + 1;
-    playbackCommandIdRef.current = commandId;
-    runPlaybackCommand(command, args)
-      .then((snapshot) => {
-        if (commandId === playbackCommandIdRef.current) {
-          setPlaybackSnapshot(snapshot);
-        }
-      })
-      .catch((error: unknown) => {
-        if (commandId === playbackCommandIdRef.current) {
-          setPlaybackError(error instanceof Error ? error.message : String(error));
-        }
-      });
-  }
-
-  function playbackSourceFromMedia(item: MediaItem): PlaybackSourceDto {
-    return {
-      kind: item.sourceKind,
-      value: item.path ?? item.name,
-    };
-  }
-
-  function mirrorOpenMedia(item: MediaItem) {
-    mirrorPlaybackCommand("playback_open_preview_source", {
-      source: playbackSourceFromMedia(item),
-    });
-  }
 
   function replaceQueue(nextQueue: MediaItem[]) {
     pendingAutoplayRef.current = false;
@@ -308,44 +130,8 @@ function App() {
     setIsPlaylistOpen(nextQueue.length > 1);
   }
 
-  async function openNativeMediaFiles() {
-    const requestId = nativeOpenRequestIdRef.current + 1;
-    nativeOpenRequestIdRef.current = requestId;
-
-    try {
-      const selected = await open({
-        multiple: true,
-        filters: [{ name: "Media", extensions: playableExtensions }],
-      });
-      if (requestId !== nativeOpenRequestIdRef.current) {
-        return;
-      }
-
-      const paths = Array.isArray(selected) ? selected : selected ? [selected] : [];
-      if (!paths.length) {
-        return;
-      }
-
-      const nextQueue = paths.filter(isSupportedMediaName).map((path, index) => mediaItemFromNativePath(path, index));
-      if (!nextQueue.length) {
-        setPlaybackError("No supported media file was found in that selection.");
-        return;
-      }
-
-      setPlaybackError(null);
-      replaceQueue(nextQueue);
-    } catch (error: unknown) {
-      if (requestId !== nativeOpenRequestIdRef.current) {
-        return;
-      }
-
-      setPlaybackError(error instanceof Error ? error.message : String(error));
-    }
-  }
-
-  function openRecentMedia(item: RecentMediaDto) {
-    setPlaybackError(null);
-    replaceQueue([mediaItemFromNativePath(item.path, 0, item.name, Date.now())]);
+  function openBrowserMediaFiles() {
+    fileInputRef.current?.click();
   }
 
   function openFiles(files: FileList | File[]) {
@@ -357,6 +143,13 @@ function App() {
 
     setPlaybackError(null);
     replaceQueue(nextQueue);
+  }
+
+  function handleFileInputChange(event: ChangeEvent<HTMLInputElement>) {
+    if (event.currentTarget.files?.length) {
+      openFiles(event.currentTarget.files);
+    }
+    event.currentTarget.value = "";
   }
 
   function handleDrop(event: DragEvent<HTMLElement>) {
@@ -391,80 +184,13 @@ function App() {
     return true;
   }
 
-  function isResumePositionValid(progress: PlaybackProgressDto, durationMs: number | null) {
-    if (progress.positionMs <= 10_000) return false;
-    if (durationMs !== null && progress.positionMs >= durationMs - 10_000) return false;
-    if (durationMs !== null && progress.positionMs >= durationMs) return false;
-    return true;
-  }
-
-  function maybeResumePlayback(item: MediaItem, video: HTMLVideoElement, durationSeconds: number) {
-    if (item.sourceKind !== "localFilePath" || !item.path || resumedMediaIdRef.current === item.id) return;
-
-    resumedMediaIdRef.current = item.id;
-    const requestId = resumeRequestIdRef.current + 1;
-    resumeRequestIdRef.current = requestId;
-    const durationMs = Number.isFinite(durationSeconds) && durationSeconds > 0 ? Math.round(durationSeconds * 1000) : null;
-    const markResumeLookupCompleted = () => {
-      if (currentMediaIdRef.current === item.id) {
-        resumeLookupCompletedMediaIdRef.current = item.id;
-      }
-    };
-
-    runStorageCommand<PlaybackProgressDto | null>("storage_progress_get", { path: item.path })
-      .then((savedProgress) => {
-        if (currentMediaIdRef.current !== item.id || videoRef.current !== video) return;
-        markResumeLookupCompleted();
-        if (requestId !== resumeRequestIdRef.current) return;
-        if (!savedProgress) return;
-        if (!isResumePositionValid(savedProgress, durationMs)) return;
-
-        const resumeSeconds = savedProgress.positionMs / 1000;
-        video.currentTime = resumeSeconds;
-        setCurrentTime(resumeSeconds);
-        mirrorPlaybackCommand("playback_seek", { positionMs: savedProgress.positionMs });
-      })
-      .catch((error: unknown) => {
-        markResumeLookupCompleted();
-        console.error("Playback progress load failed", error);
-      });
-  }
-
-  function maybeSavePlaybackProgress(positionSeconds: number, durationSeconds: number, force = false) {
-    if (!media?.path || media.sourceKind !== "localFilePath" || !Number.isFinite(positionSeconds)) return;
-    if (!force && resumeLookupCompletedMediaIdRef.current !== media.id) return;
-
-    const positionMs = Math.max(0, Math.round(positionSeconds * 1000));
-    const durationMs = Number.isFinite(durationSeconds) && durationSeconds > 0 ? Math.round(durationSeconds * 1000) : null;
-    const lastSave = lastProgressSaveRef.current;
-    if (!force && lastSave?.mediaId === media.id && Math.abs(positionMs - lastSave.positionMs) < 5_000) return;
-
-    lastProgressSaveRef.current = { mediaId: media.id, positionMs };
-    runStorageCommand<void>("storage_progress_save", { path: media.path, positionMs, durationMs }).catch((error: unknown) => {
-      console.error("Playback progress save failed", error);
-    });
-  }
-
-  function clearSavedPlaybackProgress(item: MediaItem | null) {
-    if (!item?.path || item.sourceKind !== "localFilePath") return;
-
-    runStorageCommand<void>("storage_progress_clear", { path: item.path }).catch((error: unknown) => {
-      console.error("Playback progress clear failed", error);
-    });
-  }
-
   function handleLoadedMetadata(event: SyntheticEvent<HTMLVideoElement>) {
     event.currentTarget.volume = volumeLevel;
     setDuration(event.currentTarget.duration);
-    if (media) {
-      maybeResumePlayback(media, event.currentTarget, event.currentTarget.duration);
-    }
   }
 
   function handleTimeUpdate(event: SyntheticEvent<HTMLVideoElement>) {
-    const nextTime = event.currentTarget.currentTime;
-    setCurrentTime(nextTime);
-    maybeSavePlaybackProgress(nextTime, event.currentTarget.duration);
+    setCurrentTime(event.currentTarget.currentTime);
   }
 
   function handleCanPlay(event: SyntheticEvent<HTMLVideoElement>) {
@@ -474,12 +200,9 @@ function App() {
     }
 
     pendingAutoplayRef.current = false;
-    event.currentTarget
-      .play()
-      .then(() => mirrorPlaybackCommand("playback_play"))
-      .catch((error: unknown) => {
-        setPlaybackError(error instanceof Error ? error.message : String(error));
-      });
+    event.currentTarget.play().catch((error: unknown) => {
+      setPlaybackError(error instanceof Error ? error.message : String(error));
+    });
   }
 
   function beginWindowDragIntent(event: PointerEvent<HTMLElement>) {
@@ -532,20 +255,16 @@ function App() {
   function togglePlayback() {
     const video = videoRef.current;
     if (!media || !video) {
-      void openNativeMediaFiles();
+      openBrowserMediaFiles();
       return;
     }
 
     if (video.paused) {
-      video
-        .play()
-        .then(() => mirrorPlaybackCommand("playback_play"))
-        .catch((error: unknown) => {
-          setPlaybackError(error instanceof Error ? error.message : String(error));
-        });
+      video.play().catch((error: unknown) => {
+        setPlaybackError(error instanceof Error ? error.message : String(error));
+      });
     } else {
       video.pause();
-      mirrorPlaybackCommand("playback_pause");
     }
   }
 
@@ -558,20 +277,12 @@ function App() {
     if (!video || !Number.isFinite(value)) {
       return;
     }
-    if (media?.path && media.sourceKind === "localFilePath") {
-      resumeRequestIdRef.current += 1;
-      resumeLookupCompletedMediaIdRef.current = media.id;
-    }
     video.currentTime = value;
     setCurrentTime(value);
   }
 
   function commitSeekTo(value: number) {
     seekTo(value);
-    if (Number.isFinite(value)) {
-      mirrorPlaybackCommand("playback_seek", { positionMs: Math.round(value * 1000) });
-      maybeSavePlaybackProgress(value, videoRef.current?.duration ?? duration, true);
-    }
   }
 
   function setVolume(value: number) {
@@ -583,9 +294,7 @@ function App() {
   }
 
   function commitVolume(value: number) {
-    const nextVolume = Math.min(1, Math.max(0, value));
-    setVolume(nextVolume);
-    mirrorPlaybackCommand("playback_set_volume", { percent: Math.round(nextVolume * 100) });
+    setVolume(value);
   }
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -600,42 +309,46 @@ function App() {
           onDragOver={(event) => event.preventDefault()}
           onDrop={handleDrop}
         >
+          <input
+            ref={fileInputRef}
+            className="media-file-input"
+            type="file"
+            tabIndex={-1}
+            aria-hidden="true"
+            accept={`audio/*,video/*,${playableExtensions.map((extension) => `.${extension}`).join(",")}`}
+            multiple
+            onChange={handleFileInputChange}
+          />
+
           {media ? (
             <video
               key={media.id}
               ref={videoRef}
               className="media-view"
               src={media.url}
+              playsInline
               onCanPlay={handleCanPlay}
               onLoadedMetadata={handleLoadedMetadata}
+              onDurationChange={handleLoadedMetadata}
               onTimeUpdate={handleTimeUpdate}
-              onPlay={() => setIsPlaying(true)}
+              onPlay={() => {
+                setIsPlaying(true);
+                setPlaybackError(null);
+              }}
               onPause={() => setIsPlaying(false)}
               onEnded={() => {
                 setIsPlaying(false);
-                clearSavedPlaybackProgress(media);
                 if (!advanceToNextQueueItem()) {
-                  mirrorPlaybackCommand("playback_stop");
+                  setCurrentTime(duration);
                 }
               }}
-              onError={() => setPlaybackError("This file could not be decoded by the current preview renderer.")}
+              onError={() => setPlaybackError("This file could not be decoded by the native HTML video renderer.")}
             />
           ) : (
-            <>
-              <div className="empty-open">
-                <span>Open media</span>
-                <small>or drop a file anywhere</small>
-              </div>
-              {recentMedia.length > 0 && (
-                <div className="recent-shortcuts" aria-label="Recent media">
-                  {recentMedia.slice(0, 4).map((item) => (
-                    <button key={item.path} type="button" onClick={() => openRecentMedia(item)}>
-                      {item.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </>
+            <div className="empty-open">
+              <span>Open media</span>
+              <small>or drop a file anywhere</small>
+            </div>
           )}
 
           <div
@@ -684,7 +397,7 @@ function App() {
             </div>
 
             <div className="control-strip">
-              <button type="button" aria-label="Open media" onClick={() => void openNativeMediaFiles()}>
+              <button type="button" aria-label="Open media" onClick={openBrowserMediaFiles}>
                 <Icon name="folder" />
               </button>
               <button className="control-primary" type="button" aria-label={isPlaying ? "Pause" : media ? "Play" : "Open media"} onClick={togglePlayback}>
@@ -731,21 +444,11 @@ function App() {
                       aria-current={index === currentIndex ? "true" : undefined}
                       onClick={() => chooseQueueItem(index)}
                     >
-                      <span>{playbackSnapshot?.sourceLabel === item.path ? item.path : item.name}</span>
+                      <span>{item.name}</span>
                     </button>
                   </li>
                 ))}
               </ol>
-              {recentMedia.length > 0 && (
-                <section className="recent-drawer-section" aria-label="Recent media">
-                  <h2>Recent</h2>
-                  {recentMedia.map((item) => (
-                    <button key={item.path} type="button" onClick={() => openRecentMedia(item)}>
-                      <span>{item.name}</span>
-                    </button>
-                  ))}
-                </section>
-              )}
             </aside>
           )}
         </section>
