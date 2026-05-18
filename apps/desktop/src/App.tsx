@@ -1,37 +1,68 @@
-import { useEffect, useRef, useState, type CSSProperties, type ChangeEvent, type DragEvent, type PointerEvent, type SyntheticEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { open } from "@tauri-apps/plugin-dialog";
 
 type MediaItem = {
   id: string;
   name: string;
-  file: File;
-  type: string;
-  size: number;
-  url: string;
+  path: string;
 };
 
-type DragIntent = {
-  pointerId: number;
-  startX: number;
-  startY: number;
+type MpvSnapshot = {
+  path: string;
+  status: string;
+  paused: boolean;
+  position: number;
+  duration: number;
+  volume: number;
 };
 
-type WindowCommand = "window_minimize" | "window_toggle_maximize" | "window_close";
+type PendingSeek = {
+  target: number;
+  startedAt: number;
+};
+
+type ResizeDirection = "East" | "North" | "NorthEast" | "NorthWest" | "South" | "SouthEast" | "SouthWest" | "West";
+
+type WindowCommand = "window_minimize" | "window_toggle_maximize" | "window_toggle_fullscreen" | "window_close";
 type IconName = "close" | "folder" | "list" | "maximize" | "minimize" | "pause" | "play" | "restart" | "volume";
 
 const playableExtensions = ["3gp", "aac", "avi", "flac", "m4a", "m4v", "mkv", "mov", "mp3", "mp4", "mpeg", "mpg", "oga", "ogg", "ogv", "opus", "wav", "webm"];
-const playableNamePattern = new RegExp(`\\.(${playableExtensions.join("|")})$`, "i");
+const SEEK_CONFIRM_TOLERANCE_SECONDS = 0.75;
+const SEEK_SNAPSHOT_SUPPRESS_MS = 1600;
+const resizeRegions: Array<{ className: string; direction: ResizeDirection }> = [
+  { className: "resize-region--north", direction: "North" },
+  { className: "resize-region--south", direction: "South" },
+  { className: "resize-region--east", direction: "East" },
+  { className: "resize-region--west", direction: "West" },
+  { className: "resize-region--north-east", direction: "NorthEast" },
+  { className: "resize-region--north-west", direction: "NorthWest" },
+  { className: "resize-region--south-east", direction: "SouthEast" },
+  { className: "resize-region--south-west", direction: "SouthWest" },
+];
+const surface = new URLSearchParams(window.location.search).get("surface");
 let mediaItemIdCounter = 0;
 
 function nextMediaItemId() {
   mediaItemIdCounter += 1;
-  return `file:${mediaItemIdCounter}`;
+  return `path:${mediaItemIdCounter}`;
 }
 
 function runWindowCommand(command: WindowCommand) {
   invoke(command).catch((error: unknown) => {
     console.error(`Window command failed: ${command}`, error);
+  });
+}
+
+function startMainWindowDrag() {
+  invoke("window_start_drag").catch((error: unknown) => {
+    console.error("Window drag failed", error);
+  });
+}
+
+function startMainWindowResize(direction: ResizeDirection) {
+  invoke("window_start_resize", { direction }).catch((error: unknown) => {
+    console.error(`Window resize failed: ${direction}`, error);
   });
 }
 
@@ -52,29 +83,13 @@ function formatTime(value: number) {
   return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 }
 
-function isSupportedMediaName(name: string) {
-  return playableNamePattern.test(name);
-}
-
-function pickMediaFiles(files: FileList | File[]) {
-  return Array.from(files).filter((file) => file.type.startsWith("video/") || file.type.startsWith("audio/") || isSupportedMediaName(file.name));
-}
-
-function mediaItemFromBrowserFile(file: File): MediaItem {
+function mediaItemFromPath(path: string): MediaItem {
+  const normalized = path.replace(/\\/g, "/");
   return {
     id: nextMediaItemId(),
-    name: file.name,
-    file,
-    type: file.type || "media file",
-    size: file.size,
-    url: URL.createObjectURL(file),
+    name: normalized.split("/").pop() || path,
+    path,
   };
-}
-
-function revokeObjectUrls(items: MediaItem[]) {
-  for (const item of items) {
-    URL.revokeObjectURL(item.url);
-  }
 }
 
 function Icon({ name }: { name: IconName }) {
@@ -98,200 +113,157 @@ function Icon({ name }: { name: IconName }) {
 }
 
 function App() {
+  if (surface === "video") {
+    return <main className="video-host-surface" aria-label="OpenPlayer video surface" />;
+  }
+
   const [queue, setQueue] = useState<MediaItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [volumeLevel, setVolumeLevel] = useState(0.82);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
-  const [mpvEmbedPath, setMpvEmbedPath] = useState("");
-  const [mpvEmbedStatus, setMpvEmbedStatus] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const dragIntentRef = useRef<DragIntent | null>(null);
-  const pendingAutoplayRef = useRef(false);
+  const pendingSeekRef = useRef<PendingSeek | null>(null);
   const media = currentIndex === null ? null : (queue[currentIndex] ?? null);
 
   useEffect(() => {
-    return () => revokeObjectUrls(queue);
-  }, [queue]);
-
-  useEffect(() => {
-    setCurrentTime(0);
-    setDuration(0);
-    setIsPlaying(false);
-    setPlaybackError(null);
-  }, [media?.id]);
-
-  function replaceQueue(nextQueue: MediaItem[]) {
-    pendingAutoplayRef.current = false;
-    setQueue(nextQueue);
-    setCurrentIndex(nextQueue.length ? 0 : null);
-    setIsPlaylistOpen(nextQueue.length > 1);
-  }
-
-  function openBrowserMediaFiles() {
-    fileInputRef.current?.click();
-  }
-
-  function openFiles(files: FileList | File[]) {
-    const nextQueue = pickMediaFiles(files).map(mediaItemFromBrowserFile);
-    if (!nextQueue.length) {
-      setPlaybackError("No supported media file was found in that selection.");
+    if (!media) {
       return;
     }
 
-    setPlaybackError(null);
-    replaceQueue(nextQueue);
-  }
+    const timer = window.setInterval(() => {
+      invoke<MpvSnapshot | null>("mpv_embed_snapshot")
+        .then((snapshot) => {
+          if (snapshot) {
+            applySnapshot(snapshot);
+          }
+        })
+        .catch(() => undefined);
+    }, 500);
 
-  function handleFileInputChange(event: ChangeEvent<HTMLInputElement>) {
-    if (event.currentTarget.files?.length) {
-      openFiles(event.currentTarget.files);
+    return () => window.clearInterval(timer);
+  }, [media?.id]);
+
+  function applySnapshot(snapshot: MpvSnapshot) {
+    const snapshotPosition = Number.isFinite(snapshot.position) ? snapshot.position : 0;
+    const snapshotDuration = Number.isFinite(snapshot.duration) ? snapshot.duration : 0;
+    const pendingSeek = pendingSeekRef.current;
+
+    setDuration(snapshotDuration);
+    setIsPlaying(!snapshot.paused && snapshot.status !== "idle");
+    setVolumeLevel(Math.min(1, Math.max(0, snapshot.volume / 100)));
+
+    if (pendingSeek) {
+      const isConfirmed = Math.abs(snapshotPosition - pendingSeek.target) <= SEEK_CONFIRM_TOLERANCE_SECONDS;
+      const isExpired = performance.now() - pendingSeek.startedAt > SEEK_SNAPSHOT_SUPPRESS_MS;
+      if (!isConfirmed && !isExpired) {
+        return;
+      }
+
+      pendingSeekRef.current = null;
     }
-    event.currentTarget.value = "";
+
+    setCurrentTime(snapshotPosition);
   }
 
-  function handleDrop(event: DragEvent<HTMLElement>) {
-    event.preventDefault();
-    event.stopPropagation();
-    if (event.dataTransfer.files.length) {
-      openFiles(event.dataTransfer.files);
+  function reportPlaybackError(error: unknown) {
+    setPlaybackError(error instanceof Error ? error.message : String(error));
+  }
+
+  function openMpvPath(path: string) {
+    return invoke<MpvSnapshot>("mpv_overlay_open_path", { path }).then((snapshot) => {
+      pendingSeekRef.current = null;
+      setPlaybackError(null);
+      applySnapshot(snapshot);
+    });
+  }
+
+  function seekTarget(value: number) {
+    if (!Number.isFinite(value)) {
+      return 0;
+    }
+
+    const upperBound = duration > 0 ? duration : value;
+    return Math.min(upperBound, Math.max(0, value));
+  }
+
+  async function openNativeMediaFiles() {
+    if (isPickerOpen) {
+      return;
+    }
+
+    setIsPickerOpen(true);
+    setPlaybackError(null);
+    try {
+      const selection = await open({
+        multiple: true,
+        filters: [{ name: "Media", extensions: playableExtensions }],
+      });
+      const paths = typeof selection === "string" ? [selection] : Array.isArray(selection) ? selection : [];
+      const nextQueue = paths.map(mediaItemFromPath);
+      if (!nextQueue.length) {
+        return;
+      }
+
+      setQueue(nextQueue);
+      setCurrentIndex(0);
+      setIsPlaylistOpen(nextQueue.length > 1);
+      await openMpvPath(nextQueue[0].path);
+    } catch (error) {
+      reportPlaybackError(error);
+    } finally {
+      setIsPickerOpen(false);
     }
   }
 
   function chooseQueueItem(index: number) {
-    if (!queue[index] || index === currentIndex) {
+    const item = queue[index];
+    if (!item || index === currentIndex) {
       return;
     }
 
-    pendingAutoplayRef.current = false;
     setCurrentIndex(index);
+    openMpvPath(item.path).catch(reportPlaybackError);
   }
 
-  function advanceToNextQueueItem() {
-    if (currentIndex === null) {
-      return false;
-    }
-
-    const nextIndex = currentIndex + 1;
-    if (!queue[nextIndex]) {
-      return false;
-    }
-
-    pendingAutoplayRef.current = true;
-    setCurrentIndex(nextIndex);
-    return true;
+  function toggleFullscreen() {
+    runWindowCommand("window_toggle_fullscreen");
   }
 
-  function handleLoadedMetadata(event: SyntheticEvent<HTMLVideoElement>) {
-    event.currentTarget.volume = volumeLevel;
-    setDuration(event.currentTarget.duration);
-  }
-
-  function handleTimeUpdate(event: SyntheticEvent<HTMLVideoElement>) {
-    setCurrentTime(event.currentTarget.currentTime);
-  }
-
-  function handleCanPlay(event: SyntheticEvent<HTMLVideoElement>) {
-    event.currentTarget.volume = volumeLevel;
-    if (!pendingAutoplayRef.current) {
+  function handleDragRegionPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button === 1) {
+      event.preventDefault();
+      runWindowCommand("window_toggle_fullscreen");
       return;
     }
 
-    pendingAutoplayRef.current = false;
-    event.currentTarget.play().catch((error: unknown) => {
-      setPlaybackError(error instanceof Error ? error.message : String(error));
-    });
+    if (event.button === 0) {
+      startMainWindowDrag();
+    }
   }
 
-  function beginWindowDragIntent(event: PointerEvent<HTMLElement>) {
+  function handleResizePointerDown(event: ReactPointerEvent<HTMLDivElement>, direction: ResizeDirection) {
     if (event.button !== 0) {
       return;
     }
 
-    dragIntentRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }
-
-  function continueWindowDragIntent(event: PointerEvent<HTMLElement>) {
-    const intent = dragIntentRef.current;
-    if (!intent || intent.pointerId !== event.pointerId) {
-      return;
-    }
-
-    const distance = Math.hypot(event.clientX - intent.startX, event.clientY - intent.startY);
-    if (distance < 4) {
-      return;
-    }
-
-    clearWindowDragIntent(event);
-    getCurrentWindow().startDragging().catch((error: unknown) => {
-      console.error("Window drag failed", error);
-    });
-  }
-
-  function clearWindowDragIntent(event: PointerEvent<HTMLElement>) {
-    if (dragIntentRef.current?.pointerId === event.pointerId && event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    dragIntentRef.current = null;
-  }
-
-  function toggleFullscreen() {
-    const window = getCurrentWindow();
-    window
-      .isFullscreen()
-      .then((isFullscreen) => window.setFullscreen(!isFullscreen))
-      .catch((error: unknown) => {
-        console.error("Fullscreen toggle failed", error);
-      });
+    event.preventDefault();
+    event.stopPropagation();
+    startMainWindowResize(direction);
   }
 
   function togglePlayback() {
-    const video = videoRef.current;
-    if (!media || !video) {
-      openBrowserMediaFiles();
+    if (!media) {
+      openNativeMediaFiles();
       return;
     }
 
-    if (video.paused) {
-      video.play().catch((error: unknown) => {
-        setPlaybackError(error instanceof Error ? error.message : String(error));
-      });
-    } else {
-      video.pause();
-    }
-  }
-
-  function openMpvEmbedDebug() {
-    const path = mpvEmbedPath.trim();
-    if (!path) {
-      setMpvEmbedStatus("Enter a local path for the mpv embed spike.");
-      return;
-    }
-
-    invoke<{ hwnd: number; path: string; status: string }>("mpv_embed_open_path", { path })
-      .then((snapshot) => {
-        setMpvEmbedStatus(`mpv ${snapshot.status}: HWND ${snapshot.hwnd}`);
-      })
-      .catch((error: unknown) => {
-        setMpvEmbedStatus(error instanceof Error ? error.message : String(error));
-      });
-  }
-
-  function stopMpvEmbedDebug() {
-    invoke("mpv_embed_stop")
-      .then(() => setMpvEmbedStatus("mpv stopped"))
-      .catch((error: unknown) => {
-        setMpvEmbedStatus(error instanceof Error ? error.message : String(error));
-      });
+    invoke<MpvSnapshot>(isPlaying ? "mpv_embed_pause" : "mpv_embed_play")
+      .then(applySnapshot)
+      .catch(reportPlaybackError);
   }
 
   function togglePlaylist() {
@@ -299,28 +271,29 @@ function App() {
   }
 
   function seekTo(value: number) {
-    const video = videoRef.current;
-    if (!video || !Number.isFinite(value)) {
-      return;
-    }
-    video.currentTime = value;
-    setCurrentTime(value);
+    const target = seekTarget(value);
+    pendingSeekRef.current = { target, startedAt: performance.now() };
+    setCurrentTime(target);
   }
 
   function commitSeekTo(value: number) {
-    seekTo(value);
+    const target = seekTarget(value);
+    pendingSeekRef.current = { target, startedAt: performance.now() };
+    setCurrentTime(target);
+    invoke<MpvSnapshot>("mpv_embed_seek", { position: target })
+      .then(applySnapshot)
+      .catch((error: unknown) => {
+        pendingSeekRef.current = null;
+        reportPlaybackError(error);
+      });
   }
 
   function setVolume(value: number) {
     const nextVolume = Math.min(1, Math.max(0, value));
     setVolumeLevel(nextVolume);
-    if (videoRef.current) {
-      videoRef.current.volume = nextVolume;
-    }
-  }
-
-  function commitVolume(value: number) {
-    setVolume(value);
+    invoke<MpvSnapshot>("mpv_embed_set_volume", { volume: nextVolume * 100 })
+      .then(applySnapshot)
+      .catch(reportPlaybackError);
   }
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -329,63 +302,24 @@ function App() {
   return (
     <main className="app-shell">
       <section className={`window-shell ${media ? "window-shell--loaded" : ""}`} aria-label="OpenPlayer">
-        <section
-          className={`stage ${media ? "stage--loaded" : ""}`}
-          aria-label="Player surface"
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={handleDrop}
-        >
-          <input
-            ref={fileInputRef}
-            className="media-file-input"
-            type="file"
-            tabIndex={-1}
-            aria-hidden="true"
-            accept={`audio/*,video/*,${playableExtensions.map((extension) => `.${extension}`).join(",")}`}
-            multiple
-            onChange={handleFileInputChange}
-          />
-
-          {media ? (
-            <video
-              key={media.id}
-              ref={videoRef}
-              className="media-view"
-              src={media.url}
-              playsInline
-              onCanPlay={handleCanPlay}
-              onLoadedMetadata={handleLoadedMetadata}
-              onDurationChange={handleLoadedMetadata}
-              onTimeUpdate={handleTimeUpdate}
-              onPlay={() => {
-                setIsPlaying(true);
-                setPlaybackError(null);
-              }}
-              onPause={() => setIsPlaying(false)}
-              onEnded={() => {
-                setIsPlaying(false);
-                if (!advanceToNextQueueItem()) {
-                  setCurrentTime(duration);
-                }
-              }}
-              onError={() => setPlaybackError("This file could not be decoded by the native HTML video renderer.")}
-            />
-          ) : (
+        <section className={`stage ${media ? "stage--loaded" : ""}`} aria-label="Player surface">
+          {!media && (
             <div className="empty-open">
               <span>Open media</span>
-              <small>or drop a file anywhere</small>
+              <small>MPV native playback</small>
             </div>
           )}
 
-          <div
-            className="drag-surface"
-            aria-hidden="true"
-            onDoubleClick={toggleFullscreen}
-            onPointerCancel={clearWindowDragIntent}
-            onPointerDown={beginWindowDragIntent}
-            onPointerMove={continueWindowDragIntent}
-            onPointerUp={clearWindowDragIntent}
-          />
+          <div className="drag-region" data-tauri-drag-region aria-hidden="true" onAuxClick={(event) => event.preventDefault()} onPointerDown={handleDragRegionPointerDown} />
+
+          {resizeRegions.map((region) => (
+            <div
+              key={region.direction}
+              aria-hidden="true"
+              className={`resize-region ${region.className}`}
+              onPointerDown={(event) => handleResizePointerDown(event, region.direction)}
+            />
+          ))}
 
           <div className="window-controls" aria-label="Window controls">
             <button type="button" aria-label="Minimize window" onClick={() => runWindowCommand("window_minimize")}>
@@ -397,19 +331,6 @@ function App() {
             <button className="window-control-close" type="button" aria-label="Close window" onClick={() => runWindowCommand("window_close")}>
               <Icon name="close" />
             </button>
-          </div>
-
-          <div className="mpv-embed-debug" aria-label="MPV embed debug controls">
-            <input
-              type="text"
-              value={mpvEmbedPath}
-              placeholder="Local path for mpv embed spike"
-              aria-label="Local path for mpv embed spike"
-              onChange={(event) => setMpvEmbedPath(event.currentTarget.value)}
-            />
-            <button type="button" onClick={openMpvEmbedDebug}>MPV embed</button>
-            <button type="button" onClick={stopMpvEmbedDebug}>Stop</button>
-            {mpvEmbedStatus && <small>{mpvEmbedStatus}</small>}
           </div>
 
           {playbackError && <div className="playback-error" role="alert">{playbackError}</div>}
@@ -436,10 +357,10 @@ function App() {
             </div>
 
             <div className="control-strip">
-              <button type="button" aria-label="Open media" onClick={openBrowserMediaFiles}>
+              <button type="button" aria-label="Open media" onClick={openNativeMediaFiles} disabled={isPickerOpen}>
                 <Icon name="folder" />
               </button>
-              <button className="control-primary" type="button" aria-label={isPlaying ? "Pause" : media ? "Play" : "Open media"} onClick={togglePlayback}>
+              <button className="control-primary" type="button" aria-label={isPlaying ? "Pause" : media ? "Play" : "Open media"} onClick={togglePlayback} disabled={!media && isPickerOpen}>
                 <Icon name={isPlaying ? "pause" : "play"} />
               </button>
               <button type="button" aria-label="Restart" onClick={() => commitSeekTo(0)} disabled={!media}>
@@ -455,9 +376,6 @@ function App() {
                   value={volumeLevel}
                   aria-label="Volume"
                   onChange={(event) => setVolume(Number(event.currentTarget.value))}
-                  onPointerUp={(event) => commitVolume(Number(event.currentTarget.value))}
-                  onKeyUp={(event) => commitVolume(Number(event.currentTarget.value))}
-                  onBlur={(event) => commitVolume(Number(event.currentTarget.value))}
                 />
               </label>
               <button

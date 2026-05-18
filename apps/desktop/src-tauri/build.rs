@@ -1,6 +1,7 @@
-fn configure_mpv_smoke_linking() {
+fn configure_mpv_linking() {
     if std::env::var_os("CARGO_FEATURE_MPV_SMOKE").is_none()
         && std::env::var_os("CARGO_FEATURE_MPV_EMBED").is_none()
+        && std::env::var_os("CARGO_FEATURE_MPV_RENDER").is_none()
     {
         return;
     }
@@ -32,7 +33,7 @@ fn configure_mpv_smoke_linking() {
             .join(", ");
 
             panic!(
-                "mpv-smoke requires local ignored mpv artifacts at {} or OPENPLAYER_MPV_DIR; missing {}",
+                "mpv integration requires local ignored mpv artifacts at {} or OPENPLAYER_MPV_DIR; missing {}",
                 mpv_dir.display(),
                 missing
             );
@@ -45,7 +46,7 @@ fn configure_mpv_smoke_linking() {
 }
 
 fn main() {
-    configure_mpv_smoke_linking();
+    configure_mpv_linking();
 
     #[cfg(windows)]
     {

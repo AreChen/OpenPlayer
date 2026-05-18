@@ -1,6 +1,6 @@
 :root {
   color: #ece7dd;
-  background: #050607;
+  background: transparent;
   font-family:
     Aptos, "Segoe UI", Candara, Calibri, system-ui, -apple-system, sans-serif;
   font-synthesis: none;
@@ -29,8 +29,9 @@ body,
   min-width: 320px;
   height: 100%;
   min-height: 100%;
+  margin: 0;
   overflow: hidden;
-  background: var(--surface);
+  background: transparent;
 }
 
 body {
@@ -49,7 +50,14 @@ button {
 .app-shell {
   min-height: 100vh;
   padding: 0;
-  background: var(--surface);
+  background: transparent;
+}
+
+.video-host-surface {
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  background: #000;
 }
 
 .window-shell {
@@ -58,21 +66,19 @@ button {
   min-height: 420px;
   overflow: hidden;
   border: 0;
-  background: var(--surface);
+  background: transparent;
 }
 
 .stage {
   position: relative;
-  width: 100%;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 50% 42%, rgba(202, 160, 93, 0.1), transparent 25rem),
-    #050607;
+  background: transparent;
 }
 
 .stage--loaded {
-  background: #000;
+  background: transparent;
 }
 
 .media-view {
@@ -84,10 +90,81 @@ button {
   object-fit: contain;
 }
 
-.drag-surface {
+.drag-region {
   position: absolute;
   inset: 0;
   z-index: 5;
+  pointer-events: auto;
+}
+
+.resize-region {
+  position: absolute;
+  z-index: 25;
+  pointer-events: auto;
+}
+
+.resize-region--north,
+.resize-region--south {
+  right: 14px;
+  left: 14px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.resize-region--north {
+  top: 0;
+}
+
+.resize-region--south {
+  bottom: 0;
+}
+
+.resize-region--east,
+.resize-region--west {
+  top: 14px;
+  bottom: 14px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.resize-region--east {
+  right: 0;
+}
+
+.resize-region--west {
+  left: 0;
+}
+
+.resize-region--north-east,
+.resize-region--north-west,
+.resize-region--south-east,
+.resize-region--south-west {
+  width: 14px;
+  height: 14px;
+}
+
+.resize-region--north-east {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+.resize-region--north-west {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+.resize-region--south-east {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+
+.resize-region--south-west {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
 }
 
 .empty-open {
@@ -118,12 +195,13 @@ button {
   position: absolute;
   top: 10px;
   right: 10px;
-  z-index: 20;
+  z-index: 40;
   display: flex;
   overflow: hidden;
   border-radius: 9px;
   background: rgba(8, 10, 12, 0.46);
   opacity: 0.72;
+  pointer-events: auto;
   transition: opacity 140ms ease;
 }
 
@@ -177,57 +255,19 @@ button {
   line-height: 1.4;
 }
 
-.mpv-embed-debug {
-  position: absolute;
-  top: 50px;
-  left: 12px;
-  z-index: 22;
-  display: grid;
-  width: min(520px, calc(100vw - 24px));
-  gap: 6px;
-  border: 1px solid rgba(202, 160, 93, 0.24);
-  border-radius: 10px;
-  background: rgba(8, 10, 12, 0.82);
-  padding: 8px;
-}
-
-.mpv-embed-debug input {
-  min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(236, 231, 221, 0.08);
-  color: var(--text);
-  padding: 7px 9px;
-}
-
-.mpv-embed-debug button {
-  border: 0;
-  border-radius: 8px;
-  background: rgba(202, 160, 93, 0.18);
-  color: var(--accent);
-  cursor: pointer;
-  padding: 7px 9px;
-}
-
-.mpv-embed-debug small {
-  overflow: hidden;
-  color: var(--muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .transport {
   position: absolute;
-  right: 16px;
-  bottom: 16px;
-  left: 16px;
-  z-index: 10;
+  right: 24px;
+  bottom: 24px;
+  left: 24px;
+  z-index: 30;
   display: grid;
   gap: 12px;
   border-radius: 14px;
   background: linear-gradient(180deg, rgba(8, 10, 12, 0.3), var(--panel-strong));
   padding: 12px 14px;
   opacity: 0.86;
+  pointer-events: auto;
   transition: opacity 140ms ease;
 }
 

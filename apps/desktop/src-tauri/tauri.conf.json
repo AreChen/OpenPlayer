@@ -13,7 +13,7 @@
     "windows": [
       {
         "title": "OpenPlayer",
-        "url": "index.html",
+        "url": "index.html?surface=video",
         "width": 1280,
         "height": 720,
         "minWidth": 960,
@@ -21,7 +21,7 @@
         "resizable": true,
         "center": true,
         "decorations": false,
-        "transparent": false,
+        "transparent": true,
         "shadow": true
       }
     ],
