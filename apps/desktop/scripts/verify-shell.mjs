@@ -12,6 +12,8 @@ const capability = JSON.parse(await readFile(new URL("../src-tauri/capabilities/
 const workspaceToml = await readFile(new URL("../../../Cargo.toml", import.meta.url), "utf8");
 const tauriCargoToml = await readFile(new URL("../src-tauri/Cargo.toml", import.meta.url), "utf8");
 const tauriBuildScript = await readFile(new URL("../src-tauri/build.rs", import.meta.url), "utf8");
+const nsisHooksUrl = new URL("../src-tauri/nsis-hooks.nsh", import.meta.url);
+const nsisHooksSource = existsSync(nsisHooksUrl) ? await readFile(nsisHooksUrl, "utf8") : "";
 const mpvRenderUrl = new URL("../src-tauri/src/mpv_render.rs", import.meta.url);
 const mpvRenderSource = existsSync(mpvRenderUrl) ? await readFile(mpvRenderUrl, "utf8") : "";
 const mpvRenderSysUrl = new URL("../src-tauri/src/mpv_render/sys.rs", import.meta.url);
@@ -87,6 +89,12 @@ assert.equal(mainWindow.resizable, true, "main video window must remain freely r
 assert.equal(mainWindow.transparent, true, "video surface behind WebView requires transparent WebView/window composition");
 assert.equal(config.app.security.csp, null, "minimal shell keeps the baseline CSP behavior");
 assert.equal(config.app.security.assetProtocol, undefined, "minimal HTML playback must not expose Tauri asset protocol");
+assert.equal(config.bundle.active, true, "desktop release builds must produce an installer bundle by default");
+assert.equal(config.bundle.targets, "nsis", "desktop release build should target the Windows NSIS installer");
+assert.ok(Object.keys(config.bundle.resources ?? {}).some((resource) => resource.endsWith("libmpv-2.dll")), "installer bundle must include the mpv runtime DLL");
+assert.equal(config.bundle.windows?.nsis?.installerHooks, "nsis-hooks.nsh", "NSIS installer must install mpv runtime DLL next to the app executable");
+assert.match(nsisHooksSource, /CopyFiles[\s\S]*libmpv-2\.dll[\s\S]*\$INSTDIR\\libmpv-2\.dll/, "NSIS hooks must copy libmpv-2.dll beside the installed executable");
+assert.match(nsisHooksSource, /Delete[\s\S]*\$INSTDIR\\libmpv-2\.dll/, "NSIS hooks must remove copied mpv runtime DLL during uninstall");
 assert.match(config.build.devUrl, /23142$/, "Tauri dev URL must use the non-reserved Windows port");
 assert.match(packageJson.scripts.dev, /23142$/, "Vite dev script must use the non-reserved Windows port");
 assert.match(packageJson.scripts.preview, /23142$/, "Vite preview script must use the non-reserved Windows port");

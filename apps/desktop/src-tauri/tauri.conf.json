@@ -30,7 +30,15 @@
     }
   },
   "bundle": {
-    "active": false,
-    "targets": "all"
+    "active": true,
+    "targets": "nsis",
+    "resources": {
+      "../../../vendor/native/mpv/windows-x64/libmpv-2.dll": "libmpv-2.dll"
+    },
+    "windows": {
+      "nsis": {
+        "installerHooks": "nsis-hooks.nsh"
+      }
+    }
   }
 }
