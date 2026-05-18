@@ -1,5 +1,11 @@
 use tauri::Window;
 
+#[cfg(feature = "mpv-smoke")]
+mod mpv_smoke;
+
+#[cfg(feature = "mpv-smoke")]
+pub use mpv_smoke::{MpvSmokeReport, create_headless_probe};
+
 #[tauri::command]
 fn window_minimize(window: Window) -> Result<(), String> {
     window.minimize().map_err(|error| error.to_string())

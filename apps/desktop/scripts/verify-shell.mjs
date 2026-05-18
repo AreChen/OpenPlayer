@@ -9,6 +9,8 @@ const mainSource = await readFile(new URL("../src-tauri/src/main.rs", import.met
 const tauriLibSource = await readFile(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
 const capability = JSON.parse(await readFile(new URL("../src-tauri/capabilities/default.json", import.meta.url), "utf8"));
 const workspaceToml = await readFile(new URL("../../../Cargo.toml", import.meta.url), "utf8");
+const tauriCargoToml = await readFile(new URL("../src-tauri/Cargo.toml", import.meta.url), "utf8");
+const tauriBuildScript = await readFile(new URL("../src-tauri/build.rs", import.meta.url), "utf8");
 
 const [mainWindow] = config.app.windows;
 
@@ -24,6 +26,13 @@ assert.match(packageJson.scripts.preview, /23142$/, "Vite preview script must us
 
 assert.equal(packageJson.dependencies["movi-player"], undefined, "minimal branch must not ship WASM/software decoder dependency");
 assert.equal(packageJson.dependencies["@tauri-apps/plugin-dialog"], undefined, "minimal branch must use browser File input instead of native dialog plugin");
+
+assert.match(tauriCargoToml, /\[features\][\s\S]*mpv-smoke = \["dep:libmpv2"\]/, "libmpv2 spike must be hidden behind the mpv-smoke feature");
+assert.match(tauriCargoToml, /libmpv2 = \{ version = "6\.0\.0", optional = true, default-features = false \}/, "libmpv2 must be optional and control-only for the first smoke spike");
+assert.match(tauriBuildScript, /CARGO_FEATURE_MPV_SMOKE/, "build script must only add mpv link paths when mpv-smoke is enabled");
+assert.match(tauriBuildScript, /vendor[\\/]native[\\/]mpv[\\/]windows-x64/, "build script must point at the vendored Windows mpv directory");
+assert.match(tauriLibSource, /#\[cfg\(feature = "mpv-smoke"\)\]\s*mod mpv_smoke;/, "desktop crate must keep libmpv2 smoke code feature-gated");
+assert.doesNotMatch(appSource, /mpvSmoke|libmpv|libmpv2|mpv_smoke/, "libmpv2 smoke spike must not change the HTML video frontend path");
 
 assert.match(appSource, /<video[\s\S]*ref=\{videoRef\}/, "player must render a native HTML video element");
 assert.match(appSource, /fileInputRef/, "open control must use a hidden browser File input");
