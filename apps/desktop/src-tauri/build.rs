@@ -1,7 +1,6 @@
 fn configure_mpv_linking() {
     if std::env::var_os("CARGO_FEATURE_MPV_SMOKE").is_none()
         && std::env::var_os("CARGO_FEATURE_MPV_EMBED").is_none()
-        && std::env::var_os("CARGO_FEATURE_MPV_RENDER").is_none()
     {
         return;
     }
