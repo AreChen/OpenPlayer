@@ -11,6 +11,7 @@ const styles = await readFile(new URL("../src/styles.css", import.meta.url), "ut
 const mainSource = await readFile(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
 const tauriLibSource = await readFile(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
 const capability = JSON.parse(await readFile(new URL("../src-tauri/capabilities/default.json", import.meta.url), "utf8"));
+const ciWorkflow = await readFile(new URL("../../../.github/workflows/ci.yml", import.meta.url), "utf8");
 const workspaceToml = await readFile(new URL("../../../Cargo.toml", import.meta.url), "utf8");
 const tauriCargoToml = await readFile(new URL("../src-tauri/Cargo.toml", import.meta.url), "utf8");
 const tauriBuildScript = await readFile(new URL("../src-tauri/build.rs", import.meta.url), "utf8");
@@ -108,6 +109,7 @@ assert.equal(packageJson.dependencies["movi-player"], undefined, "minimal branch
 assert.ok(packageJson.dependencies["@tauri-apps/plugin-dialog"], "mpv path playback must use Tauri dialog to obtain real local paths");
 
 assert.match(tauriCargoToml, /default = \["mpv-embed"\]/, "desktop default feature must use the stable mpv embed overlay backend");
+assert.match(ciWorkflow, /libmpv-dev/, "Linux CI must install libmpv-dev so default mpv-embed tests can link libmpv");
 assert.match(tauriCargoToml, /mpv-embed/, "Cargo features must define mpv-embed");
 assert.doesNotMatch(tauriCargoToml, /mpv-render|libmpv2-sys|Win32_Graphics_OpenGL|Win32_System_LibraryLoader/, "desktop crate must not keep the failed mpv render backend or its render-only dependencies");
 assert.doesNotMatch(tauriBuildScript, /CARGO_FEATURE_MPV_RENDER/, "build script must not keep the removed mpv-render feature gate");
