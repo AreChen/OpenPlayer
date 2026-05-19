@@ -16,11 +16,11 @@ const nsisHooksUrl = new URL("../src-tauri/nsis-hooks.nsh", import.meta.url);
 const nsisHooksSource = existsSync(nsisHooksUrl) ? await readFile(nsisHooksUrl, "utf8") : "";
 const mpvEmbedUrl = new URL("../src-tauri/src/mpv_embed.rs", import.meta.url);
 const mpvEmbedSource = existsSync(mpvEmbedUrl) ? await readFile(mpvEmbedUrl, "utf8") : "";
-const mpvRenderUrl = new URL("../src-tauri/src/mpv_render.rs", import.meta.url);
-const mpvRenderSource = existsSync(mpvRenderUrl) ? await readFile(mpvRenderUrl, "utf8") : "";
-const mpvRenderSysUrl = new URL("../src-tauri/src/mpv_render/sys.rs", import.meta.url);
-const mpvRenderSysSource = existsSync(mpvRenderSysUrl) ? await readFile(mpvRenderSysUrl, "utf8") : "";
-const mpvRenderBackendSource = `${mpvRenderSource}\n${mpvRenderSysSource}`;
+const mpvRenderFiles = [
+  new URL("../src-tauri/src/mpv_render.rs", import.meta.url),
+  new URL("../src-tauri/src/mpv_render/sys.rs", import.meta.url),
+  new URL("../src-tauri/src/mpv_render/win32_surface.rs", import.meta.url),
+];
 const embedCommandPattern = /mpv_embed_open_path|mpv_embed_play|mpv_embed_pause|mpv_embed_seek|mpv_embed_set_volume|mpv_embed_snapshot|mpv_embed_stop/;
 
 function extractCfgFunction(source, cfgPattern, fnPattern) {
@@ -77,9 +77,9 @@ function extractFunctionAt(source, fnStart) {
   return "";
 }
 
-const mpvRenderRunMatch = /#\[cfg\(\s*feature\s*=\s*"mpv-render"\s*\)\]\s*pub\s+fn\s+run\s*\(\s*\)/.exec(tauriLibSource);
-const mpvRenderRunSource = mpvRenderRunMatch
-  ? extractFunctionAt(tauriLibSource, mpvRenderRunMatch.index + mpvRenderRunMatch[0].lastIndexOf("pub"))
+const mpvEmbedRunMatch = /#\[cfg\(\s*feature\s*=\s*"mpv-embed"\s*\)\]\s*pub\s+fn\s+run\s*\(\s*\)/.exec(tauriLibSource);
+const mpvEmbedRunSource = mpvEmbedRunMatch
+  ? extractFunctionAt(tauriLibSource, mpvEmbedRunMatch.index + mpvEmbedRunMatch[0].lastIndexOf("pub"))
   : "";
 
 const [mainWindow] = config.app.windows;
@@ -104,20 +104,27 @@ assert.match(packageJson.scripts.preview, /23142$/, "Vite preview script must us
 assert.equal(packageJson.dependencies["movi-player"], undefined, "minimal branch must not ship WASM/software decoder dependency");
 assert.ok(packageJson.dependencies["@tauri-apps/plugin-dialog"], "mpv path playback must use Tauri dialog to obtain real local paths");
 
-assert.match(tauriCargoToml, /default = \["mpv-render"\]/, "desktop default feature must use the mpv render backend");
-assert.match(tauriCargoToml, /mpv-render/, "Cargo features must define mpv-render");
+assert.match(tauriCargoToml, /default = \["mpv-embed"\]/, "desktop default feature must use the stable mpv embed overlay backend");
+assert.match(tauriCargoToml, /mpv-embed/, "Cargo features must define mpv-embed");
+assert.doesNotMatch(tauriCargoToml, /mpv-render|libmpv2-sys|Win32_Graphics_OpenGL|Win32_System_LibraryLoader/, "desktop crate must not keep the failed mpv render backend or its render-only dependencies");
+assert.doesNotMatch(tauriBuildScript, /CARGO_FEATURE_MPV_RENDER/, "build script must not keep the removed mpv-render feature gate");
 assert.match(tauriBuildScript, /CARGO_FEATURE_MPV_SMOKE[\s\S]*CARGO_FEATURE_MPV_EMBED/, "build script must only add mpv link paths when an mpv feature is enabled");
 assert.match(tauriBuildScript, /vendor[\\/]native[\\/]mpv[\\/]windows-x64/, "build script must point at the vendored Windows mpv directory");
 assert.match(tauriLibSource, /#\[cfg\(feature = "mpv-smoke"\)\]\s*mod mpv_smoke;/, "desktop crate must keep libmpv2 smoke code feature-gated");
-assert.match(tauriLibSource, /mod mpv_embed;/, "overlay fallback must use mpv child HWND in the main video window");
-assert.match(mpvRenderRunSource, /pub\s+fn\s+run\s*\(\s*\)/, "desktop default runtime must include an mpv-render run function");
-assert.match(mpvRenderRunSource, /WebviewWindowBuilder[\s\S]*surface=overlay/, "desktop runtime must create a separate transparent overlay controls window");
-assert.match(mpvRenderRunSource, /mpv_overlay_open_path/, "default runtime must register overlay commands that target the main video window");
-assert.doesNotMatch(mpvRenderRunSource, /\.always_on_top\(true\)/, "overlay controls must not be globally topmost over other apps");
-assert.doesNotMatch(mpvRenderRunSource, /\.position\(position\.x as f64, position\.y as f64\)|\.inner_size\(size\.width as f64, size\.height as f64\)/, "overlay startup must not pass physical main window pixels to logical builder sizing APIs");
-assert.match(mpvRenderRunSource, /\.visible\(false\)[\s\S]*sync_overlay_to_main\(&app_handle\)[\s\S]*overlay\.show\(\)/, "overlay startup must stay hidden until physical-position sync prevents DPI-scale misalignment");
+assert.match(tauriLibSource, /#\[cfg\(feature = "mpv-embed"\)\]\s*mod mpv_embed;/, "desktop crate must compile the stable mpv child HWND backend behind mpv-embed");
+assert.doesNotMatch(tauriLibSource, /mpv_render|MpvRenderState|mpv_render_/, "desktop runtime must not reference the removed mpv render backend");
+for (const fileUrl of mpvRenderFiles) {
+  assert.ok(!existsSync(fileUrl), `removed render spike file must not exist: ${fileUrl.pathname}`);
+}
+assert.match(mpvEmbedRunSource, /pub\s+fn\s+run\s*\(\s*\)/, "desktop default runtime must include an mpv-embed run function");
+assert.match(mpvEmbedRunSource, /WebviewWindowBuilder[\s\S]*surface=overlay/, "desktop runtime must create a separate transparent overlay controls window");
+assert.match(mpvEmbedRunSource, /mpv_overlay_open_path/, "default runtime must register overlay commands that target the main video window");
+assert.match(tauriLibSource, /mpv_overlay_open_path[\s\S]*main_window\(&app\)\?[\s\S]*mpv_embed::open_path_for_window\(&main, state\.inner\(\), path\)/, "overlay open command must target the main video window through mpv_embed");
+assert.doesNotMatch(mpvEmbedRunSource, /\.always_on_top\(true\)/, "overlay controls must not be globally topmost over other apps");
+assert.doesNotMatch(mpvEmbedRunSource, /\.position\(position\.x as f64, position\.y as f64\)|\.inner_size\(size\.width as f64, size\.height as f64\)/, "overlay startup must not pass physical main window pixels to logical builder sizing APIs");
+assert.match(mpvEmbedRunSource, /\.visible\(false\)[\s\S]*sync_overlay_to_main\(&app_handle\)[\s\S]*overlay\.show\(\)/, "overlay startup must stay hidden until physical-position sync prevents DPI-scale misalignment");
 assert.match(tauriLibSource, /GWLP_HWNDPARENT|set_overlay_owner/, "overlay controls should be owned by the main player window instead of global topmost");
-assert.doesNotMatch(mpvRenderRunSource, /OPENPLAYER_MPV_EMBED_FILE/, "normal render API runtime must not auto-play the old Abbott embed smoke file");
+assert.doesNotMatch(mpvEmbedRunSource, /OPENPLAYER_MPV_EMBED_FILE/, "normal embed overlay runtime must not auto-play the old Abbott embed smoke file");
 assert.match(tauriLibSource, /tauri_plugin_dialog::init\(\)/, "desktop app must register Tauri dialog plugin for path-based mpv playback");
 assert.ok(capability.permissions.includes("dialog:allow-open"), "capability must allow file-open dialog for path-based mpv playback");
 assert.ok(capability.windows.includes("overlay"), "overlay controls window must be included in the dialog capability scope");
@@ -129,10 +136,6 @@ assert.match(appSource, /mpv_overlay_open_path/, "overlay controls must open fil
 assert.match(appSource, /@tauri-apps\/plugin-dialog/, "frontend must use native dialog for mpv path selection");
 assert.match(appSource, /openNativeMediaFiles/, "frontend must expose a picker-driven mpv open action");
 assert.doesNotMatch(appSource, /mpvSmoke|libmpv|libmpv2|mpv_smoke/, "libmpv2 smoke spike must not change the HTML video frontend path");
-assert.match(mpvRenderBackendSource, /mpv_render_context_create|create_render_context/, "mpv render backend must create an mpv render context");
-assert.match(mpvRenderBackendSource, /MPV_RENDER_API_TYPE_OPENGL|RenderParamApiType::OpenGl/, "mpv render backend must use the OpenGL render API");
-assert.doesNotMatch(mpvRenderBackendSource, /set_option\("wid"|set_option_string\("wid"|MPV_RENDER_PARAM_X11_DISPLAY/, "mpv render backend must not use mpv-owned native window embedding");
-
 assert.doesNotMatch(appSource, /<video|videoRef|fileInputRef|type="file"|URL\.createObjectURL|URL\.revokeObjectURL|handleFileInputChange|onDrop=\{handleDrop\}/, "mpv-first player must not keep HTML video or browser File playback");
 assert.match(appSource, /togglePlayback/, "player shell must wire play and pause behavior");
 assert.match(appSource, /window_toggle_fullscreen/, "overlay UI must route fullscreen through a backend command targeting the main video window");
