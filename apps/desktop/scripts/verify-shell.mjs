@@ -3,6 +3,8 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 
 const config = JSON.parse(await readFile(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8"));
+const windowsConfigUrl = new URL("../src-tauri/tauri.windows.conf.json", import.meta.url);
+const windowsConfig = existsSync(windowsConfigUrl) ? JSON.parse(await readFile(windowsConfigUrl, "utf8")) : {};
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 const appSource = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
@@ -91,10 +93,11 @@ assert.equal(mainWindow.resizable, true, "main video window must remain freely r
 assert.equal(mainWindow.transparent, true, "video surface behind WebView requires transparent WebView/window composition");
 assert.equal(config.app.security.csp, null, "minimal shell keeps the baseline CSP behavior");
 assert.equal(config.app.security.assetProtocol, undefined, "minimal HTML playback must not expose Tauri asset protocol");
-assert.equal(config.bundle.active, true, "desktop release builds must produce an installer bundle by default");
-assert.equal(config.bundle.targets, "nsis", "desktop release build should target the Windows NSIS installer");
-assert.ok(Object.keys(config.bundle.resources ?? {}).some((resource) => resource.endsWith("libmpv-2.dll")), "installer bundle must include the mpv runtime DLL");
-assert.equal(config.bundle.windows?.nsis?.installerHooks, "nsis-hooks.nsh", "NSIS installer must install mpv runtime DLL next to the app executable");
+assert.equal(config.bundle?.resources, undefined, "base Tauri config must not require ignored Windows mpv DLL resources during Linux CI");
+assert.equal(windowsConfig.bundle?.active, true, "Windows desktop release builds must produce an installer bundle by default");
+assert.equal(windowsConfig.bundle?.targets, "nsis", "Windows desktop release build should target the NSIS installer");
+assert.ok(Object.keys(windowsConfig.bundle?.resources ?? {}).some((resource) => resource.endsWith("libmpv-2.dll")), "Windows installer bundle must include the mpv runtime DLL");
+assert.equal(windowsConfig.bundle?.windows?.nsis?.installerHooks, "nsis-hooks.nsh", "NSIS installer must install mpv runtime DLL next to the app executable");
 assert.match(nsisHooksSource, /CopyFiles[\s\S]*libmpv-2\.dll[\s\S]*\$INSTDIR\\libmpv-2\.dll/, "NSIS hooks must copy libmpv-2.dll beside the installed executable");
 assert.match(nsisHooksSource, /Delete[\s\S]*\$INSTDIR\\libmpv-2\.dll/, "NSIS hooks must remove copied mpv runtime DLL during uninstall");
 assert.match(config.build.devUrl, /23142$/, "Tauri dev URL must use the non-reserved Windows port");
