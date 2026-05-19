@@ -1,45 +1,25 @@
+#[cfg(feature = "mpv-embed")]
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use tauri::{
-    AppHandle, Manager, PhysicalPosition, PhysicalSize, Position, Size, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder,
-};
+use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, Position, Size, WebviewWindow};
+#[cfg(feature = "mpv-embed")]
+use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tauri_runtime::ResizeDirection;
+#[cfg(feature = "mpv-embed")]
 use windows_sys::Win32::UI::WindowsAndMessaging::{GWLP_HWNDPARENT, SetWindowLongPtrW};
 
-#[cfg(any(
-    feature = "mpv-render",
-    all(feature = "mpv-embed", not(feature = "mpv-render"))
-))]
+#[cfg(feature = "mpv-embed")]
 use tauri::WindowEvent;
 
 #[cfg(feature = "mpv-smoke")]
 mod mpv_smoke;
 
-#[cfg(any(
-    feature = "mpv-render",
-    all(feature = "mpv-embed", not(feature = "mpv-render"))
-))]
+#[cfg(feature = "mpv-embed")]
 mod mpv_embed;
 
-#[cfg(feature = "mpv-render")]
-mod mpv_render;
-
-#[cfg(any(
-    feature = "mpv-render",
-    all(feature = "mpv-embed", not(feature = "mpv-render"))
-))]
+#[cfg(feature = "mpv-embed")]
 use mpv_embed::{
     MpvEmbedSnapshot, MpvEmbedState, mpv_embed_pause, mpv_embed_play, mpv_embed_seek,
     mpv_embed_set_volume, mpv_embed_snapshot, mpv_embed_stop,
-};
-
-#[cfg(all(feature = "mpv-embed", not(feature = "mpv-render")))]
-use mpv_embed::mpv_embed_open_path;
-
-#[cfg(feature = "mpv-render")]
-use mpv_render::{
-    MpvRenderState, mpv_render_open_path, mpv_render_pause, mpv_render_play, mpv_render_seek,
-    mpv_render_set_volume, mpv_render_snapshot,
 };
 
 #[cfg(feature = "mpv-smoke")]
@@ -119,6 +99,7 @@ fn sync_overlay_to_main(app: &AppHandle) {
     }));
 }
 
+#[cfg(feature = "mpv-embed")]
 fn set_overlay_owner(main: &WebviewWindow, overlay: &WebviewWindow) {
     let Ok(main_hwnd) = window_hwnd(main) else {
         return;
@@ -131,6 +112,7 @@ fn set_overlay_owner(main: &WebviewWindow, overlay: &WebviewWindow) {
     }
 }
 
+#[cfg(feature = "mpv-embed")]
 fn window_hwnd(window: &impl HasWindowHandle) -> Result<isize, String> {
     let handle = window
         .window_handle()
@@ -141,6 +123,7 @@ fn window_hwnd(window: &impl HasWindowHandle) -> Result<isize, String> {
     }
 }
 
+#[cfg(feature = "mpv-embed")]
 #[tauri::command]
 fn window_start_drag(app: AppHandle) -> Result<(), String> {
     main_window(&app)?
@@ -169,7 +152,7 @@ fn window_start_resize(app: AppHandle, direction: String) -> Result<(), String> 
         .map_err(|error| error.to_string())
 }
 
-#[cfg(feature = "mpv-render")]
+#[cfg(feature = "mpv-embed")]
 #[tauri::command]
 fn mpv_overlay_open_path(
     app: AppHandle,
@@ -181,7 +164,7 @@ fn mpv_overlay_open_path(
     mpv_embed::open_path_for_window(&main, state.inner(), path)
 }
 
-#[cfg(all(not(feature = "mpv-render"), not(feature = "mpv-embed")))]
+#[cfg(not(feature = "mpv-embed"))]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -196,11 +179,10 @@ pub fn run() {
         .expect("failed to run OpenPlayer desktop app");
 }
 
-#[cfg(feature = "mpv-render")]
+#[cfg(feature = "mpv-embed")]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(MpvRenderState::default())
         .manage(MpvEmbedState::default())
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
@@ -231,8 +213,8 @@ pub fn run() {
                             | WindowEvent::ScaleFactorChanged { .. }
                     ) {
                         sync_overlay_to_main(&app_handle);
-                        let state = app_handle.state::<MpvRenderState>();
-                        let _ = state.resize();
+                        let state = app_handle.state::<MpvEmbedState>();
+                        let _ = state.resize_video_host();
                     }
                 });
             }
@@ -247,57 +229,6 @@ pub fn run() {
             window_start_drag,
             window_start_resize,
             mpv_overlay_open_path,
-            mpv_embed_play,
-            mpv_embed_pause,
-            mpv_embed_seek,
-            mpv_embed_set_volume,
-            mpv_embed_snapshot,
-            mpv_embed_stop,
-            mpv_render_open_path,
-            mpv_render_play,
-            mpv_render_pause,
-            mpv_render_seek,
-            mpv_render_set_volume,
-            mpv_render_snapshot
-        ])
-        .run(tauri::generate_context!())
-        .expect("failed to run OpenPlayer desktop app");
-}
-
-#[cfg(all(feature = "mpv-embed", not(feature = "mpv-render")))]
-pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
-        .manage(MpvEmbedState::default())
-        .setup(|app| {
-            if let Some(window) = app.get_webview_window("main") {
-                let state = app.state::<MpvEmbedState>();
-                let app_handle = app.handle().clone();
-                window.on_window_event(move |event| {
-                    if matches!(event, WindowEvent::Resized(_)) {
-                        let state = app_handle.state::<MpvEmbedState>();
-                        let _ = state.resize_video_host();
-                    }
-                });
-
-                if let Ok(path) = std::env::var("OPENPLAYER_MPV_EMBED_FILE") {
-                    if let Err(error) =
-                        mpv_embed::open_path_for_window(&window, state.inner(), path)
-                    {
-                        eprintln!("startup mpv embed failed: {error}");
-                    }
-                }
-            }
-
-            Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![
-            window_minimize,
-            window_toggle_maximize,
-            window_toggle_fullscreen,
-            window_start_resize,
-            window_close,
-            mpv_embed_open_path,
             mpv_embed_play,
             mpv_embed_pause,
             mpv_embed_seek,
