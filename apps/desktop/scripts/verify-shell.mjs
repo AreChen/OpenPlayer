@@ -112,6 +112,8 @@ assert.match(mpvRenderRunSource, /pub\s+fn\s+run\s*\(\s*\)/, "desktop default ru
 assert.match(mpvRenderRunSource, /WebviewWindowBuilder[\s\S]*surface=overlay/, "desktop runtime must create a separate transparent overlay controls window");
 assert.match(mpvRenderRunSource, /mpv_overlay_open_path/, "default runtime must register overlay commands that target the main video window");
 assert.doesNotMatch(mpvRenderRunSource, /\.always_on_top\(true\)/, "overlay controls must not be globally topmost over other apps");
+assert.doesNotMatch(mpvRenderRunSource, /\.position\(position\.x as f64, position\.y as f64\)|\.inner_size\(size\.width as f64, size\.height as f64\)/, "overlay startup must not pass physical main window pixels to logical builder sizing APIs");
+assert.match(mpvRenderRunSource, /\.visible\(false\)[\s\S]*sync_overlay_to_main\(&app_handle\)[\s\S]*overlay\.show\(\)/, "overlay startup must stay hidden until physical-position sync prevents DPI-scale misalignment");
 assert.match(tauriLibSource, /GWLP_HWNDPARENT|set_overlay_owner/, "overlay controls should be owned by the main player window instead of global topmost");
 assert.doesNotMatch(mpvRenderRunSource, /OPENPLAYER_MPV_EMBED_FILE/, "normal render API runtime must not auto-play the old Abbott embed smoke file");
 assert.match(tauriLibSource, /tauri_plugin_dialog::init\(\)/, "desktop app must register Tauri dialog plugin for path-based mpv playback");

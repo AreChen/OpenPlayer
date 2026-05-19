@@ -204,13 +204,6 @@ pub fn run() {
         .manage(MpvEmbedState::default())
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
-                let position = window
-                    .outer_position()
-                    .unwrap_or(PhysicalPosition { x: 0, y: 0 });
-                let size = window.outer_size().unwrap_or(PhysicalSize {
-                    width: 1280,
-                    height: 720,
-                });
                 let overlay = WebviewWindowBuilder::new(
                     app,
                     "overlay",
@@ -222,13 +215,14 @@ pub fn run() {
                 .shadow(false)
                 .resizable(false)
                 .skip_taskbar(true)
-                .position(position.x as f64, position.y as f64)
-                .inner_size(size.width as f64, size.height as f64)
+                .visible(false)
                 .build()
                 .map_err(|error| format!("failed to create overlay controls window: {error}"))?;
                 set_overlay_owner(&window, &overlay);
 
                 let app_handle = app.handle().clone();
+                sync_overlay_to_main(&app_handle);
+                let _ = overlay.show();
                 window.on_window_event(move |event| {
                     if matches!(
                         event,
