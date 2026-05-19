@@ -367,7 +367,7 @@ impl Drop for MpvVideoHost {
 fn validate_media_path(path: &str) -> Result<PathBuf, String> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
-        return Err("enter a local media path for the mpv embed spike".to_string());
+        return Err("enter a local media path for mpv embed playback".to_string());
     }
 
     let path = PathBuf::from(trimmed);
@@ -385,7 +385,7 @@ fn window_hwnd(window: &impl HasWindowHandle) -> Result<i64, String> {
 
     match handle.as_raw() {
         RawWindowHandle::Win32(handle) => Ok(handle.hwnd.get() as i64),
-        _ => Err("mpv embed spike is only wired for Windows HWND targets".to_string()),
+        _ => Err("mpv embed playback is only wired for Windows HWND targets".to_string()),
     }
 }
 
@@ -413,7 +413,7 @@ mod tests {
     fn rejects_empty_media_path() {
         let error = validate_media_path("   ").expect_err("empty paths should be rejected");
 
-        assert_eq!(error, "enter a local media path for the mpv embed spike");
+        assert_eq!(error, "enter a local media path for mpv embed playback");
     }
 
     #[test]

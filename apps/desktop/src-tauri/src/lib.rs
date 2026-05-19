@@ -118,7 +118,7 @@ fn window_hwnd(window: &impl HasWindowHandle) -> Result<isize, String> {
         .window_handle()
         .map_err(|error| format!("failed to read Tauri window handle: {error}"))?;
     match handle.as_raw() {
-        RawWindowHandle::Win32(handle) => Ok(handle.hwnd.get() as isize),
+        RawWindowHandle::Win32(handle) => Ok(handle.hwnd.get()),
         _ => Err("window operation is only wired for Windows HWND targets".to_string()),
     }
 }
