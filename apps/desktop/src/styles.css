@@ -202,7 +202,9 @@ button {
   background: rgba(8, 10, 12, 0.46);
   opacity: 0.72;
   pointer-events: auto;
-  transition: opacity 140ms ease;
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
 }
 
 .window-controls:hover,
@@ -268,7 +270,23 @@ button {
   padding: 12px 14px;
   opacity: 0.86;
   pointer-events: auto;
-  transition: opacity 140ms ease;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.stage--chrome-hidden .window-controls,
+.stage--chrome-hidden .transport {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.stage--chrome-hidden .window-controls {
+  transform: translateY(-8px);
+}
+
+.stage--chrome-hidden .transport {
+  transform: translateY(16px);
 }
 
 .transport-row {

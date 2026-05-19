@@ -11,6 +11,7 @@ type MediaItem = {
 type MpvSnapshot = {
   path: string;
   status: string;
+  ended: boolean;
   paused: boolean;
   position: number;
   duration: number;
@@ -30,6 +31,8 @@ type IconName = "close" | "folder" | "list" | "maximize" | "minimize" | "pause" 
 const playableExtensions = ["3gp", "aac", "avi", "flac", "m4a", "m4v", "mkv", "mov", "mp3", "mp4", "mpeg", "mpg", "oga", "ogg", "ogv", "opus", "wav", "webm"];
 const SEEK_CONFIRM_TOLERANCE_SECONDS = 0.75;
 const SEEK_SNAPSHOT_SUPPRESS_MS = 1600;
+const AUTO_HIDE_CONTROLS_MS = 5000;
+const END_OF_MEDIA_SNAP_TOLERANCE_SECONDS = 0.5;
 const resizeRegions: Array<{ className: string; direction: ResizeDirection }> = [
   { className: "resize-region--north", direction: "North" },
   { className: "resize-region--south", direction: "South" },
@@ -83,6 +86,19 @@ function formatTime(value: number) {
   return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 }
 
+function snapEndOfMediaPosition(position: number, duration: number, isPlaying: boolean) {
+  if (!Number.isFinite(position) || !Number.isFinite(duration) || duration <= 0) {
+    return Number.isFinite(position) ? Math.max(0, position) : 0;
+  }
+
+  const clamped = Math.min(duration, Math.max(0, position));
+  if (!isPlaying && duration - clamped <= END_OF_MEDIA_SNAP_TOLERANCE_SECONDS) {
+    return duration;
+  }
+
+  return clamped;
+}
+
 function mediaItemFromPath(path: string): MediaItem {
   const normalized = path.replace(/\\/g, "/");
   return {
@@ -124,10 +140,13 @@ function App() {
   const [currentTime, setCurrentTime] = useState(0);
   const [volumeLevel, setVolumeLevel] = useState(0.82);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isChromeVisible, setIsChromeVisible] = useState(true);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const pendingSeekRef = useRef<PendingSeek | null>(null);
+  const chromeHideTimerRef = useRef<number | null>(null);
   const media = currentIndex === null ? null : (queue[currentIndex] ?? null);
+  const isChromePinned = !media || isPlaylistOpen || isPickerOpen || playbackError !== null;
 
   useEffect(() => {
     if (!media) {
@@ -147,13 +166,43 @@ function App() {
     return () => window.clearInterval(timer);
   }, [media?.id]);
 
+  useEffect(() => {
+    setIsChromeVisible(true);
+    scheduleChromeHide();
+    return clearChromeHideTimer;
+  }, [media?.id, isChromePinned]);
+
+  function clearChromeHideTimer() {
+    if (chromeHideTimerRef.current !== null) {
+      window.clearTimeout(chromeHideTimerRef.current);
+      chromeHideTimerRef.current = null;
+    }
+  }
+
+  function scheduleChromeHide() {
+    clearChromeHideTimer();
+    if (isChromePinned) {
+      return;
+    }
+
+    chromeHideTimerRef.current = window.setTimeout(() => {
+      setIsChromeVisible(false);
+      chromeHideTimerRef.current = null;
+    }, AUTO_HIDE_CONTROLS_MS);
+  }
+
+  function recordUserActivity() {
+    setIsChromeVisible(true);
+    scheduleChromeHide();
+  }
+
   function applySnapshot(snapshot: MpvSnapshot) {
     const snapshotPosition = Number.isFinite(snapshot.position) ? snapshot.position : 0;
     const snapshotDuration = Number.isFinite(snapshot.duration) ? snapshot.duration : 0;
     const pendingSeek = pendingSeekRef.current;
 
     setDuration(snapshotDuration);
-    setIsPlaying(!snapshot.paused && snapshot.status !== "idle");
+    setIsPlaying(!snapshot.paused && snapshot.status !== "idle" && snapshot.status !== "ended");
     setVolumeLevel(Math.min(1, Math.max(0, snapshot.volume / 100)));
 
     if (pendingSeek) {
@@ -252,6 +301,7 @@ function App() {
 
     event.preventDefault();
     event.stopPropagation();
+    recordUserActivity();
     startMainWindowResize(direction);
   }
 
@@ -296,13 +346,15 @@ function App() {
       .catch(reportPlaybackError);
   }
 
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const displayTime = snapEndOfMediaPosition(currentTime, duration, isPlaying);
+  const progress = duration > 0 ? Math.min(100, Math.max(0, (displayTime / duration) * 100)) : 0;
   const queueItems = queue.length ? queue : media ? [media] : [];
+  const isChromeHidden = Boolean(media) && !isChromeVisible && !isChromePinned;
 
   return (
-    <main className="app-shell">
+    <main className="app-shell" onKeyDown={recordUserActivity} onPointerDown={recordUserActivity} onPointerMove={recordUserActivity}>
       <section className={`window-shell ${media ? "window-shell--loaded" : ""}`} aria-label="OpenPlayer">
-        <section className={`stage ${media ? "stage--loaded" : ""}`} aria-label="Player surface">
+        <section className={`stage ${media ? "stage--loaded" : ""} ${isChromeHidden ? "stage--chrome-hidden" : ""}`} aria-label="Player surface">
           {!media && (
             <div className="empty-open">
               <span>Open media</span>
@@ -337,14 +389,14 @@ function App() {
 
           <div className="transport" aria-label="Playback controls">
             <div className="transport-row">
-              <span className="transport-time">{formatTime(currentTime)}</span>
+              <span className="transport-time">{formatTime(displayTime)}</span>
               <input
                 className="seek-slider"
                 type="range"
                 min="0"
                 max={duration || 0}
-                step="0.1"
-                value={Math.min(currentTime, duration || 0)}
+                step="any"
+                value={displayTime}
                 aria-label="Seek playback position"
                 style={{ "--progress": `${progress}%` } as CSSProperties}
                 onChange={(event) => seekTo(Number(event.currentTarget.value))}

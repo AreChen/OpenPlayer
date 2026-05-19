@@ -14,6 +14,8 @@ const tauriCargoToml = await readFile(new URL("../src-tauri/Cargo.toml", import.
 const tauriBuildScript = await readFile(new URL("../src-tauri/build.rs", import.meta.url), "utf8");
 const nsisHooksUrl = new URL("../src-tauri/nsis-hooks.nsh", import.meta.url);
 const nsisHooksSource = existsSync(nsisHooksUrl) ? await readFile(nsisHooksUrl, "utf8") : "";
+const mpvEmbedUrl = new URL("../src-tauri/src/mpv_embed.rs", import.meta.url);
+const mpvEmbedSource = existsSync(mpvEmbedUrl) ? await readFile(mpvEmbedUrl, "utf8") : "";
 const mpvRenderUrl = new URL("../src-tauri/src/mpv_render.rs", import.meta.url);
 const mpvRenderSource = existsSync(mpvRenderUrl) ? await readFile(mpvRenderUrl, "utf8") : "";
 const mpvRenderSysUrl = new URL("../src-tauri/src/mpv_render/sys.rs", import.meta.url);
@@ -151,6 +153,16 @@ assert.match(appSource, /window_start_resize/, "overlay resize handles must ask 
 assert.match(appSource, /pendingSeek/, "seek UI must track pending seek targets to prevent stale snapshot rollback");
 assert.match(appSource, /SEEK_CONFIRM_TOLERANCE_SECONDS/, "seek UI must define a tolerance for mpv seek confirmation");
 assert.match(appSource, /SEEK_SNAPSHOT_SUPPRESS_MS/, "seek UI must bound stale snapshot suppression while mpv catches up");
+assert.match(appSource, /AUTO_HIDE_CONTROLS_MS\s*=\s*5000/, "overlay chrome must hide after 5 seconds of no user activity");
+assert.match(appSource, /stage--chrome-hidden/, "overlay must apply a hidden chrome class after inactivity");
+assert.match(appSource, /onPointerMove=\{recordUserActivity\}/, "overlay must reveal controls on pointer movement");
+assert.match(appSource, /isChromePinned/, "overlay must pin controls while dialogs, errors, or drawers are active");
+assert.match(appSource, /snapshot\.status\s*!==\s*"ended"/, "frontend must treat ended snapshots as not playing");
+assert.match(appSource, /END_OF_MEDIA_SNAP_TOLERANCE_SECONDS/, "frontend must define a near-end snap tolerance for the visible slider value");
+assert.match(appSource, /snapEndOfMediaPosition/, "frontend must snap visible end-of-media slider value to duration");
+assert.match(appSource, /const displayTime\s*=\s*snapEndOfMediaPosition/, "frontend must derive a snapped display time for labels, progress, and range value");
+assert.match(appSource, /value=\{displayTime\}/, "seek slider thumb must use the snapped display time, not raw currentTime");
+assert.match(appSource, /className="seek-slider"[\s\S]*step="any"/, "seek slider must use step=any so short clip durations can render exactly at max");
 assert.doesNotMatch(appSource, /setPointerCapture|releasePointerCapture|startDragging|DragIntent|continueWindowDragIntent|beginWindowDragIntent/, "custom chrome must not use pointer-capture startDragging loop that freezes render windows");
 assert.doesNotMatch(appSource, /titlebar-brand|titlebar-center|side-rail|status-line/, "confirmed baseline UI must not regress to the older chrome layout");
 
@@ -163,6 +175,16 @@ assert.match(styles, /\.resize-region/, "overlay must expose explicit resize hit
 assert.match(styles, /\.resize-region--south-east/, "overlay must include corner resize hit areas");
 assert.match(styles, /\.transport\s*\{[\s\S]*pointer-events:\s*auto/, "transport controls must remain interactive above the full-surface drag region");
 assert.match(styles, /\.playlist-drawer--open\s*\{[\s\S]*pointer-events:\s*auto/, "open playlist drawer must remain interactive above the full-surface drag region");
+assert.match(styles, /\.stage--chrome-hidden[\s\S]*\.window-controls[\s\S]*opacity:\s*0/, "inactive player chrome must hide window controls");
+assert.match(styles, /\.stage--chrome-hidden[\s\S]*\.transport[\s\S]*pointer-events:\s*none/, "inactive player chrome must hide and disable transport controls");
+
+assert.match(mpvEmbedSource, /get_property::<bool>\("eof-reached"\)/, "mpv snapshots must read eof-reached to identify true playback end");
+assert.match(mpvEmbedSource, /wait_event\(0\.0\)/, "mpv snapshots must drain the event queue without blocking");
+assert.match(mpvEmbedSource, /Event::EndFile\(mpv_end_file_reason::Eof\)/, "mpv snapshots must track the real EndFile EOF event");
+assert.match(mpvEmbedSource, /get_property::<f64>\("percent-pos"\)/, "mpv snapshots must read percent-pos for near-final-frame detection");
+assert.match(mpvEmbedSource, /END_OF_MEDIA_SNAP_TOLERANCE_SECONDS/, "mpv snapshots must define a near-end snap tolerance");
+assert.match(mpvEmbedSource, /position:\s*if \(ended \|\| near_end\)[\s\S]*duration/, "mpv snapshots must clamp end-of-file position to duration");
+assert.match(mpvEmbedSource, /if ended \{\s*"ended"/, "mpv snapshots must expose ended status at EOF");
 
 assert.doesNotMatch(tauriLibSource, /mod playback|mod storage|DesktopPlaybackState|DesktopStorageState|playback_|storage_|openplayer_core|openplayer_shared/, "desktop backend must not restore removed playback or storage plumbing");
 assert.match(tauriLibSource, /window_minimize/, "desktop backend must keep minimize command");

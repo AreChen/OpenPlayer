@@ -1,5 +1,6 @@
 use std::{path::PathBuf, sync::Mutex};
 
+use libmpv2::{events::Event, mpv_end_file_reason};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use serde::Serialize;
 use tauri::{State, Window};
@@ -13,6 +14,7 @@ use windows_sys::Win32::{
 
 const VIDEO_HOST_TOP_RESERVE: i32 = 0;
 const VIDEO_HOST_BOTTOM_RESERVE: i32 = 0;
+const END_OF_MEDIA_SNAP_TOLERANCE_SECONDS: f64 = 0.5;
 
 #[derive(Debug, PartialEq, Eq)]
 struct VideoHostRect {
@@ -32,6 +34,7 @@ struct MpvEmbedPlayer {
     host: MpvVideoHost,
     path: String,
     volume: f64,
+    ended: bool,
 }
 
 struct MpvVideoHost {
@@ -45,6 +48,7 @@ pub struct MpvEmbedSnapshot {
     path: String,
     hwnd: i64,
     status: String,
+    ended: bool,
     paused: bool,
     position: f64,
     duration: f64,
@@ -80,11 +84,12 @@ pub fn open_path_for_window(
         .player
         .lock()
         .map_err(|_| "mpv embed state lock failed".to_string())?;
-    let next_player = MpvEmbedPlayer {
+    let mut next_player = MpvEmbedPlayer {
         mpv,
         host,
         path: path_text,
         volume: 82.0,
+        ended: false,
     };
     let snapshot = next_player.snapshot(hwnd, "playing");
     *player = Some(next_player);
@@ -156,12 +161,12 @@ pub fn mpv_embed_set_volume(
 pub fn mpv_embed_snapshot(
     state: State<'_, MpvEmbedState>,
 ) -> Result<Option<MpvEmbedSnapshot>, String> {
-    let player = state
+    let mut player = state
         .player
         .lock()
         .map_err(|_| "mpv embed state lock failed".to_string())?;
 
-    Ok(player.as_ref().map(|player| player.snapshot(0, "ready")))
+    Ok(player.as_mut().map(|player| player.snapshot(0, "ready")))
 }
 
 fn with_player<T>(
@@ -180,20 +185,59 @@ fn with_player<T>(
 }
 
 impl MpvEmbedPlayer {
-    fn snapshot(&self, hwnd: i64, fallback_status: &str) -> MpvEmbedSnapshot {
+    fn snapshot(&mut self, hwnd: i64, fallback_status: &str) -> MpvEmbedSnapshot {
         let _ = self.host.resize();
+        self.drain_events();
         let paused = self.mpv.get_property::<bool>("pause").unwrap_or(false);
+        let ended = self.ended
+            || self
+                .mpv
+                .get_property::<bool>("eof-reached")
+                .unwrap_or(false);
         let position = self.mpv.get_property::<f64>("time-pos").unwrap_or(0.0);
         let duration = self.mpv.get_property::<f64>("duration").unwrap_or(0.0);
+        let percent_pos = self.mpv.get_property::<f64>("percent-pos").unwrap_or(0.0);
+        let near_end = duration.is_finite()
+            && duration > 0.0
+            && position.is_finite()
+            && duration - position <= END_OF_MEDIA_SNAP_TOLERANCE_SECONDS
+            && percent_pos.is_finite()
+            && percent_pos >= 99.0;
 
         MpvEmbedSnapshot {
             path: self.path.clone(),
             hwnd,
-            status: if paused { "paused" } else { fallback_status }.to_string(),
+            status: if ended {
+                "ended"
+            } else if paused {
+                "paused"
+            } else {
+                fallback_status
+            }
+            .to_string(),
+            ended,
             paused,
-            position,
+            position: if (ended || near_end) && duration.is_finite() && duration > 0.0 {
+                duration
+            } else {
+                position
+            },
             duration,
             volume: self.volume,
+        }
+    }
+
+    fn drain_events(&mut self) {
+        while let Some(event) = self.mpv.wait_event(0.0) {
+            match event {
+                Ok(Event::EndFile(mpv_end_file_reason::Eof)) => {
+                    self.ended = true;
+                }
+                Ok(Event::StartFile | Event::Seek | Event::PlaybackRestart) => {
+                    self.ended = false;
+                }
+                _ => {}
+            }
         }
     }
 }
