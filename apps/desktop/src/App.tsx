@@ -44,6 +44,7 @@ const resizeRegions: Array<{ className: string; direction: ResizeDirection }> = 
   { className: "resize-region--south-west", direction: "SouthWest" },
 ];
 const surface = new URLSearchParams(window.location.search).get("surface");
+const openPlayerLogoUrl = new URL("./assets/openplayer-logo.png", import.meta.url).href;
 let mediaItemIdCounter = 0;
 
 function nextMediaItemId() {
@@ -357,8 +358,8 @@ function App() {
         <section className={`stage ${media ? "stage--loaded" : ""} ${isChromeHidden ? "stage--chrome-hidden" : ""}`} aria-label="Player surface">
           {!media && (
             <div className="empty-open">
+              <img className="empty-open-logo" src={openPlayerLogoUrl} alt="" draggable={false} />
               <span>Open media</span>
-              <small>MPV native playback</small>
             </div>
           )}
 

@@ -173,11 +173,22 @@ button {
   z-index: 6;
   display: grid;
   place-content: center;
+  justify-items: center;
   background: transparent;
   color: var(--text);
   gap: 8px;
   pointer-events: none;
   text-align: center;
+}
+
+.empty-open-logo {
+  width: clamp(88px, 18vw, 180px);
+  height: clamp(88px, 18vw, 180px);
+  object-fit: contain;
+  border-radius: 28%;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .empty-open span {

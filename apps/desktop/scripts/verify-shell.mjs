@@ -24,6 +24,10 @@ const mpvRenderFiles = [
   new URL("../src-tauri/src/mpv_render/sys.rs", import.meta.url),
   new URL("../src-tauri/src/mpv_render/win32_surface.rs", import.meta.url),
 ];
+const rootLogoUrl = new URL("../../../openplayer_logo_10001000.png", import.meta.url);
+const uiLogoUrl = new URL("../src/assets/openplayer-logo.png", import.meta.url);
+const tauriIconPngUrl = new URL("../src-tauri/icons/icon.png", import.meta.url);
+const tauriIconIcoUrl = new URL("../src-tauri/icons/icon.ico", import.meta.url);
 const embedCommandPattern = /mpv_embed_open_path|mpv_embed_play|mpv_embed_pause|mpv_embed_seek|mpv_embed_set_volume|mpv_embed_snapshot|mpv_embed_stop/;
 
 function extractCfgFunction(source, cfgPattern, fnPattern) {
@@ -104,6 +108,10 @@ assert.match(nsisHooksSource, /Delete[\s\S]*\$INSTDIR\\libmpv-2\.dll/, "NSIS hoo
 assert.match(config.build.devUrl, /23142$/, "Tauri dev URL must use the non-reserved Windows port");
 assert.match(packageJson.scripts.dev, /23142$/, "Vite dev script must use the non-reserved Windows port");
 assert.match(packageJson.scripts.preview, /23142$/, "Vite preview script must use the non-reserved Windows port");
+assert.ok(!existsSync(rootLogoUrl), "source logo must live under app assets, not the repository root");
+assert.ok(existsSync(uiLogoUrl), "frontend logo asset must exist");
+assert.ok(existsSync(tauriIconPngUrl), "Tauri PNG icon must exist");
+assert.ok(existsSync(tauriIconIcoUrl), "Windows ICO icon must exist");
 
 assert.equal(packageJson.dependencies["movi-player"], undefined, "minimal branch must not ship WASM/software decoder dependency");
 assert.ok(packageJson.dependencies["@tauri-apps/plugin-dialog"], "mpv path playback must use Tauri dialog to obtain real local paths");
@@ -136,6 +144,8 @@ assert.ok(capability.windows.includes("overlay"), "overlay controls window must 
 assert.doesNotMatch(appSource, /<video\b|URL\.createObjectURL/, "mpv-first player must not use browser video or object URLs");
 assert.match(appSource, /surface=video|surface === "video"/, "frontend must render a video-only main surface separately from overlay controls");
 assert.match(appSource, /open\(/, "player must keep native Tauri file picker access");
+assert.match(appSource, /openplayer-logo\.png/, "empty player state must use the OpenPlayer logo asset");
+assert.doesNotMatch(appSource, /MPV native playback/, "empty player state must not show the old playback engine tagline");
 assert.match(appSource, /isPickerOpen/, "native file picker must guard against repeated open calls while the dialog is pending");
 assert.match(appSource, /mpv_overlay_open_path/, "overlay controls must open files through commands targeting the main video window");
 assert.match(appSource, /@tauri-apps\/plugin-dialog/, "frontend must use native dialog for mpv path selection");
@@ -183,6 +193,8 @@ assert.match(styles, /\.resize-region/, "overlay must expose explicit resize hit
 assert.match(styles, /\.resize-region--south-east/, "overlay must include corner resize hit areas");
 assert.match(styles, /\.transport\s*\{[\s\S]*pointer-events:\s*auto/, "transport controls must remain interactive above the full-surface drag region");
 assert.match(styles, /\.playlist-drawer--open\s*\{[\s\S]*pointer-events:\s*auto/, "open playlist drawer must remain interactive above the full-surface drag region");
+assert.match(styles, /\.empty-open-logo/, "empty player state must style the OpenPlayer logo");
+assert.match(styles, /\.empty-open\s*\{[\s\S]*justify-items:\s*center/, "empty player state must center each logo and text item");
 assert.match(styles, /\.stage--chrome-hidden[\s\S]*\.window-controls[\s\S]*opacity:\s*0/, "inactive player chrome must hide window controls");
 assert.match(styles, /\.stage--chrome-hidden[\s\S]*\.transport[\s\S]*pointer-events:\s*none/, "inactive player chrome must hide and disable transport controls");
 
