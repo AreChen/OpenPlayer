@@ -6,6 +6,7 @@ const config = JSON.parse(await readFile(new URL("../src-tauri/tauri.conf.json",
 const windowsConfigUrl = new URL("../src-tauri/tauri.windows.conf.json", import.meta.url);
 const windowsConfig = existsSync(windowsConfigUrl) ? JSON.parse(await readFile(windowsConfigUrl, "utf8")) : {};
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+const indexHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
 const appSource = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
 const mainSource = await readFile(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
@@ -108,6 +109,10 @@ assert.match(nsisHooksSource, /Delete[\s\S]*\$INSTDIR\\libmpv-2\.dll/, "NSIS hoo
 assert.match(config.build.devUrl, /23142$/, "Tauri dev URL must use the non-reserved Windows port");
 assert.match(packageJson.scripts.dev, /23142$/, "Vite dev script must use the non-reserved Windows port");
 assert.match(packageJson.scripts.preview, /23142$/, "Vite preview script must use the non-reserved Windows port");
+assert.match(indexHtml, /surface["')\s.]*={1,3}\s*"video"[\s\S]*surface-video/, "index.html must classify the main video surface before React mounts");
+assert.match(indexHtml, /surface-overlay/, "index.html must classify non-video surfaces as transparent overlays before React mounts");
+assert.match(indexHtml, /html\.surface-video[\s\S]*background:\s*#000/, "video surface must paint black before React and mpv finish loading");
+assert.match(indexHtml, /html\.surface-overlay[\s\S]*background:\s*transparent/, "overlay surface must remain transparent before React mounts");
 assert.ok(!existsSync(rootLogoUrl), "source logo must live under app assets, not the repository root");
 assert.ok(existsSync(uiLogoUrl), "frontend logo asset must exist");
 assert.ok(existsSync(tauriIconPngUrl), "Tauri PNG icon must exist");
@@ -150,6 +155,17 @@ assert.match(appSource, /isPickerOpen/, "native file picker must guard against r
 assert.match(appSource, /mpv_overlay_open_path/, "overlay controls must open files through commands targeting the main video window");
 assert.match(appSource, /@tauri-apps\/plugin-dialog/, "frontend must use native dialog for mpv path selection");
 assert.match(appSource, /openNativeMediaFiles/, "frontend must expose a picker-driven mpv open action");
+assert.match(appSource, /type TimeDisplayMode\s*=\s*"timecode"\s*\|\s*"frames"/, "frontend must define a timecode/frame display mode");
+assert.match(appSource, /type PlaybackClockAnchor/, "frontend must keep a display-clock anchor for smooth progress interpolation");
+assert.match(appSource, /requestAnimationFrame/, "frontend must animate displayed progress with requestAnimationFrame");
+assert.match(appSource, /anchorDisplayClock/, "frontend must reset the smooth display clock when mpv state changes");
+assert.match(appSource, /formatTimecode/, "frontend must use adaptive timecode formatting");
+assert.match(appSource, /formatFrameCount/, "frontend must format frame counts for frame mode");
+assert.match(appSource, /toggleTimeDisplayMode/, "transport time labels must toggle timecode and frame display modes");
+assert.match(appSource, /const displayTime\s*=\s*snapEndOfMediaPosition\(displayPosition/, "seek slider must use the interpolated display position");
+assert.match(appSource, /Math\.floor\(displayTime \* framesPerSecond\)/, "current frame must be derived from smooth display time and fps");
+assert.match(appSource, /Math\.floor\(duration \* framesPerSecond\)/, "total frame count must be derived from duration and fps");
+assert.match(appSource, /fps:\s*number/, "frontend snapshot type must include fps metadata");
 assert.doesNotMatch(appSource, /mpvSmoke|libmpv|libmpv2|mpv_smoke/, "libmpv2 smoke spike must not change the HTML video frontend path");
 assert.doesNotMatch(appSource, /<video|videoRef|fileInputRef|type="file"|URL\.createObjectURL|URL\.revokeObjectURL|handleFileInputChange|onDrop=\{handleDrop\}/, "mpv-first player must not keep HTML video or browser File playback");
 assert.match(appSource, /togglePlayback/, "player shell must wire play and pause behavior");
@@ -205,6 +221,9 @@ assert.match(mpvEmbedSource, /get_property::<f64>\("percent-pos"\)/, "mpv snapsh
 assert.match(mpvEmbedSource, /END_OF_MEDIA_SNAP_TOLERANCE_SECONDS/, "mpv snapshots must define a near-end snap tolerance");
 assert.match(mpvEmbedSource, /position:\s*if \(ended \|\| near_end\)[\s\S]*duration/, "mpv snapshots must clamp end-of-file position to duration");
 assert.match(mpvEmbedSource, /if ended \{\s*"ended"/, "mpv snapshots must expose ended status at EOF");
+assert.match(mpvEmbedSource, /fps:\s*f64/, "mpv snapshots must serialize fps metadata");
+assert.match(mpvEmbedSource, /container-fps/, "mpv snapshots must prefer container-fps for frame-count mode");
+assert.match(mpvEmbedSource, /estimated-vf-fps/, "mpv snapshots must fall back to estimated-vf-fps when container fps is unavailable");
 
 assert.doesNotMatch(tauriLibSource, /mod playback|mod storage|DesktopPlaybackState|DesktopStorageState|playback_|storage_|openplayer_core|openplayer_shared/, "desktop backend must not restore removed playback or storage plumbing");
 assert.match(tauriLibSource, /window_minimize/, "desktop backend must keep minimize command");

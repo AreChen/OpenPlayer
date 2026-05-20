@@ -3,6 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      document.documentElement.classList.add(new URLSearchParams(window.location.search).get("surface") === "video" ? "surface-video" : "surface-overlay");
+    </script>
+    <style>
+      html.surface-video,
+      html.surface-video body,
+      html.surface-video #root {
+        background: #000;
+      }
+
+      html.surface-overlay,
+      html.surface-overlay body,
+      html.surface-overlay #root {
+        background: transparent;
+      }
+    </style>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>OpenPlayer</title>
   </head>

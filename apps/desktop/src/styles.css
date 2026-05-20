@@ -302,7 +302,7 @@ button {
 
 .transport-row {
   display: grid;
-  grid-template-columns: 50px minmax(0, 1fr) 50px;
+  grid-template-columns: minmax(7.5ch, auto) minmax(0, 1fr) minmax(7.5ch, auto);
   align-items: center;
   gap: 12px;
 }
@@ -311,6 +311,23 @@ button {
   color: var(--muted);
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
+}
+
+.transport-time--toggle {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  padding: 0;
+}
+
+.transport-time--toggle:disabled {
+  cursor: default;
+}
+
+.transport-time--toggle:not(:disabled):hover {
+  color: var(--text);
 }
 
 .transport-time:last-child {

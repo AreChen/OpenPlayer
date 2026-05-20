@@ -15,6 +15,7 @@ type MpvSnapshot = {
   paused: boolean;
   position: number;
   duration: number;
+  fps: number;
   volume: number;
 };
 
@@ -22,6 +23,14 @@ type PendingSeek = {
   target: number;
   startedAt: number;
 };
+
+type PlaybackClockAnchor = {
+  position: number;
+  startedAt: number;
+  playing: boolean;
+};
+
+type TimeDisplayMode = "timecode" | "frames";
 
 type ResizeDirection = "East" | "North" | "NorthEast" | "NorthWest" | "South" | "SouthEast" | "SouthWest" | "West";
 
@@ -70,9 +79,9 @@ function startMainWindowResize(direction: ResizeDirection) {
   });
 }
 
-function formatTime(value: number) {
+function formatTimecode(value: number, totalDuration: number) {
   if (!Number.isFinite(value) || value <= 0) {
-    return "00:00";
+    return totalDuration > 3600 ? "0:00:00" : "00:00";
   }
 
   const totalSeconds = Math.floor(value);
@@ -80,11 +89,23 @@ function formatTime(value: number) {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
 
-  if (hours > 0) {
+  if (totalDuration > 3600) {
     return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
   }
 
-  return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+  return `${Math.floor(totalSeconds / 60).toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function formatFrameCount(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0";
+  }
+
+  return Math.floor(value).toLocaleString("en-US");
+}
+
+function canDisplayFrames(fps: number, duration: number) {
+  return Number.isFinite(fps) && fps > 0 && Number.isFinite(duration) && duration > 0;
 }
 
 function snapEndOfMediaPosition(position: number, duration: number, isPlaying: boolean) {
@@ -139,12 +160,17 @@ function App() {
   const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
+  const [displayPosition, setDisplayPosition] = useState(0);
   const [volumeLevel, setVolumeLevel] = useState(0.82);
+  const [framesPerSecond, setFramesPerSecond] = useState(0);
+  const [timeDisplayMode, setTimeDisplayMode] = useState<TimeDisplayMode>("timecode");
   const [isPlaying, setIsPlaying] = useState(false);
   const [isChromeVisible, setIsChromeVisible] = useState(true);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const pendingSeekRef = useRef<PendingSeek | null>(null);
+  const playbackClockAnchorRef = useRef<PlaybackClockAnchor>({ position: 0, startedAt: performance.now(), playing: false });
+  const snapshotRequestIdRef = useRef(0);
   const chromeHideTimerRef = useRef<number | null>(null);
   const media = currentIndex === null ? null : (queue[currentIndex] ?? null);
   const isChromePinned = !media || isPlaylistOpen || isPickerOpen || playbackError !== null;
@@ -155,17 +181,44 @@ function App() {
     }
 
     const timer = window.setInterval(() => {
+      const requestId = ++snapshotRequestIdRef.current;
       invoke<MpvSnapshot | null>("mpv_embed_snapshot")
         .then((snapshot) => {
-          if (snapshot) {
+          if (snapshot && requestId === snapshotRequestIdRef.current) {
             applySnapshot(snapshot);
           }
         })
         .catch(() => undefined);
     }, 500);
 
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(timer);
+      invalidatePendingSnapshots();
+    };
   }, [media?.id]);
+
+  useEffect(() => {
+    if (!media || !isPlaying || duration <= 0) {
+      return;
+    }
+
+    let frameId = 0;
+    const tick = () => {
+      const anchor = playbackClockAnchorRef.current;
+      const elapsedSeconds = anchor.playing ? (performance.now() - anchor.startedAt) / 1000 : 0;
+      setDisplayPosition(clampPlaybackPosition(anchor.position + elapsedSeconds, duration));
+      frameId = window.requestAnimationFrame(tick);
+    };
+
+    frameId = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [media?.id, isPlaying, duration]);
+
+  useEffect(() => {
+    if (!canDisplayFrames(framesPerSecond, duration)) {
+      setTimeDisplayMode("timecode");
+    }
+  }, [framesPerSecond, duration]);
 
   useEffect(() => {
     setIsChromeVisible(true);
@@ -197,13 +250,24 @@ function App() {
     scheduleChromeHide();
   }
 
+  function invalidatePendingSnapshots() {
+    snapshotRequestIdRef.current += 1;
+  }
+
+  function applyCommandSnapshot(snapshot: MpvSnapshot) {
+    invalidatePendingSnapshots();
+    applySnapshot(snapshot);
+  }
+
   function applySnapshot(snapshot: MpvSnapshot) {
     const snapshotPosition = Number.isFinite(snapshot.position) ? snapshot.position : 0;
     const snapshotDuration = Number.isFinite(snapshot.duration) ? snapshot.duration : 0;
     const pendingSeek = pendingSeekRef.current;
+    const nextIsPlaying = !snapshot.paused && snapshot.status !== "idle" && snapshot.status !== "ended";
 
     setDuration(snapshotDuration);
-    setIsPlaying(!snapshot.paused && snapshot.status !== "idle" && snapshot.status !== "ended");
+    setIsPlaying(nextIsPlaying);
+    setFramesPerSecond(Number.isFinite(snapshot.fps) && snapshot.fps > 0 ? snapshot.fps : 0);
     setVolumeLevel(Math.min(1, Math.max(0, snapshot.volume / 100)));
 
     if (pendingSeek) {
@@ -217,6 +281,7 @@ function App() {
     }
 
     setCurrentTime(snapshotPosition);
+    anchorDisplayClock(snapshotPosition, nextIsPlaying, snapshotDuration);
   }
 
   function reportPlaybackError(error: unknown) {
@@ -224,10 +289,11 @@ function App() {
   }
 
   function openMpvPath(path: string) {
+    invalidatePendingSnapshots();
     return invoke<MpvSnapshot>("mpv_overlay_open_path", { path }).then((snapshot) => {
       pendingSeekRef.current = null;
       setPlaybackError(null);
-      applySnapshot(snapshot);
+      applyCommandSnapshot(snapshot);
     });
   }
 
@@ -238,6 +304,34 @@ function App() {
 
     const upperBound = duration > 0 ? duration : value;
     return Math.min(upperBound, Math.max(0, value));
+  }
+
+  function clampPlaybackPosition(value: number, upperDuration = duration) {
+    if (!Number.isFinite(value)) {
+      return 0;
+    }
+
+    const upperBound = upperDuration > 0 ? upperDuration : value;
+    return Math.min(upperBound, Math.max(0, value));
+  }
+
+  function anchorDisplayClock(position: number, playing: boolean, upperDuration = duration) {
+    const clampedPosition = clampPlaybackPosition(position, upperDuration);
+    playbackClockAnchorRef.current = {
+      position: clampedPosition,
+      startedAt: performance.now(),
+      playing,
+    };
+    setDisplayPosition(clampedPosition);
+  }
+
+  function toggleTimeDisplayMode() {
+    if (!canDisplayFrames(framesPerSecond, duration)) {
+      setTimeDisplayMode("timecode");
+      return;
+    }
+
+    setTimeDisplayMode((mode) => (mode === "timecode" ? "frames" : "timecode"));
   }
 
   async function openNativeMediaFiles() {
@@ -312,8 +406,9 @@ function App() {
       return;
     }
 
+    invalidatePendingSnapshots();
     invoke<MpvSnapshot>(isPlaying ? "mpv_embed_pause" : "mpv_embed_play")
-      .then(applySnapshot)
+      .then(applyCommandSnapshot)
       .catch(reportPlaybackError);
   }
 
@@ -325,14 +420,17 @@ function App() {
     const target = seekTarget(value);
     pendingSeekRef.current = { target, startedAt: performance.now() };
     setCurrentTime(target);
+    anchorDisplayClock(target, false);
   }
 
   function commitSeekTo(value: number) {
     const target = seekTarget(value);
     pendingSeekRef.current = { target, startedAt: performance.now() };
     setCurrentTime(target);
+    anchorDisplayClock(target, false);
+    invalidatePendingSnapshots();
     invoke<MpvSnapshot>("mpv_embed_seek", { position: target })
-      .then(applySnapshot)
+      .then(applyCommandSnapshot)
       .catch((error: unknown) => {
         pendingSeekRef.current = null;
         reportPlaybackError(error);
@@ -342,14 +440,23 @@ function App() {
   function setVolume(value: number) {
     const nextVolume = Math.min(1, Math.max(0, value));
     setVolumeLevel(nextVolume);
+    invalidatePendingSnapshots();
     invoke<MpvSnapshot>("mpv_embed_set_volume", { volume: nextVolume * 100 })
-      .then(applySnapshot)
+      .then(applyCommandSnapshot)
       .catch(reportPlaybackError);
   }
 
-  const displayTime = snapEndOfMediaPosition(currentTime, duration, isPlaying);
+  const displayTime = snapEndOfMediaPosition(displayPosition, duration, isPlaying);
   const progress = duration > 0 ? Math.min(100, Math.max(0, (displayTime / duration) * 100)) : 0;
   const queueItems = queue.length ? queue : media ? [media] : [];
+  const canShowFrames = canDisplayFrames(framesPerSecond, duration);
+  const effectiveTimeDisplayMode: TimeDisplayMode = timeDisplayMode === "frames" && canShowFrames ? "frames" : "timecode";
+  const totalFrames = canShowFrames ? Math.max(0, Math.floor(duration * framesPerSecond)) : 0;
+  const currentFrame = canShowFrames ? Math.min(totalFrames, Math.max(0, Math.floor(displayTime * framesPerSecond))) : 0;
+  const currentTransportLabel = effectiveTimeDisplayMode === "frames" ? formatFrameCount(currentFrame) : formatTimecode(displayTime, duration);
+  const durationTransportLabel = effectiveTimeDisplayMode === "frames" ? formatFrameCount(totalFrames) : formatTimecode(duration, duration);
+  const currentTimeToggleLabel = canShowFrames ? "Toggle current playback time and frame display" : "Current playback time; frame display unavailable for this media";
+  const durationTimeToggleLabel = canShowFrames ? "Toggle total duration and frame display" : "Total duration; frame display unavailable for this media";
   const isChromeHidden = Boolean(media) && !isChromeVisible && !isChromePinned;
 
   return (
@@ -390,7 +497,16 @@ function App() {
 
           <div className="transport" aria-label="Playback controls">
             <div className="transport-row">
-              <span className="transport-time">{formatTime(displayTime)}</span>
+              <button
+                className="transport-time transport-time--toggle"
+                type="button"
+                aria-label={currentTimeToggleLabel}
+                aria-pressed={effectiveTimeDisplayMode === "frames"}
+                onClick={toggleTimeDisplayMode}
+                disabled={!canShowFrames}
+              >
+                {currentTransportLabel}
+              </button>
               <input
                 className="seek-slider"
                 type="range"
@@ -406,7 +522,16 @@ function App() {
                 onBlur={(event) => commitSeekTo(Number(event.currentTarget.value))}
                 disabled={!media || duration <= 0}
               />
-              <span className="transport-time">{formatTime(duration)}</span>
+              <button
+                className="transport-time transport-time--toggle"
+                type="button"
+                aria-label={durationTimeToggleLabel}
+                aria-pressed={effectiveTimeDisplayMode === "frames"}
+                onClick={toggleTimeDisplayMode}
+                disabled={!canShowFrames}
+              >
+                {durationTransportLabel}
+              </button>
             </div>
 
             <div className="control-strip">

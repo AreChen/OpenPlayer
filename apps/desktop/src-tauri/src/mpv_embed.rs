@@ -52,6 +52,7 @@ pub struct MpvEmbedSnapshot {
     paused: bool,
     position: f64,
     duration: f64,
+    fps: f64,
     volume: f64,
 }
 
@@ -184,6 +185,26 @@ fn with_player<T>(
     callback(player)
 }
 
+fn valid_fps(value: f64) -> Option<f64> {
+    if value.is_finite() && value > 0.0 {
+        Some(value)
+    } else {
+        None
+    }
+}
+
+fn read_player_fps(mpv: &libmpv2::Mpv) -> f64 {
+    mpv.get_property::<f64>("container-fps")
+        .ok()
+        .and_then(valid_fps)
+        .or_else(|| {
+            mpv.get_property::<f64>("estimated-vf-fps")
+                .ok()
+                .and_then(valid_fps)
+        })
+        .unwrap_or(0.0)
+}
+
 impl MpvEmbedPlayer {
     fn snapshot(&mut self, hwnd: i64, fallback_status: &str) -> MpvEmbedSnapshot {
         let _ = self.host.resize();
@@ -196,6 +217,7 @@ impl MpvEmbedPlayer {
                 .unwrap_or(false);
         let position = self.mpv.get_property::<f64>("time-pos").unwrap_or(0.0);
         let duration = self.mpv.get_property::<f64>("duration").unwrap_or(0.0);
+        let fps = read_player_fps(&self.mpv);
         let percent_pos = self.mpv.get_property::<f64>("percent-pos").unwrap_or(0.0);
         let near_end = duration.is_finite()
             && duration > 0.0
@@ -223,6 +245,7 @@ impl MpvEmbedPlayer {
                 position
             },
             duration,
+            fps,
             volume: self.volume,
         }
     }
