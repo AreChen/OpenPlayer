@@ -25,12 +25,12 @@ jobs:
       RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Install Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
