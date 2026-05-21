@@ -122,7 +122,9 @@ assert.ok(existsSync(releaseVerifyScriptUrl), "release verification script must 
 assert.ok(existsSync(releaseMpvManifestUrl), "Windows mpv dependency manifest must be tracked outside ignored vendor binaries");
 assert.match(ciWorkflow, /npm run verify:release/, "CI must verify release metadata");
 assert.match(ciWorkflow, /npm run verify:shell/, "CI must run shell structural verification");
+assert.match(ciWorkflow, /FORCE_JAVASCRIPT_ACTIONS_TO_NODE24:\s*true/, "CI must opt into the GitHub Actions Node 24 runtime");
 assert.match(releaseWorkflow, /on:[\s\S]*tags:[\s\S]*v\*/, "release workflow must run for version tags");
+assert.match(releaseWorkflow, /FORCE_JAVASCRIPT_ACTIONS_TO_NODE24:\s*true/, "release workflow must opt into the GitHub Actions Node 24 runtime");
 assert.match(releaseWorkflow, /npm run tauri:build -- --config src-tauri\/tauri\.windows\.conf\.json/, "release workflow must build the Windows NSIS installer");
 assert.match(releaseWorkflow, /mpv-windows-x64\.json/, "release workflow must restore mpv runtime from tracked dependency metadata");
 assert.match(releaseWorkflow, /Get-FileHash[\s\S]*SHA256/, "release workflow must generate a SHA256 checksum for the installer");
