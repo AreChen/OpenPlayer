@@ -1,0 +1,11 @@
+{
+  "name": "mpv",
+  "platform": "windows-x64",
+  "source": "zhongfly/mpv-winbuild",
+  "release": "2026-05-13-f4d059b1d9",
+  "asset": "mpv-dev-x86_64-20260513-git-f4d059b1d9.7z",
+  "url": "https://github.com/zhongfly/mpv-winbuild/releases/download/2026-05-13-f4d059b1d9/mpv-dev-x86_64-20260513-git-f4d059b1d9.7z",
+  "sha256": "179f2bebc1837a4793e58783eea8f3d28e7ad8ceb86856f24feb9a37bb16df38",
+  "license": "See upstream mpv-winbuild package and bundled dependency notices",
+  "requiredFiles": ["libmpv-2.dll", "libmpv.dll.a", "include"]
+}

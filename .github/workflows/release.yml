@@ -1,0 +1,120 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish, for example v1.0.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  windows-installer:
+    name: Windows installer
+    runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Restore Windows mpv runtime
+        shell: pwsh
+        run: |
+          $manifestPath = "docs/native-deps/mpv-windows-x64.json"
+          $manifest = Get-Content -LiteralPath $manifestPath | ConvertFrom-Json
+          $downloadPath = Join-Path $env:RUNNER_TEMP $manifest.asset
+          $extractRoot = Join-Path $env:RUNNER_TEMP "mpv-extract"
+          $targetRoot = "vendor/native/mpv/windows-x64"
+
+          Invoke-WebRequest -Uri $manifest.url -OutFile $downloadPath
+          $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $downloadPath).Hash.ToLowerInvariant()
+          if ($actualHash -ne $manifest.sha256) {
+            throw "mpv archive hash mismatch: expected $($manifest.sha256), got $actualHash"
+          }
+
+          $sevenZip = (Get-Command 7z -ErrorAction SilentlyContinue).Source
+          if (-not $sevenZip) {
+            $sevenZip = (Get-Command 7z.exe -ErrorAction SilentlyContinue).Source
+          }
+          if (-not $sevenZip) {
+            throw "7-Zip is required on the Windows runner"
+          }
+
+          New-Item -ItemType Directory -Force -Path $extractRoot, $targetRoot | Out-Null
+          & $sevenZip x $downloadPath "-o$extractRoot" -y | Out-Null
+
+          $runtimeDll = Get-ChildItem -LiteralPath $extractRoot -Recurse -Filter "libmpv-2.dll" | Select-Object -First 1
+          $importLibrary = Get-ChildItem -LiteralPath $extractRoot -Recurse -Filter "libmpv.dll.a" | Select-Object -First 1
+          $includeDir = Get-ChildItem -LiteralPath $extractRoot -Recurse -Directory -Filter "include" | Select-Object -First 1
+          if (-not $runtimeDll -or -not $importLibrary -or -not $includeDir) {
+            throw "mpv archive is missing libmpv-2.dll, libmpv.dll.a, or include"
+          }
+
+          Copy-Item -LiteralPath $runtimeDll.FullName -Destination $targetRoot -Force
+          Copy-Item -LiteralPath $importLibrary.FullName -Destination $targetRoot -Force
+          Copy-Item -LiteralPath $includeDir.FullName -Destination $targetRoot -Recurse -Force
+
+      - name: Verify release metadata
+        working-directory: apps/desktop
+        shell: pwsh
+        run: npm run verify:release -- --tag=$env:RELEASE_TAG
+
+      - name: Verify shell architecture
+        working-directory: apps/desktop
+        run: npm run verify:shell
+
+      - name: Build Windows installer
+        working-directory: apps/desktop
+        run: npm run tauri:build -- --config src-tauri/tauri.windows.conf.json
+
+      - name: Prepare installer checksum
+        shell: pwsh
+        run: |
+          $packageJson = Get-Content -LiteralPath "apps/desktop/package.json" | ConvertFrom-Json
+          $installer = Resolve-Path "target/release/bundle/nsis/OpenPlayer_$($packageJson.version)_x64-setup.exe"
+          $checksum = "$installer.sha256"
+          $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $installer
+          "$($hash.Hash)  $([System.IO.Path]::GetFileName($installer))" | Set-Content -LiteralPath $checksum -Encoding ascii
+          "OPENPLAYER_INSTALLER=$installer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "OPENPLAYER_CHECKSUM=$checksum" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Publish GitHub release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content -LiteralPath "apps/desktop/package.json" | ConvertFrom-Json).version
+          $notesFile = "docs/releases/$env:RELEASE_TAG.md"
+          if (-not (Test-Path -LiteralPath $notesFile)) {
+            throw "Missing release notes file: $notesFile"
+          }
+
+          gh release view $env:RELEASE_TAG *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:RELEASE_TAG --title "OpenPlayer $version" --notes-file $notesFile --target $env:GITHUB_SHA
+          }
+
+          gh release upload $env:RELEASE_TAG $env:OPENPLAYER_INSTALLER $env:OPENPLAYER_CHECKSUM --clobber

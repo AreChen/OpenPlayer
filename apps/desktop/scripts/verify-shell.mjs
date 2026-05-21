@@ -13,6 +13,10 @@ const mainSource = await readFile(new URL("../src-tauri/src/main.rs", import.met
 const tauriLibSource = await readFile(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
 const capability = JSON.parse(await readFile(new URL("../src-tauri/capabilities/default.json", import.meta.url), "utf8"));
 const ciWorkflow = await readFile(new URL("../../../.github/workflows/ci.yml", import.meta.url), "utf8");
+const releaseWorkflowUrl = new URL("../../../.github/workflows/release.yml", import.meta.url);
+const releaseWorkflow = existsSync(releaseWorkflowUrl) ? await readFile(releaseWorkflowUrl, "utf8") : "";
+const releaseVerifyScriptUrl = new URL("./verify-release.mjs", import.meta.url);
+const releaseMpvManifestUrl = new URL("../../../docs/native-deps/mpv-windows-x64.json", import.meta.url);
 const workspaceToml = await readFile(new URL("../../../Cargo.toml", import.meta.url), "utf8");
 const tauriCargoToml = await readFile(new URL("../src-tauri/Cargo.toml", import.meta.url), "utf8");
 const tauriBuildScript = await readFile(new URL("../src-tauri/build.rs", import.meta.url), "utf8");
@@ -113,6 +117,16 @@ assert.match(nsisHooksSource, /Delete[\s\S]*\$INSTDIR\\libmpv-2\.dll/, "NSIS hoo
 assert.match(config.build.devUrl, /23142$/, "Tauri dev URL must use the non-reserved Windows port");
 assert.match(packageJson.scripts.dev, /23142$/, "Vite dev script must use the non-reserved Windows port");
 assert.match(packageJson.scripts.preview, /23142$/, "Vite preview script must use the non-reserved Windows port");
+assert.equal(packageJson.scripts["verify:release"], "node scripts/verify-release.mjs", "desktop package must expose release metadata verification");
+assert.ok(existsSync(releaseVerifyScriptUrl), "release verification script must exist");
+assert.ok(existsSync(releaseMpvManifestUrl), "Windows mpv dependency manifest must be tracked outside ignored vendor binaries");
+assert.match(ciWorkflow, /npm run verify:release/, "CI must verify release metadata");
+assert.match(ciWorkflow, /npm run verify:shell/, "CI must run shell structural verification");
+assert.match(releaseWorkflow, /on:[\s\S]*tags:[\s\S]*v\*/, "release workflow must run for version tags");
+assert.match(releaseWorkflow, /npm run tauri:build -- --config src-tauri\/tauri\.windows\.conf\.json/, "release workflow must build the Windows NSIS installer");
+assert.match(releaseWorkflow, /mpv-windows-x64\.json/, "release workflow must restore mpv runtime from tracked dependency metadata");
+assert.match(releaseWorkflow, /Get-FileHash[\s\S]*SHA256/, "release workflow must generate a SHA256 checksum for the installer");
+assert.match(releaseWorkflow, /gh release/, "release workflow must publish installer assets to GitHub Releases");
 assert.match(indexHtml, /surface["')\s.]*={1,3}\s*"video"[\s\S]*surface-video/, "index.html must classify the main video surface before React mounts");
 assert.match(indexHtml, /surface-overlay/, "index.html must classify non-video surfaces as transparent overlays before React mounts");
 assert.match(indexHtml, /html\.surface-video[\s\S]*background:\s*#000/, "video surface must paint black before React and mpv finish loading");

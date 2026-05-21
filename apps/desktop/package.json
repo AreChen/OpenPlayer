@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 23142",
     "verify:shell": "node scripts/verify-shell.mjs",
+    "verify:release": "node scripts/verify-release.mjs",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
   },

@@ -59,5 +59,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify shell architecture
+        run: npm run verify:shell
+
+      - name: Verify release metadata
+        run: npm run verify:release
+
       - name: Build frontend
         run: npm run build

@@ -12,3 +12,7 @@ The first native dependency target is `libmpv`. Each bundled native dependency m
 - Checksum.
 
 Large native binaries are not committed to git. Packaging scripts and metadata are tracked instead.
+
+Tracked dependency metadata:
+
+- `mpv-windows-x64.json` - Windows x64 mpv build used by release automation.
