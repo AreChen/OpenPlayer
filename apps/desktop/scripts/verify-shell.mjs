@@ -201,6 +201,14 @@ assert.match(appSource, /defaultShortcutBindings/, "player shell must define def
 assert.match(appSource, /OPENPLAYER_SHORTCUTS_STORAGE_KEY/, "shortcut settings must persist through localStorage");
 assert.match(appSource, /openplayer\.shortcuts\.v3/, "shortcut storage version must reset stale D/F and fullscreen bindings");
 assert.doesNotMatch(appSource, /openplayer\.shortcuts\.v2/, "shortcut storage must not keep the stale v2 bindings");
+assert.match(appSource, /OPENPLAYER_HISTORY_STORAGE_KEY/, "player shell must persist local playback history");
+assert.match(appSource, /openplayer\.history\.v1/, "playback history storage must use a versioned localStorage key");
+assert.match(appSource, /type PlaybackHistoryEntry/, "player shell must define typed playback history entries");
+assert.match(appSource, /readPlaybackHistory/, "player shell must read persisted playback history on startup");
+assert.match(appSource, /writePlaybackHistory/, "player shell must write playback history after progress changes");
+assert.match(appSource, /resumePositionForPath/, "player shell must resume remembered playback positions when opening known paths");
+assert.match(appSource, /rememberPlaybackProgress/, "player shell must remember progress from mpv snapshots");
+assert.match(appSource, /HISTORY_LIMIT/, "playback history must have a bounded size");
 assert.match(appSource, /keyboardEventToChord/, "shortcut settings must normalize keyboard events into configurable chords");
 assert.match(appSource, /performShortcutAction/, "global shortcut dispatch must route configured chords to player commands");
 assert.match(appSource, /recordingShortcutAction/, "settings must support recording a replacement shortcut chord");
@@ -238,6 +246,8 @@ assert.doesNotMatch(appSource, /movi-player|MoviPlayer|moviEventLog/, "frontend 
 
 assert.match(appSource, /playlist-drawer/, "playlist must remain a collapsible drawer");
 assert.match(appSource, /togglePlaylist/, "control bar must keep playlist toggle");
+assert.match(appSource, /history-section/, "playlist drawer must expose local playback history");
+assert.match(appSource, /openHistoryEntry/, "playback history entries must reopen media paths");
 assert.match(appSource, /data-tauri-drag-region/, "custom chrome must use Tauri drag-region markup instead of JS pointer dragging");
 assert.match(appSource, /window_start_drag/, "overlay drag region must ask the backend to drag the main video window");
 assert.doesNotMatch(appSource, /onDoubleClick=\{toggleFullscreen\}/, "fullscreen must use middle mouse button instead of double-click");
@@ -269,6 +279,8 @@ assert.match(styles, /\.window-shell[\s\S]*border:\s*0/, "window shell must not 
 assert.match(styles, /\.app-shell[\s\S]*padding:\s*0/, "window shell must not leave a transparent outer gutter");
 assert.doesNotMatch(styles, /\.recent-shortcuts|\.recent-drawer-section|\.status-line/, "minimal UI must not keep recent-media or status chrome styles");
 assert.match(styles, /playlist-item--active/, "playlist styles must mark the active queue item");
+assert.match(styles, /\.history-section/, "styles must include playback history section styling");
+assert.match(styles, /\.history-item/, "styles must include playback history item styling");
 assert.match(styles, /\.drag-region\s*\{[\s\S]*inset:\s*0/, "drag region must cover the non-control player surface, not just the title strip");
 assert.match(styles, /\.resize-region/, "overlay must expose explicit resize hit areas around the border");
 assert.match(styles, /\.resize-region--south-east/, "overlay must include corner resize hit areas");

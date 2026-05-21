@@ -734,6 +734,83 @@ input:focus-visible {
   color: var(--text);
 }
 
+.history-section {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  border-top: 1px solid rgba(236, 231, 221, 0.1);
+  padding-top: 10px;
+}
+
+.history-section:first-child {
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 0;
+}
+
+.history-section header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 2px;
+}
+
+.history-section h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.78rem;
+  letter-spacing: 0;
+}
+
+.history-section header span,
+.playlist-empty {
+  color: var(--faint);
+  font-size: 0.72rem;
+}
+
+.history-list {
+  display: grid;
+  gap: 4px;
+}
+
+.history-item {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 3px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.history-item span,
+.history-item small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-item small {
+  color: var(--faint);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-item:hover,
+.history-item--active {
+  background: rgba(236, 231, 221, 0.08);
+  color: var(--text);
+}
+
+.playlist-empty {
+  padding: 9px 10px;
+}
+
 .context-menu {
   position: absolute;
   z-index: 60;

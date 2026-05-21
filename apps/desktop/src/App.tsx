@@ -9,6 +9,14 @@ type MediaItem = {
   path: string;
 };
 
+type PlaybackHistoryEntry = {
+  path: string;
+  name: string;
+  position: number;
+  duration: number;
+  updatedAt: number;
+};
+
 type MpvTrack = {
   id: number;
   kind: "audio" | "video" | "sub";
@@ -80,10 +88,15 @@ const playableExtensions = ["3gp", "aac", "avi", "flac", "m4a", "m4v", "mkv", "m
 const subtitleExtensions = ["ass", "srt", "ssa", "sub", "vtt"];
 const playbackSpeedOptions = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const OPENPLAYER_SHORTCUTS_STORAGE_KEY = "openplayer.shortcuts.v3";
+const OPENPLAYER_HISTORY_STORAGE_KEY = "openplayer.history.v1";
+const HISTORY_LIMIT = 12;
+const HISTORY_WRITE_INTERVAL_MS = 1500;
 const SEEK_CONFIRM_TOLERANCE_SECONDS = 0.75;
 const SEEK_SNAPSHOT_SUPPRESS_MS = 1600;
 const AUTO_HIDE_CONTROLS_MS = 5000;
 const END_OF_MEDIA_SNAP_TOLERANCE_SECONDS = 0.5;
+const MIN_RESUME_POSITION_SECONDS = 3;
+const RESUME_END_MARGIN_SECONDS = 5;
 const CONTEXT_MENU_WIDTH = 236;
 const CONTEXT_MENU_HEIGHT = 336;
 const DEFAULT_SEEK_STEP_SECONDS = 5;
@@ -224,6 +237,61 @@ function readShortcutBindings() {
   }
 }
 
+function sanitizePlaybackHistoryEntry(value: unknown): PlaybackHistoryEntry | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const candidate = value as Partial<PlaybackHistoryEntry>;
+  if (typeof candidate.path !== "string" || candidate.path.trim() === "") {
+    return null;
+  }
+
+  const path = candidate.path.trim();
+  const name = typeof candidate.name === "string" && candidate.name.trim() ? candidate.name.trim() : mediaNameFromPath(path);
+  const position = Number.isFinite(candidate.position) ? Math.max(0, Number(candidate.position)) : 0;
+  const duration = Number.isFinite(candidate.duration) ? Math.max(0, Number(candidate.duration)) : 0;
+  const updatedAt = Number.isFinite(candidate.updatedAt) ? Math.max(0, Number(candidate.updatedAt)) : Date.now();
+
+  return { path, name, position, duration, updatedAt };
+}
+
+function readPlaybackHistory() {
+  try {
+    const stored = window.localStorage.getItem(OPENPLAYER_HISTORY_STORAGE_KEY);
+    if (!stored) {
+      return [];
+    }
+
+    const parsed = JSON.parse(stored);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .map(sanitizePlaybackHistoryEntry)
+      .filter((entry): entry is PlaybackHistoryEntry => entry !== null)
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+      .slice(0, HISTORY_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+function writePlaybackHistory(entries: PlaybackHistoryEntry[]) {
+  try {
+    window.localStorage.setItem(OPENPLAYER_HISTORY_STORAGE_KEY, JSON.stringify(entries.slice(0, HISTORY_LIMIT)));
+  } catch (error) {
+    console.warn("Failed to persist playback history", error);
+  }
+}
+
+function mergePlaybackHistory(entries: PlaybackHistoryEntry[], update: PlaybackHistoryEntry) {
+  return [update, ...entries.filter((entry) => entry.path !== update.path)]
+    .sort((left, right) => right.updatedAt - left.updatedAt)
+    .slice(0, HISTORY_LIMIT);
+}
+
 function isShortcutAction(value: unknown): value is ShortcutAction {
   return typeof value === "string" && shortcutDefinitions.some((definition) => definition.action === value);
 }
@@ -299,6 +367,40 @@ function formatTimecode(value: number, totalDuration: number) {
   return `${Math.floor(totalSeconds / 60).toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 }
 
+function resumePositionWithinDuration(position: number, duration: number) {
+  if (!Number.isFinite(position) || position < MIN_RESUME_POSITION_SECONDS) {
+    return 0;
+  }
+
+  if (Number.isFinite(duration) && duration > 0) {
+    if (duration - position <= RESUME_END_MARGIN_SECONDS) {
+      return 0;
+    }
+
+    return Math.min(position, duration);
+  }
+
+  return position;
+}
+
+function resumePositionForPath(path: string, entries: PlaybackHistoryEntry[]) {
+  const entry = entries.find((item) => item.path === path);
+  return entry ? resumePositionWithinDuration(entry.position, entry.duration) : 0;
+}
+
+function formatHistoryProgress(entry: PlaybackHistoryEntry) {
+  if (!Number.isFinite(entry.duration) || entry.duration <= 0) {
+    return "未记录进度";
+  }
+
+  const resumePosition = resumePositionWithinDuration(entry.position, entry.duration);
+  if (resumePosition <= 0) {
+    return "从头播放";
+  }
+
+  return `${formatTimecode(resumePosition, entry.duration)} / ${formatTimecode(entry.duration, entry.duration)}`;
+}
+
 function formatFrameCount(value: number) {
   if (!Number.isFinite(value) || value <= 0) {
     return "0";
@@ -360,12 +462,24 @@ function snapEndOfMediaPosition(position: number, duration: number, isPlaying: b
   return clamped;
 }
 
-function mediaItemFromPath(path: string): MediaItem {
+function mediaNameFromPath(path: string) {
   const normalized = path.replace(/\\/g, "/");
+  return normalized.split("/").pop() || path;
+}
+
+function mediaItemFromPath(path: string): MediaItem {
   return {
     id: nextMediaItemId(),
-    name: normalized.split("/").pop() || path,
+    name: mediaNameFromPath(path),
     path,
+  };
+}
+
+function mediaItemFromHistory(entry: PlaybackHistoryEntry): MediaItem {
+  return {
+    id: nextMediaItemId(),
+    name: entry.name || mediaNameFromPath(entry.path),
+    path: entry.path,
   };
 }
 
@@ -398,6 +512,7 @@ function App() {
 
   const [queue, setQueue] = useState<MediaItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number | null>(null);
+  const [playbackHistory, setPlaybackHistory] = useState<PlaybackHistoryEntry[]>(readPlaybackHistory);
   const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -421,6 +536,7 @@ function App() {
   const playbackClockAnchorRef = useRef<PlaybackClockAnchor>({ position: 0, startedAt: performance.now(), playing: false, speed: 1 });
   const snapshotRequestIdRef = useRef(0);
   const chromeHideTimerRef = useRef<number | null>(null);
+  const lastHistoryWriteRef = useRef(0);
   const shortcutKeyDownRef = useRef<(event: KeyboardEvent) => void>(() => undefined);
   const nativeShortcutActionRef = useRef<(action: ShortcutAction) => void>(() => undefined);
   const settingsDialogRef = useRef<HTMLElement | null>(null);
@@ -636,10 +752,10 @@ function App() {
 
   function applyCommandSnapshot(snapshot: MpvSnapshot) {
     invalidatePendingSnapshots();
-    applySnapshot(snapshot);
+    applySnapshot(snapshot, true);
   }
 
-  function applySnapshot(snapshot: MpvSnapshot) {
+  function applySnapshot(snapshot: MpvSnapshot, forceHistoryWrite = false) {
     const snapshotPosition = Number.isFinite(snapshot.position) ? snapshot.position : 0;
     const snapshotDuration = Number.isFinite(snapshot.duration) ? snapshot.duration : 0;
     const snapshotSpeed = clampPlaybackSpeed(snapshot.speed);
@@ -664,21 +780,62 @@ function App() {
       pendingSeekRef.current = null;
     }
 
+    rememberPlaybackProgress(snapshot.path, snapshotPosition, snapshotDuration, forceHistoryWrite);
     setCurrentTime(snapshotPosition);
     anchorDisplayClock(snapshotPosition, nextIsPlaying, snapshotDuration, snapshotSpeed);
+  }
+
+  function updatePlaybackHistory(update: PlaybackHistoryEntry) {
+    setPlaybackHistory((entries) => {
+      const next = mergePlaybackHistory(entries, update);
+      writePlaybackHistory(next);
+      return next;
+    });
+  }
+
+  function rememberPlaybackProgress(path: string, position: number, snapshotDuration: number, force = false) {
+    if (!path) {
+      return;
+    }
+
+    const now = Date.now();
+    if (!force && now - lastHistoryWriteRef.current < HISTORY_WRITE_INTERVAL_MS) {
+      return;
+    }
+
+    lastHistoryWriteRef.current = now;
+    updatePlaybackHistory({
+      path,
+      name: mediaNameFromPath(path),
+      position: Number.isFinite(position) ? Math.max(0, position) : 0,
+      duration: Number.isFinite(snapshotDuration) ? Math.max(0, snapshotDuration) : 0,
+      updatedAt: now,
+    });
   }
 
   function reportPlaybackError(error: unknown) {
     setPlaybackError(error instanceof Error ? error.message : String(error));
   }
 
-  function openMpvPath(path: string) {
+  async function openMpvPath(path: string) {
     invalidatePendingSnapshots();
-    return invoke<MpvSnapshot>("mpv_overlay_open_path", { path }).then((snapshot) => {
-      pendingSeekRef.current = null;
-      setPlaybackError(null);
-      applyCommandSnapshot(snapshot);
-    });
+    const rememberedPosition = resumePositionForPath(path, playbackHistory);
+    const snapshot = await invoke<MpvSnapshot>("mpv_overlay_open_path", { path });
+    pendingSeekRef.current = null;
+    setPlaybackError(null);
+    applyCommandSnapshot(snapshot);
+
+    const resumeTarget = resumePositionWithinDuration(rememberedPosition, snapshot.duration);
+    if (resumeTarget <= 0) {
+      return;
+    }
+
+    pendingSeekRef.current = { target: resumeTarget, startedAt: performance.now() };
+    setCurrentTime(resumeTarget);
+    anchorDisplayClock(resumeTarget, false, snapshot.duration, snapshot.speed);
+    invalidatePendingSnapshots();
+    const resumedSnapshot = await invoke<MpvSnapshot>("mpv_embed_seek", { position: resumeTarget });
+    applyCommandSnapshot(resumedSnapshot);
   }
 
   function seekTarget(value: number) {
@@ -873,6 +1030,14 @@ function App() {
     openMpvPath(item.path).catch(reportPlaybackError);
   }
 
+  function openHistoryEntry(entry: PlaybackHistoryEntry) {
+    const item = mediaItemFromHistory(entry);
+    setQueue([item]);
+    setCurrentIndex(0);
+    setIsPlaylistOpen(false);
+    openMpvPath(entry.path).catch(reportPlaybackError);
+  }
+
   function toggleFullscreen() {
     runWindowCommand("window_toggle_fullscreen");
   }
@@ -1047,7 +1212,7 @@ function App() {
     { type: "item", id: "restart", label: "从头播放", icon: "restart", shortcut: shortcutBindings.restart, disabled: !media, onSelect: () => commitSeekTo(0) },
     { type: "separator", id: "playback-separator" },
     { type: "item", id: "media-options", label: "播放选项", icon: "settings", disabled: !media, onSelect: toggleMediaPanel },
-    { type: "item", id: "playlist", label: "播放列表", icon: "list", shortcut: shortcutBindings.togglePlaylist, disabled: !media && queue.length === 0, onSelect: togglePlaylist },
+    { type: "item", id: "playlist", label: "播放列表", icon: "list", shortcut: shortcutBindings.togglePlaylist, disabled: !media && queue.length === 0 && playbackHistory.length === 0, onSelect: togglePlaylist },
     { type: "item", id: "fullscreen", label: "全屏", icon: "fullscreen", shortcut: shortcutBindings.toggleFullscreen, onSelect: toggleFullscreen },
     { type: "item", id: "settings", label: "设置", icon: "settings", shortcut: shortcutBindings.openSettings, onSelect: openSettingsDialog },
     { type: "separator", id: "window-separator" },
@@ -1265,20 +1430,47 @@ function App() {
 
           {isPlaylistOpen && (
             <aside className="playlist-drawer playlist-drawer--open" aria-label="Playlist">
-              <ol>
-                {queueItems.map((item, index) => (
-                  <li key={item.id}>
-                    <button
-                      className={`playlist-item ${index === currentIndex ? "playlist-item--active" : ""}`}
-                      type="button"
-                      aria-current={index === currentIndex ? "true" : undefined}
-                      onClick={() => chooseQueueItem(index)}
-                    >
-                      <span>{item.name}</span>
-                    </button>
-                  </li>
-                ))}
-              </ol>
+              {queueItems.length > 0 && (
+                <ol>
+                  {queueItems.map((item, index) => (
+                    <li key={item.id}>
+                      <button
+                        className={`playlist-item ${index === currentIndex ? "playlist-item--active" : ""}`}
+                        type="button"
+                        aria-current={index === currentIndex ? "true" : undefined}
+                        onClick={() => chooseQueueItem(index)}
+                      >
+                        <span>{item.name}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              )}
+
+              {playbackHistory.length > 0 && (
+                <section className="history-section" aria-label="Playback history">
+                  <header>
+                    <h3>最近播放</h3>
+                    <span>{playbackHistory.length} 条</span>
+                  </header>
+                  <div className="history-list">
+                    {playbackHistory.map((entry) => (
+                      <button
+                        key={entry.path}
+                        className={`history-item ${media?.path === entry.path ? "history-item--active" : ""}`}
+                        type="button"
+                        title={entry.path}
+                        onClick={() => openHistoryEntry(entry)}
+                      >
+                        <span>{entry.name}</span>
+                        <small>{formatHistoryProgress(entry)}</small>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {queueItems.length === 0 && playbackHistory.length === 0 && <div className="playlist-empty">暂无播放记录</div>}
             </aside>
           )}
 
