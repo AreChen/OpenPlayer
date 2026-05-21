@@ -1,55 +1,208 @@
-# OpenPlayer
+<div align="center">
 
-OpenPlayer is a cross-platform, high-performance desktop media player built with Rust, Tauri v2, and React.
+<img src="docs/assets/openplayer.jpg" alt="OpenPlayer desktop media player" width="920" />
 
-The project is in its first architecture milestone. Phase 1 establishes the repository, workspace, desktop shell, and core module boundaries. Media playback, SQLite persistence, application plugins, custom themes, and bundled libmpv support are designed in `docs/superpowers/specs/2026-05-13-openplayer-design.md` and will be implemented in follow-up phases.
+# 🎬 OpenPlayer
 
-## Goals
+**高性能跨平台桌面视频播放器**<br/>
+**A high-performance cross-platform desktop media player**
 
-- Cross-platform desktop player foundation.
-- Tauri v2 shell with a polished Studio Dark React UI.
-- Rust workspace with focused crates for core services, media backends, storage, plugins, and themes.
-- Future `libmpv` backend for broad media format, subtitle, and hardware decode support.
-- MIT licensed public GitHub project.
+[![Release](https://img.shields.io/github/v/release/AreChen/OpenPlayer?style=for-the-badge&logo=github&label=Release)](https://github.com/AreChen/OpenPlayer/releases)
+[![Windows](https://img.shields.io/badge/Windows-x64-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/AreChen/OpenPlayer/releases/latest)
+[![Tauri](https://img.shields.io/badge/Tauri-v2-24C8DB?style=for-the-badge&logo=tauri&logoColor=white)](https://tauri.app/)
+[![Rust](https://img.shields.io/badge/Rust-native-CE412B?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![License](https://img.shields.io/github/license/AreChen/OpenPlayer?style=for-the-badge)](LICENSE)
 
-## Development
+[中文](#-中文) · [English](#-english) · [Download](https://github.com/AreChen/OpenPlayer/releases/latest)
 
-Prerequisites:
+</div>
 
-- Rust stable toolchain with edition 2024 support.
-- Node.js 20 or newer.
-- npm 10 or newer.
-- Tauri v2 system dependencies for your platform.
+---
 
-Install frontend dependencies:
+## 🇨🇳 中文
+
+### ✨ 项目介绍
+
+OpenPlayer 是一个使用 **Tauri v2 + Rust + React + libmpv** 构建的桌面媒体播放器，目标是在保持轻量体积的同时，提供接近原生播放器的播放性能、窗口体验和交互流畅度。
+
+当前默认播放路径是 `mpv-embed`：主 Tauri 窗口作为原生 libmpv 视频宿主，透明 overlay 窗口承载 React 控件。这样的架构让 OpenPlayer 同时拥有 mpv 的播放能力和现代前端 UI 的可定制性。
+
+### 🚀 功能亮点
+
+- ⚡ **高性能播放内核**：基于 libmpv 嵌入式播放后端，继承 mpv 的格式兼容性和播放能力。
+- 🪟 **原生视频 + 透明控件层**：视频渲染与 React 控件分离，兼顾性能、稳定性和 UI 表现。
+- ⌨️ **可靠快捷键系统**：支持可配置快捷键，并通过 Windows 原生快捷键桥接解决视频区域聚焦后的按键失效问题。
+- 🖥️ **全屏恢复体验**：按 `Enter` 进入全屏，再次按下恢复原窗口尺寸与位置。
+- 🎞️ **逐帧播放**：按 `D` 后退一帧，按 `F` 前进一帧，适合精细查看画面细节。
+- 🎚️ **平滑进度条**：播放进度和帧数显示使用平滑刷新，减少跳变和回退感。
+- 🧭 **智能界面隐藏**：播放时 5 秒无操作自动隐藏控件与标题栏，鼠标离开窗口时也会隐藏。
+- 🧩 **播放器常用工作流**：右键菜单、设置面板、自定义快捷键、时间/帧数显示切换、音量控制和播放列表入口。
+
+### 📦 下载
+
+最新 Windows x64 安装包可在 GitHub Release 下载：
+
+[![Download OpenPlayer for Windows](https://img.shields.io/badge/Download-Windows%20Installer-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/AreChen/OpenPlayer/releases/latest)
+
+当前版本：
+
+- 🏷️ `v1.0.0`
+- 🪟 `OpenPlayer_1.0.0_x64-setup.exe`
+- 🔐 SHA256：`173071771C3322A444E514AA190DE9FA9C7C3ACDB237E5C5416E4D7CF8FA536A`
+
+> 如果安装包尚未配置商业代码签名，Windows 首次安装时可能出现 SmartScreen 提示。
+
+### ⌨️ 默认快捷键
+
+| 操作 | 快捷键 |
+| --- | --- |
+| 打开媒体 | `Ctrl + O` |
+| 播放 / 暂停 | `Space` |
+| 后退 5 秒 | `←` |
+| 前进 5 秒 | `→` |
+| 上一帧 | `D` |
+| 下一帧 | `F` |
+| 全屏 / 恢复 | `Enter` |
+
+### 🛠️ 本地开发
+
+环境要求：
+
+- Rust stable toolchain
+- Node.js 20+
+- npm 10+
+- Tauri v2 对应平台系统依赖
+- Windows 构建需要本仓库中的 `vendor/native/mpv/windows-x64`
+
+安装依赖：
 
 ```powershell
 Set-Location apps/desktop
 npm install
 ```
 
-Run Rust checks:
-
-```powershell
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-```
-
-Run the frontend build:
-
-```powershell
-Set-Location apps/desktop
-npm run build
-```
-
-Run the desktop app during development:
+运行开发版：
 
 ```powershell
 Set-Location apps/desktop
 npm run tauri:dev
 ```
 
-## License
+验证项目：
 
-OpenPlayer is licensed under the MIT license. See `LICENSE`.
+```powershell
+npm run verify:shell
+npm run build
+cargo test -p openplayer-desktop
+```
+
+构建 Windows 安装包：
+
+```powershell
+Set-Location apps/desktop
+npm run tauri:build -- --config src-tauri/tauri.windows.conf.json
+```
+
+构建产物位于：
+
+```text
+target/release/bundle/nsis/
+```
+
+---
+
+## 🇺🇸 English
+
+### ✨ Overview
+
+OpenPlayer is a desktop media player built with **Tauri v2, Rust, React, and libmpv**. It aims to deliver native-level playback performance, smooth window behavior, and a polished desktop control surface while keeping the application lightweight.
+
+The default playback path is `mpv-embed`: the main Tauri window hosts the native libmpv video surface, while a transparent overlay window hosts the React controls. This split keeps playback close to native performance while preserving a flexible modern UI layer.
+
+### 🚀 Highlights
+
+- ⚡ **High-performance playback core**: Embedded libmpv backend with mpv-powered media compatibility and playback behavior.
+- 🪟 **Native video + transparent overlay**: Video rendering and React controls are separated for performance, stability, and UI flexibility.
+- ⌨️ **Reliable shortcuts**: Configurable shortcuts with a native Windows shortcut bridge for cases where the video surface owns focus.
+- 🖥️ **Fullscreen restore**: Press `Enter` to enter fullscreen, then press it again to restore the previous window size and position.
+- 🎞️ **Frame stepping**: Press `D` to step backward one frame and `F` to step forward one frame.
+- 🎚️ **Smooth progress feedback**: Playback progress and frame labels update smoothly without abrupt jumps.
+- 🧭 **Smart chrome hiding**: Controls and the title bar auto-hide after 5 seconds of inactivity while playing, and also hide when the mouse leaves the window.
+- 🧩 **Practical player workflows**: Context menu, settings panel, customizable shortcuts, time/frame display switching, volume control, and playlist entry point.
+
+### 📦 Download
+
+The latest Windows x64 installer is available from GitHub Releases:
+
+[![Download OpenPlayer for Windows](https://img.shields.io/badge/Download-Windows%20Installer-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/AreChen/OpenPlayer/releases/latest)
+
+Current release:
+
+- 🏷️ `v1.0.0`
+- 🪟 `OpenPlayer_1.0.0_x64-setup.exe`
+- 🔐 SHA256: `173071771C3322A444E514AA190DE9FA9C7C3ACDB237E5C5416E4D7CF8FA536A`
+
+> If the installer is not code-signed yet, Windows SmartScreen may show a warning on first install.
+
+### ⌨️ Default Shortcuts
+
+| Action | Shortcut |
+| --- | --- |
+| Open media | `Ctrl + O` |
+| Play / Pause | `Space` |
+| Seek backward 5 seconds | `←` |
+| Seek forward 5 seconds | `→` |
+| Previous frame | `D` |
+| Next frame | `F` |
+| Fullscreen / Restore | `Enter` |
+
+### 🛠️ Development
+
+Prerequisites:
+
+- Rust stable toolchain
+- Node.js 20+
+- npm 10+
+- Tauri v2 system dependencies for your platform
+- Windows builds use the local mpv runtime under `vendor/native/mpv/windows-x64`
+
+Install dependencies:
+
+```powershell
+Set-Location apps/desktop
+npm install
+```
+
+Run the desktop app:
+
+```powershell
+Set-Location apps/desktop
+npm run tauri:dev
+```
+
+Verify the project:
+
+```powershell
+npm run verify:shell
+npm run build
+cargo test -p openplayer-desktop
+```
+
+Build the Windows installer:
+
+```powershell
+Set-Location apps/desktop
+npm run tauri:build -- --config src-tauri/tauri.windows.conf.json
+```
+
+The installer is emitted under:
+
+```text
+target/release/bundle/nsis/
+```
+
+---
+
+## 📄 License
+
+OpenPlayer is released under the [MIT License](LICENSE).
