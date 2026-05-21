@@ -33,7 +33,7 @@ const rootLogoUrl = new URL("../../../openplayer_logo_10001000.png", import.meta
 const uiLogoUrl = new URL("../src/assets/openplayer-logo.png", import.meta.url);
 const tauriIconPngUrl = new URL("../src-tauri/icons/icon.png", import.meta.url);
 const tauriIconIcoUrl = new URL("../src-tauri/icons/icon.ico", import.meta.url);
-const embedCommandPattern = /mpv_embed_open_path|mpv_embed_play|mpv_embed_pause|mpv_embed_seek|mpv_embed_set_volume|mpv_embed_snapshot|mpv_embed_stop/;
+const embedCommandPattern = /mpv_embed_open_path|mpv_embed_play|mpv_embed_pause|mpv_embed_seek|mpv_embed_set_volume|mpv_embed_set_speed|mpv_embed_select_track|mpv_embed_add_subtitle|mpv_embed_snapshot|mpv_embed_stop/;
 
 function extractCfgFunction(source, cfgPattern, fnPattern) {
   const cfgMatch = cfgPattern.exec(source);
@@ -187,6 +187,9 @@ assert.match(appSource, /const displayTime\s*=\s*snapEndOfMediaPosition\(display
 assert.match(appSource, /Math\.floor\(displayTime \* framesPerSecond\)/, "current frame must be derived from smooth display time and fps");
 assert.match(appSource, /Math\.floor\(duration \* framesPerSecond\)/, "total frame count must be derived from duration and fps");
 assert.match(appSource, /fps:\s*number/, "frontend snapshot type must include fps metadata");
+assert.match(appSource, /speed:\s*number/, "frontend snapshot type must include playback speed metadata");
+assert.match(appSource, /type MpvTrack/, "frontend must define mpv track metadata for audio, video, and subtitles");
+assert.match(appSource, /playbackSpeedOptions/, "frontend must expose curated playback speed choices");
 assert.doesNotMatch(appSource, /mpvSmoke|libmpv|libmpv2|mpv_smoke/, "libmpv2 smoke spike must not change the HTML video frontend path");
 assert.doesNotMatch(appSource, /<video|videoRef|fileInputRef|type="file"|URL\.createObjectURL|URL\.revokeObjectURL|handleFileInputChange|onDrop=\{handleDrop\}/, "mpv-first player must not keep HTML video or browser File playback");
 assert.match(appSource, /togglePlayback/, "player shell must wire play and pause behavior");
@@ -210,6 +213,9 @@ assert.match(appSource, /frameBackward:\s*"D"/, "backward-one-frame shortcut mus
 assert.match(appSource, /frameForward:\s*"F"/, "forward-one-frame shortcut must default to F");
 assert.match(appSource, /mpv_embed_frame_step/, "forward-one-frame shortcut must use mpv frame-step");
 assert.match(appSource, /mpv_embed_frame_back_step/, "backward-one-frame shortcut must use mpv frame-back-step");
+assert.match(appSource, /mpv_embed_set_speed/, "frontend must control mpv playback speed through a backend command");
+assert.match(appSource, /mpv_embed_select_track/, "frontend must switch audio, video, and subtitle tracks through a backend command");
+assert.match(appSource, /mpv_embed_add_subtitle/, "frontend must load external subtitle files through mpv");
 assert.doesNotMatch(appSource, /closest\([^)]*button|role='button'/, "global shortcuts must not be disabled just because a player button is focused");
 assert.match(appSource, /isTextEntryShortcutTarget/, "global shortcut filtering must only suppress text-entry targets");
 assert.match(appSource, /TEXT_ENTRY_INPUT_TYPES/, "global shortcut filtering must not suppress range sliders or player buttons");
@@ -271,6 +277,8 @@ assert.match(styles, /\.stage--chrome-hidden[\s\S]*\.window-controls[\s\S]*opaci
 assert.match(styles, /\.stage--chrome-hidden[\s\S]*\.transport[\s\S]*pointer-events:\s*none/, "inactive player chrome must hide and disable transport controls");
 assert.match(styles, /\.context-menu/, "styles must include the custom context menu");
 assert.match(styles, /\.settings-dialog/, "styles must include the settings dialog");
+assert.match(styles, /\.media-panel/, "styles must include the media options panel for speed and tracks");
+assert.match(styles, /\.track-list/, "styles must include track list controls");
 assert.match(styles, /\.shortcut-row/, "styles must include shortcut editor rows");
 assert.match(styles, /\.seek-control/, "styles must include a seek progress wrapper");
 assert.match(styles, /--seek-thumb-size:\s*13px/, "seek control must define the thumb size used for rail alignment");
@@ -290,12 +298,19 @@ assert.match(mpvEmbedSource, /END_OF_MEDIA_SNAP_TOLERANCE_SECONDS/, "mpv snapsho
 assert.match(mpvEmbedSource, /position:\s*if \(ended \|\| near_end\)[\s\S]*duration/, "mpv snapshots must clamp end-of-file position to duration");
 assert.match(mpvEmbedSource, /if ended \{\s*"ended"/, "mpv snapshots must expose ended status at EOF");
 assert.match(mpvEmbedSource, /fps:\s*f64/, "mpv snapshots must serialize fps metadata");
+assert.match(mpvEmbedSource, /speed:\s*f64/, "mpv snapshots must serialize playback speed");
+assert.match(mpvEmbedSource, /pub struct MpvEmbedTrack/, "mpv snapshots must serialize track metadata");
 assert.match(mpvEmbedSource, /container-fps/, "mpv snapshots must prefer container-fps for frame-count mode");
 assert.match(mpvEmbedSource, /estimated-vf-fps/, "mpv snapshots must fall back to estimated-vf-fps when container fps is unavailable");
 assert.match(mpvEmbedSource, /mpv_embed_frame_step/, "mpv embed backend must expose a forward-one-frame command");
 assert.match(mpvEmbedSource, /mpv_embed_frame_back_step/, "mpv embed backend must expose a backward-one-frame command");
+assert.match(mpvEmbedSource, /mpv_embed_set_speed/, "mpv embed backend must expose playback speed control");
+assert.match(mpvEmbedSource, /mpv_embed_select_track/, "mpv embed backend must expose track selection");
+assert.match(mpvEmbedSource, /mpv_embed_add_subtitle/, "mpv embed backend must expose external subtitle loading");
 assert.match(mpvEmbedSource, /"frame-step"/, "mpv embed backend must call mpv frame-step for forward frame stepping");
 assert.match(mpvEmbedSource, /"frame-back-step"/, "mpv embed backend must call mpv frame-back-step for backward frame stepping");
+assert.match(mpvEmbedSource, /track-list\/count/, "mpv embed backend must read mpv track-list metadata");
+assert.match(mpvEmbedSource, /sub-add/, "mpv embed backend must use mpv sub-add for external subtitles");
 assert.match(mpvEmbedSource, /mpv_embed_snapshot[\s\S]*player\.snapshot\(0,\s*"playing"\)/, "periodic mpv snapshots must preserve playing status so smooth progress, frame labels, and Space pause keep working");
 assert.match(mpvEmbedSource, /input-default-bindings"[\s\S]*false/, "embedded mpv must not keep its own default keyboard bindings when the video background has focus");
 assert.match(mpvEmbedSource, /input-vo-keyboard"[\s\S]*false/, "embedded mpv video output must not consume OpenPlayer shortcuts");
@@ -324,7 +339,7 @@ assert.match(tauriLibSource, /WindowEvent::Focused\(true\)[\s\S]*focus_overlay_w
 assert.match(tauriLibSource, /fn schedule_overlay_sync_to_main/, "desktop backend must schedule overlay sync after asynchronous fullscreen transitions");
 assert.match(windowToggleFullscreenSource, /schedule_overlay_sync_to_main\(&app\)/, "fullscreen toggling must defer overlay sync until the main window has applied fullscreen bounds");
 assert.doesNotMatch(windowToggleFullscreenSource, /sync_overlay_to_main\(&app\)/, "fullscreen toggling must not immediately sync the overlay using stale fullscreen transition bounds");
-assert.match(mpvEmbedRunSource, /mpv_embed_frame_step[\s\S]*mpv_embed_frame_back_step/, "desktop runtime must register frame-step mpv commands");
+assert.match(mpvEmbedRunSource, /mpv_embed_frame_step[\s\S]*mpv_embed_frame_back_step[\s\S]*mpv_embed_set_speed[\s\S]*mpv_embed_select_track[\s\S]*mpv_embed_add_subtitle/, "desktop runtime must register frame, speed, track, and subtitle mpv commands");
 assert.match(tauriLibSource, /window_start_resize[\s\S]*start_resize_dragging/, "desktop backend must start resizing the main video window from overlay hit areas");
 assert.match(tauriLibSource, /window_close/, "desktop backend must keep close command");
 assert.match(tauriLibSource, /window_start_drag[\s\S]*main_window\(&app\)\?[\s\S]*start_dragging/, "backend must drag the main video window when overlay drag strip is used");

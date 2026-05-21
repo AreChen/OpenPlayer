@@ -9,6 +9,16 @@ type MediaItem = {
   path: string;
 };
 
+type MpvTrack = {
+  id: number;
+  kind: "audio" | "video" | "sub";
+  title: string | null;
+  language: string | null;
+  codec: string | null;
+  selected: boolean;
+  external: boolean;
+};
+
 type MpvSnapshot = {
   path: string;
   status: string;
@@ -17,7 +27,9 @@ type MpvSnapshot = {
   position: number;
   duration: number;
   fps: number;
+  speed: number;
   volume: number;
+  tracks: MpvTrack[];
 };
 
 type PendingSeek = {
@@ -29,9 +41,11 @@ type PlaybackClockAnchor = {
   position: number;
   startedAt: number;
   playing: boolean;
+  speed: number;
 };
 
 type TimeDisplayMode = "timecode" | "frames";
+type SelectableTrackKind = "audio" | "video" | "subtitle";
 
 type ResizeDirection = "East" | "North" | "NorthEast" | "NorthWest" | "South" | "SouthEast" | "SouthWest" | "West";
 
@@ -62,6 +76,8 @@ type ContextMenuPosition = {
 type IconName = "close" | "folder" | "fullscreen" | "list" | "maximize" | "minimize" | "pause" | "play" | "restart" | "settings" | "volume";
 
 const playableExtensions = ["3gp", "aac", "avi", "flac", "m4a", "m4v", "mkv", "mov", "mp3", "mp4", "mpeg", "mpg", "oga", "ogg", "ogv", "opus", "wav", "webm"];
+const subtitleExtensions = ["ass", "srt", "ssa", "sub", "vtt"];
+const playbackSpeedOptions = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const OPENPLAYER_SHORTCUTS_STORAGE_KEY = "openplayer.shortcuts.v3";
 const SEEK_CONFIRM_TOLERANCE_SECONDS = 0.75;
 const SEEK_SNAPSHOT_SUPPRESS_MS = 1600;
@@ -293,6 +309,25 @@ function canDisplayFrames(fps: number, duration: number) {
   return Number.isFinite(fps) && fps > 0 && Number.isFinite(duration) && duration > 0;
 }
 
+function clampPlaybackSpeed(value: number) {
+  if (!Number.isFinite(value)) {
+    return 1;
+  }
+
+  return Math.min(4, Math.max(0.25, value));
+}
+
+function formatPlaybackSpeed(value: number) {
+  const speed = clampPlaybackSpeed(value);
+  return `${Number.isInteger(speed) ? speed.toFixed(0) : speed.toFixed(2).replace(/0$/, "")}x`;
+}
+
+function trackDisplayLabel(track: MpvTrack) {
+  const title = track.title || `${track.kind.toUpperCase()} ${track.id}`;
+  const details = [track.language?.toUpperCase(), track.codec, track.external ? "外部" : null].filter(Boolean);
+  return details.length ? `${title} · ${details.join(" · ")}` : title;
+}
+
 function snapEndOfMediaPosition(position: number, duration: number, isPlaying: boolean) {
   if (!Number.isFinite(position) || !Number.isFinite(duration) || duration <= 0) {
     return Number.isFinite(position) ? Math.max(0, position) : 0;
@@ -349,6 +384,8 @@ function App() {
   const [currentTime, setCurrentTime] = useState(0);
   const [displayPosition, setDisplayPosition] = useState(0);
   const [volumeLevel, setVolumeLevel] = useState(0.82);
+  const [playbackSpeed, setPlaybackSpeedValue] = useState(1);
+  const [tracks, setTracks] = useState<MpvTrack[]>([]);
   const [framesPerSecond, setFramesPerSecond] = useState(0);
   const [timeDisplayMode, setTimeDisplayMode] = useState<TimeDisplayMode>("timecode");
   const [isPlaying, setIsPlaying] = useState(false);
@@ -357,17 +394,18 @@ function App() {
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuPosition | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isMediaPanelOpen, setIsMediaPanelOpen] = useState(false);
   const [shortcutBindings, setShortcutBindings] = useState<ShortcutBindings>(readShortcutBindings);
   const [recordingShortcutAction, setRecordingShortcutAction] = useState<ShortcutAction | null>(null);
   const pendingSeekRef = useRef<PendingSeek | null>(null);
-  const playbackClockAnchorRef = useRef<PlaybackClockAnchor>({ position: 0, startedAt: performance.now(), playing: false });
+  const playbackClockAnchorRef = useRef<PlaybackClockAnchor>({ position: 0, startedAt: performance.now(), playing: false, speed: 1 });
   const snapshotRequestIdRef = useRef(0);
   const chromeHideTimerRef = useRef<number | null>(null);
   const shortcutKeyDownRef = useRef<(event: KeyboardEvent) => void>(() => undefined);
   const nativeShortcutActionRef = useRef<(action: ShortcutAction) => void>(() => undefined);
   const settingsDialogRef = useRef<HTMLElement | null>(null);
   const media = currentIndex === null ? null : (queue[currentIndex] ?? null);
-  const isChromePinned = !media || isPlaylistOpen || isPickerOpen || playbackError !== null || contextMenu !== null || isSettingsOpen;
+  const isChromePinned = !media || isPlaylistOpen || isMediaPanelOpen || isPickerOpen || playbackError !== null || contextMenu !== null || isSettingsOpen;
 
   useEffect(() => {
     if (!media) {
@@ -400,7 +438,7 @@ function App() {
     const tick = () => {
       const anchor = playbackClockAnchorRef.current;
       const elapsedSeconds = anchor.playing ? (performance.now() - anchor.startedAt) / 1000 : 0;
-      setDisplayPosition(clampPlaybackPosition(anchor.position + elapsedSeconds, duration));
+      setDisplayPosition(clampPlaybackPosition(anchor.position + elapsedSeconds * anchor.speed, duration));
       frameId = window.requestAnimationFrame(tick);
     };
 
@@ -584,12 +622,15 @@ function App() {
   function applySnapshot(snapshot: MpvSnapshot) {
     const snapshotPosition = Number.isFinite(snapshot.position) ? snapshot.position : 0;
     const snapshotDuration = Number.isFinite(snapshot.duration) ? snapshot.duration : 0;
+    const snapshotSpeed = clampPlaybackSpeed(snapshot.speed);
     const pendingSeek = pendingSeekRef.current;
     const nextIsPlaying = !snapshot.paused && snapshot.status === "playing";
 
     setDuration(snapshotDuration);
     setIsPlaying(nextIsPlaying);
     setFramesPerSecond(Number.isFinite(snapshot.fps) && snapshot.fps > 0 ? snapshot.fps : 0);
+    setPlaybackSpeedValue(snapshotSpeed);
+    setTracks(Array.isArray(snapshot.tracks) ? snapshot.tracks : []);
     setVolumeLevel(Math.min(1, Math.max(0, snapshot.volume / 100)));
 
     if (pendingSeek) {
@@ -603,7 +644,7 @@ function App() {
     }
 
     setCurrentTime(snapshotPosition);
-    anchorDisplayClock(snapshotPosition, nextIsPlaying, snapshotDuration);
+    anchorDisplayClock(snapshotPosition, nextIsPlaying, snapshotDuration, snapshotSpeed);
   }
 
   function reportPlaybackError(error: unknown) {
@@ -637,12 +678,13 @@ function App() {
     return Math.min(upperBound, Math.max(0, value));
   }
 
-  function anchorDisplayClock(position: number, playing: boolean, upperDuration = duration) {
+  function anchorDisplayClock(position: number, playing: boolean, upperDuration = duration, speed = playbackSpeed) {
     const clampedPosition = clampPlaybackPosition(position, upperDuration);
     playbackClockAnchorRef.current = {
       position: clampedPosition,
       startedAt: performance.now(),
       playing,
+      speed: clampPlaybackSpeed(speed),
     };
     setDisplayPosition(clampedPosition);
   }
@@ -853,6 +895,10 @@ function App() {
     setIsPlaylistOpen((isOpen) => !isOpen);
   }
 
+  function toggleMediaPanel() {
+    setIsMediaPanelOpen((isOpen) => !isOpen);
+  }
+
   function seekTo(value: number) {
     const target = seekTarget(value);
     pendingSeekRef.current = { target, startedAt: performance.now() };
@@ -883,10 +929,64 @@ function App() {
       .catch(reportPlaybackError);
   }
 
+  function setPlaybackSpeed(speed: number) {
+    if (!media) {
+      return;
+    }
+
+    const nextSpeed = clampPlaybackSpeed(speed);
+    setPlaybackSpeedValue(nextSpeed);
+    anchorDisplayClock(displayTime, isPlaying, duration, nextSpeed);
+    invalidatePendingSnapshots();
+    invoke<MpvSnapshot>("mpv_embed_set_speed", { speed: nextSpeed })
+      .then(applyCommandSnapshot)
+      .catch(reportPlaybackError);
+  }
+
+  function selectTrack(kind: SelectableTrackKind, trackId: number | null) {
+    if (!media) {
+      return;
+    }
+
+    invalidatePendingSnapshots();
+    invoke<MpvSnapshot>("mpv_embed_select_track", { kind, trackId })
+      .then(applyCommandSnapshot)
+      .catch(reportPlaybackError);
+  }
+
+  async function addExternalSubtitle() {
+    if (!media || isPickerOpen) {
+      return;
+    }
+
+    setIsPickerOpen(true);
+    try {
+      const selection = await open({
+        multiple: false,
+        filters: [{ name: "Subtitles", extensions: subtitleExtensions }],
+      });
+      if (typeof selection !== "string") {
+        return;
+      }
+
+      invalidatePendingSnapshots();
+      const snapshot = await invoke<MpvSnapshot>("mpv_embed_add_subtitle", { path: selection });
+      applyCommandSnapshot(snapshot);
+    } catch (error) {
+      reportPlaybackError(error);
+    } finally {
+      setIsPickerOpen(false);
+      focusOverlayWindow();
+    }
+  }
+
   const displayTime = snapEndOfMediaPosition(displayPosition, duration, isPlaying);
   const progress = duration > 0 ? Math.min(100, Math.max(0, (displayTime / duration) * 100)) : 0;
   const progressRatio = progress / 100;
   const queueItems = queue.length ? queue : media ? [media] : [];
+  const audioTracks = tracks.filter((track) => track.kind === "audio");
+  const videoTracks = tracks.filter((track) => track.kind === "video");
+  const subtitleTracks = tracks.filter((track) => track.kind === "sub");
   const canShowFrames = canDisplayFrames(framesPerSecond, duration);
   const effectiveTimeDisplayMode: TimeDisplayMode = timeDisplayMode === "frames" && canShowFrames ? "frames" : "timecode";
   const totalFrames = canShowFrames ? Math.max(0, Math.floor(duration * framesPerSecond)) : 0;
@@ -912,12 +1012,46 @@ function App() {
     },
     { type: "item", id: "restart", label: "从头播放", icon: "restart", shortcut: shortcutBindings.restart, disabled: !media, onSelect: () => commitSeekTo(0) },
     { type: "separator", id: "playback-separator" },
+    { type: "item", id: "media-options", label: "播放选项", icon: "settings", disabled: !media, onSelect: toggleMediaPanel },
     { type: "item", id: "playlist", label: "播放列表", icon: "list", shortcut: shortcutBindings.togglePlaylist, disabled: !media && queue.length === 0, onSelect: togglePlaylist },
     { type: "item", id: "fullscreen", label: "全屏", icon: "fullscreen", shortcut: shortcutBindings.toggleFullscreen, onSelect: toggleFullscreen },
     { type: "item", id: "settings", label: "设置", icon: "settings", shortcut: shortcutBindings.openSettings, onSelect: openSettingsDialog },
     { type: "separator", id: "window-separator" },
     { type: "item", id: "close", label: "关闭窗口", icon: "close", onSelect: () => runWindowCommand("window_close") },
   ];
+
+  function renderTrackList(kind: SelectableTrackKind, label: string, items: MpvTrack[]) {
+    const hasSelected = items.some((track) => track.selected);
+
+    return (
+      <section className="media-panel-section">
+        <header>
+          <h3>{label}</h3>
+          <span>{items.length ? `${items.length} 条` : "无"}</span>
+        </header>
+        <div className="track-list">
+          {kind === "subtitle" && (
+            <button className={`track-item ${hasSelected ? "" : "track-item--active"}`} type="button" onClick={() => selectTrack(kind, null)}>
+              <span>关闭字幕</span>
+              <small>Off</small>
+            </button>
+          )}
+          {items.map((track) => (
+            <button
+              key={`${track.kind}:${track.id}`}
+              className={`track-item ${track.selected ? "track-item--active" : ""}`}
+              type="button"
+              onClick={() => selectTrack(kind, track.id)}
+            >
+              <span>{trackDisplayLabel(track)}</span>
+              <small>ID {track.id}</small>
+            </button>
+          ))}
+          {!items.length && kind !== "subtitle" && <div className="track-empty">当前媒体未报告可切换轨道</div>}
+        </div>
+      </section>
+    );
+  }
 
   return (
     <main className="app-shell" onContextMenu={openContextMenu} onKeyDown={recordUserActivity} onPointerDown={handleShellPointerDown} onPointerLeave={handleShellPointerLeave} onPointerMove={recordUserActivity}>
@@ -1021,6 +1155,9 @@ function App() {
                   onChange={(event) => setVolume(Number(event.currentTarget.value))}
                 />
               </label>
+              <button className="speed-toggle" type="button" aria-label="Open playback speed and track options" aria-expanded={isMediaPanelOpen} onClick={toggleMediaPanel} disabled={!media}>
+                {formatPlaybackSpeed(playbackSpeed)}
+              </button>
               <button
                 className={`playlist-toggle ${isPlaylistOpen ? "playlist-toggle--open" : ""}`}
                 type="button"
@@ -1035,6 +1172,43 @@ function App() {
               </button>
             </div>
           </div>
+
+          {isMediaPanelOpen && media && (
+            <aside
+              className="media-panel"
+              aria-label="Playback speed and track options"
+              onContextMenu={(event) => event.stopPropagation()}
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              <section className="media-panel-section">
+                <header>
+                  <h3>播放速度</h3>
+                  <span>{formatPlaybackSpeed(playbackSpeed)}</span>
+                </header>
+                <div className="speed-options" role="group" aria-label="Playback speed">
+                  {playbackSpeedOptions.map((speed) => (
+                    <button
+                      key={speed}
+                      className={Math.abs(playbackSpeed - speed) < 0.001 ? "speed-option speed-option--active" : "speed-option"}
+                      type="button"
+                      aria-pressed={Math.abs(playbackSpeed - speed) < 0.001}
+                      onClick={() => setPlaybackSpeed(speed)}
+                    >
+                      {formatPlaybackSpeed(speed)}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              {renderTrackList("audio", "音轨", audioTracks)}
+              {renderTrackList("video", "视频轨", videoTracks)}
+              {renderTrackList("subtitle", "字幕", subtitleTracks)}
+
+              <button className="subtitle-load" type="button" onClick={addExternalSubtitle} disabled={isPickerOpen}>
+                加载外部字幕
+              </button>
+            </aside>
+          )}
 
           {isPlaylistOpen && (
             <aside className="playlist-drawer playlist-drawer--open" aria-label="Playlist">

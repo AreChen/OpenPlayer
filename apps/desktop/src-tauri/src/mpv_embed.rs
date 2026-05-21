@@ -23,6 +23,9 @@ const END_OF_MEDIA_SNAP_TOLERANCE_SECONDS: f64 = 0.5;
 const FRAME_STEP_SETTLE_INTERVAL: Duration = Duration::from_millis(6);
 const FRAME_STEP_SETTLE_TIMEOUT: Duration = Duration::from_millis(180);
 const FRAME_STEP_PAUSE_GUARD: Duration = Duration::from_millis(350);
+const MIN_PLAYBACK_SPEED: f64 = 0.25;
+const MAX_PLAYBACK_SPEED: f64 = 4.0;
+const MAX_TRACKS: i64 = 128;
 
 #[derive(Debug, PartialEq, Eq)]
 struct VideoHostRect {
@@ -62,7 +65,21 @@ pub struct MpvEmbedSnapshot {
     position: f64,
     duration: f64,
     fps: f64,
+    speed: f64,
     volume: f64,
+    tracks: Vec<MpvEmbedTrack>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MpvEmbedTrack {
+    id: i64,
+    kind: String,
+    title: Option<String>,
+    language: Option<String>,
+    codec: Option<String>,
+    selected: bool,
+    external: bool,
 }
 
 #[tauri::command]
@@ -184,6 +201,66 @@ pub fn mpv_embed_set_volume(
 }
 
 #[tauri::command]
+pub fn mpv_embed_set_speed(
+    state: State<'_, MpvEmbedState>,
+    speed: f64,
+) -> Result<MpvEmbedSnapshot, String> {
+    let speed = normalize_playback_speed(speed)?;
+
+    with_player(&state, |player| {
+        player
+            .mpv
+            .set_property("speed", speed)
+            .map_err(|error| format!("mpv speed failed: {error}"))?;
+        Ok(player.snapshot(0, "playing"))
+    })
+}
+
+#[tauri::command]
+pub fn mpv_embed_select_track(
+    state: State<'_, MpvEmbedState>,
+    kind: String,
+    track_id: Option<i64>,
+) -> Result<MpvEmbedSnapshot, String> {
+    let property = track_property_for_kind(&kind)?;
+    if track_id.is_some_and(|id| id <= 0) {
+        return Err("invalid mpv track id".to_string());
+    }
+
+    with_player(&state, |player| {
+        if let Some(id) = track_id {
+            player
+                .mpv
+                .set_property(property, id)
+                .map_err(|error| format!("mpv track selection failed: {error}"))?;
+        } else {
+            player
+                .mpv
+                .set_property(property, "no")
+                .map_err(|error| format!("mpv track disable failed: {error}"))?;
+        }
+        Ok(player.snapshot(0, "playing"))
+    })
+}
+
+#[tauri::command]
+pub fn mpv_embed_add_subtitle(
+    state: State<'_, MpvEmbedState>,
+    path: String,
+) -> Result<MpvEmbedSnapshot, String> {
+    let path = validate_subtitle_path(&path)?;
+    let path_text = path.to_string_lossy().to_string();
+
+    with_player(&state, |player| {
+        player
+            .mpv
+            .command("sub-add", &[&path_text, "select"])
+            .map_err(|error| format!("mpv subtitle load failed: {error}"))?;
+        Ok(player.snapshot(0, "playing"))
+    })
+}
+
+#[tauri::command]
 pub fn mpv_embed_snapshot(
     state: State<'_, MpvEmbedState>,
 ) -> Result<Option<MpvEmbedSnapshot>, String> {
@@ -256,6 +333,65 @@ fn read_player_fps(mpv: &libmpv2::Mpv) -> f64 {
         .unwrap_or(0.0)
 }
 
+fn read_optional_string(mpv: &libmpv2::Mpv, property: &str) -> Option<String> {
+    mpv.get_property::<String>(property)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn read_tracks(mpv: &libmpv2::Mpv) -> Vec<MpvEmbedTrack> {
+    let count = mpv
+        .get_property::<i64>("track-list/count")
+        .unwrap_or(0)
+        .clamp(0, MAX_TRACKS);
+    let mut tracks = Vec::new();
+
+    for index in 0..count {
+        let id = match mpv.get_property::<i64>(&format!("track-list/{index}/id")) {
+            Ok(value) if value > 0 => value,
+            _ => continue,
+        };
+        let kind = match mpv.get_property::<String>(&format!("track-list/{index}/type")) {
+            Ok(value) if matches!(value.as_str(), "audio" | "video" | "sub") => value,
+            _ => continue,
+        };
+
+        tracks.push(MpvEmbedTrack {
+            id,
+            kind,
+            title: read_optional_string(mpv, &format!("track-list/{index}/title")),
+            language: read_optional_string(mpv, &format!("track-list/{index}/lang")),
+            codec: read_optional_string(mpv, &format!("track-list/{index}/codec")),
+            selected: mpv
+                .get_property::<bool>(&format!("track-list/{index}/selected"))
+                .unwrap_or(false),
+            external: mpv
+                .get_property::<bool>(&format!("track-list/{index}/external"))
+                .unwrap_or(false),
+        });
+    }
+
+    tracks
+}
+
+fn normalize_playback_speed(speed: f64) -> Result<f64, String> {
+    if !speed.is_finite() {
+        return Err("invalid mpv playback speed".to_string());
+    }
+
+    Ok(speed.clamp(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED))
+}
+
+fn track_property_for_kind(kind: &str) -> Result<&'static str, String> {
+    match kind {
+        "audio" => Ok("aid"),
+        "video" => Ok("vid"),
+        "subtitle" | "sub" => Ok("sid"),
+        _ => Err("invalid mpv track kind".to_string()),
+    }
+}
+
 impl MpvEmbedPlayer {
     fn snapshot(&mut self, hwnd: i64, fallback_status: &str) -> MpvEmbedSnapshot {
         let _ = self.host.resize();
@@ -276,6 +412,8 @@ impl MpvEmbedPlayer {
         let position = self.mpv.get_property::<f64>("time-pos").unwrap_or(0.0);
         let duration = self.mpv.get_property::<f64>("duration").unwrap_or(0.0);
         let fps = read_player_fps(&self.mpv);
+        let speed = self.mpv.get_property::<f64>("speed").unwrap_or(1.0);
+        let tracks = read_tracks(&self.mpv);
         let percent_pos = self.mpv.get_property::<f64>("percent-pos").unwrap_or(0.0);
         let near_end = duration.is_finite()
             && duration > 0.0
@@ -304,7 +442,9 @@ impl MpvEmbedPlayer {
             },
             duration,
             fps,
+            speed,
             volume: self.volume,
+            tracks,
         }
     }
 
@@ -459,6 +599,22 @@ fn validate_media_path(path: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+fn validate_subtitle_path(path: &str) -> Result<PathBuf, String> {
+    let path = validate_media_path(path)?;
+    let extension = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase);
+    if matches!(
+        extension.as_deref(),
+        Some("srt" | "ass" | "ssa" | "vtt" | "sub")
+    ) {
+        Ok(path)
+    } else {
+        Err(format!("unsupported subtitle file: {}", path.display()))
+    }
+}
+
 fn window_hwnd(window: &impl HasWindowHandle) -> Result<i64, String> {
     let handle = window
         .window_handle()
@@ -503,6 +659,29 @@ mod tests {
 
         assert_eq!(encoded.last(), Some(&0));
         assert_eq!(encoded[..6], [83, 84, 65, 84, 73, 67]);
+    }
+
+    #[test]
+    fn clamps_supported_playback_speed_range() {
+        assert_eq!(normalize_playback_speed(0.1).unwrap(), MIN_PLAYBACK_SPEED);
+        assert_eq!(normalize_playback_speed(1.25).unwrap(), 1.25);
+        assert_eq!(normalize_playback_speed(8.0).unwrap(), MAX_PLAYBACK_SPEED);
+        assert_eq!(
+            normalize_playback_speed(f64::NAN).expect_err("nan should be rejected"),
+            "invalid mpv playback speed"
+        );
+    }
+
+    #[test]
+    fn maps_track_kinds_to_mpv_properties() {
+        assert_eq!(track_property_for_kind("audio").unwrap(), "aid");
+        assert_eq!(track_property_for_kind("video").unwrap(), "vid");
+        assert_eq!(track_property_for_kind("subtitle").unwrap(), "sid");
+        assert_eq!(track_property_for_kind("sub").unwrap(), "sid");
+        assert_eq!(
+            track_property_for_kind("chapter").expect_err("unsupported kinds should be rejected"),
+            "invalid mpv track kind"
+        );
     }
 
     #[test]
