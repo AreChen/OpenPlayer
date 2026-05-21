@@ -562,7 +562,8 @@ input:focus-visible {
 }
 
 .speed-options,
-.track-list {
+.track-list,
+.subtitle-delay-controls {
   display: grid;
   gap: 6px;
 }
@@ -573,6 +574,7 @@ input:focus-visible {
 
 .speed-option,
 .track-item,
+.subtitle-delay-controls button,
 .subtitle-load {
   border: 1px solid rgba(236, 231, 221, 0.1);
   border-radius: 8px;
@@ -590,6 +592,7 @@ input:focus-visible {
 .speed-option--active,
 .track-item:hover,
 .track-item--active,
+.subtitle-delay-controls button:hover:not(:disabled),
 .subtitle-load:hover:not(:disabled) {
   border-color: rgba(202, 160, 93, 0.42);
   background: rgba(202, 160, 93, 0.14);
@@ -627,6 +630,33 @@ input:focus-visible {
   border: 1px dashed rgba(236, 231, 221, 0.12);
   border-radius: 8px;
   padding: 10px;
+}
+
+.subtitle-delay-controls {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(64px, auto);
+  align-items: center;
+}
+
+.subtitle-delay-controls button {
+  min-height: 32px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.subtitle-delay-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.subtitle-delay-controls output {
+  display: grid;
+  min-height: 32px;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(236, 231, 221, 0.07);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .subtitle-load {

@@ -49,7 +49,8 @@ mod mpv_embed;
 use mpv_embed::{
     MpvEmbedSnapshot, MpvEmbedState, mpv_embed_add_subtitle, mpv_embed_frame_back_step,
     mpv_embed_frame_step, mpv_embed_pause, mpv_embed_play, mpv_embed_seek, mpv_embed_select_track,
-    mpv_embed_set_speed, mpv_embed_set_volume, mpv_embed_snapshot, mpv_embed_stop,
+    mpv_embed_set_speed, mpv_embed_set_subtitle_delay, mpv_embed_set_volume, mpv_embed_snapshot,
+    mpv_embed_stop,
 };
 
 #[cfg(feature = "mpv-smoke")]
@@ -626,6 +627,7 @@ pub fn run() {
             mpv_embed_frame_step,
             mpv_embed_frame_back_step,
             mpv_embed_set_speed,
+            mpv_embed_set_subtitle_delay,
             mpv_embed_select_track,
             mpv_embed_add_subtitle,
             mpv_embed_set_volume,

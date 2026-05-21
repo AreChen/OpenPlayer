@@ -1,5 +1,6 @@
 use std::{
-    path::PathBuf,
+    fs,
+    path::{Path, PathBuf},
     sync::Mutex,
     thread,
     time::{Duration, Instant},
@@ -25,7 +26,10 @@ const FRAME_STEP_SETTLE_TIMEOUT: Duration = Duration::from_millis(180);
 const FRAME_STEP_PAUSE_GUARD: Duration = Duration::from_millis(350);
 const MIN_PLAYBACK_SPEED: f64 = 0.25;
 const MAX_PLAYBACK_SPEED: f64 = 4.0;
+const MIN_SUBTITLE_DELAY: f64 = -10.0;
+const MAX_SUBTITLE_DELAY: f64 = 10.0;
 const MAX_TRACKS: i64 = 128;
+const SUPPORTED_SUBTITLE_EXTENSIONS: &[&str] = &["ass", "srt", "ssa", "sub", "vtt"];
 
 #[derive(Debug, PartialEq, Eq)]
 struct VideoHostRect {
@@ -66,6 +70,7 @@ pub struct MpvEmbedSnapshot {
     duration: f64,
     fps: f64,
     speed: f64,
+    subtitle_delay: f64,
     volume: f64,
     tracks: Vec<MpvEmbedTrack>,
 }
@@ -106,6 +111,7 @@ pub fn open_path_for_window(
 
     mpv.command("loadfile", &[&path_text, "replace"])
         .map_err(|error| format!("mpv loadfile failed: {error}"))?;
+    load_sidecar_subtitles(&mpv, &path);
 
     let mut player = state
         .player
@@ -212,6 +218,22 @@ pub fn mpv_embed_set_speed(
             .mpv
             .set_property("speed", speed)
             .map_err(|error| format!("mpv speed failed: {error}"))?;
+        Ok(player.snapshot(0, "playing"))
+    })
+}
+
+#[tauri::command]
+pub fn mpv_embed_set_subtitle_delay(
+    state: State<'_, MpvEmbedState>,
+    delay: f64,
+) -> Result<MpvEmbedSnapshot, String> {
+    let delay = normalize_subtitle_delay(delay)?;
+
+    with_player(&state, |player| {
+        player
+            .mpv
+            .set_property("sub-delay", delay)
+            .map_err(|error| format!("mpv subtitle delay failed: {error}"))?;
         Ok(player.snapshot(0, "playing"))
     })
 }
@@ -383,6 +405,14 @@ fn normalize_playback_speed(speed: f64) -> Result<f64, String> {
     Ok(speed.clamp(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED))
 }
 
+fn normalize_subtitle_delay(delay: f64) -> Result<f64, String> {
+    if !delay.is_finite() {
+        return Err("invalid mpv subtitle delay".to_string());
+    }
+
+    Ok(delay.clamp(MIN_SUBTITLE_DELAY, MAX_SUBTITLE_DELAY))
+}
+
 fn track_property_for_kind(kind: &str) -> Result<&'static str, String> {
     match kind {
         "audio" => Ok("aid"),
@@ -413,6 +443,7 @@ impl MpvEmbedPlayer {
         let duration = self.mpv.get_property::<f64>("duration").unwrap_or(0.0);
         let fps = read_player_fps(&self.mpv);
         let speed = self.mpv.get_property::<f64>("speed").unwrap_or(1.0);
+        let subtitle_delay = self.mpv.get_property::<f64>("sub-delay").unwrap_or(0.0);
         let tracks = read_tracks(&self.mpv);
         let percent_pos = self.mpv.get_property::<f64>("percent-pos").unwrap_or(0.0);
         let near_end = duration.is_finite()
@@ -443,6 +474,11 @@ impl MpvEmbedPlayer {
             duration,
             fps,
             speed,
+            subtitle_delay: if subtitle_delay.is_finite() {
+                subtitle_delay
+            } else {
+                0.0
+            },
             volume: self.volume,
             tracks,
         }
@@ -601,17 +637,83 @@ fn validate_media_path(path: &str) -> Result<PathBuf, String> {
 
 fn validate_subtitle_path(path: &str) -> Result<PathBuf, String> {
     let path = validate_media_path(path)?;
-    let extension = path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .map(str::to_ascii_lowercase);
-    if matches!(
-        extension.as_deref(),
-        Some("srt" | "ass" | "ssa" | "vtt" | "sub")
-    ) {
+    if is_supported_subtitle_path(&path) {
         Ok(path)
     } else {
         Err(format!("unsupported subtitle file: {}", path.display()))
+    }
+}
+
+fn is_supported_subtitle_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| {
+            SUPPORTED_SUBTITLE_EXTENSIONS
+                .iter()
+                .any(|supported| extension.eq_ignore_ascii_case(supported))
+        })
+        .unwrap_or(false)
+}
+
+fn discover_sidecar_subtitles(media_path: &Path) -> Vec<PathBuf> {
+    let Some(parent) = media_path.parent() else {
+        return Vec::new();
+    };
+    let Some(media_stem) = media_path.file_stem().and_then(|stem| stem.to_str()) else {
+        return Vec::new();
+    };
+    let Ok(entries) = fs::read_dir(parent) else {
+        return Vec::new();
+    };
+
+    let mut subtitles: Vec<PathBuf> = entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file())
+        .filter(|path| is_supported_subtitle_path(path))
+        .filter(|path| is_matching_sidecar_stem(path, media_stem))
+        .collect();
+
+    subtitles.sort_by(|left, right| {
+        sidecar_sort_key(left, media_stem).cmp(&sidecar_sort_key(right, media_stem))
+    });
+    subtitles
+}
+
+fn is_matching_sidecar_stem(path: &Path, media_stem: &str) -> bool {
+    let Some(candidate_stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
+        return false;
+    };
+    if candidate_stem == media_stem {
+        return true;
+    }
+
+    candidate_stem
+        .strip_prefix(media_stem)
+        .and_then(|suffix| suffix.chars().next())
+        .is_some_and(|separator| matches!(separator, '.' | '-' | '_'))
+}
+
+fn sidecar_sort_key(path: &Path, media_stem: &str) -> (u8, String) {
+    let file_stem = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or_default();
+    let exact_rank = if file_stem == media_stem { 0 } else { 1 };
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    (exact_rank, file_name)
+}
+
+fn load_sidecar_subtitles(mpv: &libmpv2::Mpv, media_path: &Path) {
+    for (index, subtitle) in discover_sidecar_subtitles(media_path).iter().enumerate() {
+        let subtitle_text = subtitle.to_string_lossy();
+        let mode = if index == 0 { "select" } else { "auto" };
+        let _ = mpv.command("sub-add", &[subtitle_text.as_ref(), mode]);
     }
 }
 
@@ -670,6 +772,54 @@ mod tests {
             normalize_playback_speed(f64::NAN).expect_err("nan should be rejected"),
             "invalid mpv playback speed"
         );
+    }
+
+    #[test]
+    fn clamps_supported_subtitle_delay_range() {
+        assert_eq!(normalize_subtitle_delay(-30.0).unwrap(), MIN_SUBTITLE_DELAY);
+        assert_eq!(normalize_subtitle_delay(0.15).unwrap(), 0.15);
+        assert_eq!(normalize_subtitle_delay(45.0).unwrap(), MAX_SUBTITLE_DELAY);
+        assert_eq!(
+            normalize_subtitle_delay(f64::NAN).expect_err("nan should be rejected"),
+            "invalid mpv subtitle delay"
+        );
+    }
+
+    #[test]
+    fn discovers_same_stem_sidecar_subtitles() {
+        let directory = std::env::temp_dir().join(format!(
+            "openplayer-sidecars-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&directory).expect("temp subtitle directory should be created");
+
+        let media = directory.join("episode.mkv");
+        std::fs::write(&media, b"media").expect("media fixture should be written");
+        std::fs::write(directory.join("episode.srt"), b"subtitle")
+            .expect("subtitle fixture should be written");
+        std::fs::write(directory.join("episode.zh-CN.ass"), b"subtitle")
+            .expect("language subtitle fixture should be written");
+        std::fs::write(directory.join("episode.notes.txt"), b"notes")
+            .expect("non-subtitle fixture should be written");
+        std::fs::write(directory.join("other.srt"), b"subtitle")
+            .expect("unrelated subtitle fixture should be written");
+
+        let names: Vec<String> = discover_sidecar_subtitles(&media)
+            .into_iter()
+            .map(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .expect("subtitle file name should be utf-8")
+                    .to_string()
+            })
+            .collect();
+
+        let _ = std::fs::remove_dir_all(&directory);
+        assert_eq!(names, vec!["episode.srt", "episode.zh-CN.ass"]);
     }
 
     #[test]

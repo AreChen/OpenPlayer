@@ -28,6 +28,7 @@ type MpvSnapshot = {
   duration: number;
   fps: number;
   speed: number;
+  subtitleDelay: number;
   volume: number;
   tracks: MpvTrack[];
 };
@@ -87,6 +88,7 @@ const CONTEXT_MENU_WIDTH = 236;
 const CONTEXT_MENU_HEIGHT = 336;
 const DEFAULT_SEEK_STEP_SECONDS = 5;
 const DEFAULT_VOLUME_STEP = 0.05;
+const SUBTITLE_DELAY_STEP_SECONDS = 0.1;
 const TEXT_ENTRY_INPUT_TYPES = new Set(["", "date", "datetime-local", "email", "month", "number", "password", "search", "tel", "text", "time", "url", "week"]);
 const resizeRegions: Array<{ className: string; direction: ResizeDirection }> = [
   { className: "resize-region--north", direction: "North" },
@@ -322,6 +324,23 @@ function formatPlaybackSpeed(value: number) {
   return `${Number.isInteger(speed) ? speed.toFixed(0) : speed.toFixed(2).replace(/0$/, "")}x`;
 }
 
+function clampSubtitleDelay(value: number) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.min(10, Math.max(-10, value));
+}
+
+function formatSubtitleDelay(value: number) {
+  const delay = clampSubtitleDelay(value);
+  if (Math.abs(delay) < 0.005) {
+    return "0.0s";
+  }
+
+  return `${delay > 0 ? "+" : ""}${delay.toFixed(1)}s`;
+}
+
 function trackDisplayLabel(track: MpvTrack) {
   const title = track.title || `${track.kind.toUpperCase()} ${track.id}`;
   const details = [track.language?.toUpperCase(), track.codec, track.external ? "外部" : null].filter(Boolean);
@@ -385,6 +404,7 @@ function App() {
   const [displayPosition, setDisplayPosition] = useState(0);
   const [volumeLevel, setVolumeLevel] = useState(0.82);
   const [playbackSpeed, setPlaybackSpeedValue] = useState(1);
+  const [subtitleDelay, setSubtitleDelayValue] = useState(0);
   const [tracks, setTracks] = useState<MpvTrack[]>([]);
   const [framesPerSecond, setFramesPerSecond] = useState(0);
   const [timeDisplayMode, setTimeDisplayMode] = useState<TimeDisplayMode>("timecode");
@@ -630,6 +650,7 @@ function App() {
     setIsPlaying(nextIsPlaying);
     setFramesPerSecond(Number.isFinite(snapshot.fps) && snapshot.fps > 0 ? snapshot.fps : 0);
     setPlaybackSpeedValue(snapshotSpeed);
+    setSubtitleDelayValue(clampSubtitleDelay(snapshot.subtitleDelay));
     setTracks(Array.isArray(snapshot.tracks) ? snapshot.tracks : []);
     setVolumeLevel(Math.min(1, Math.max(0, snapshot.volume / 100)));
 
@@ -943,6 +964,19 @@ function App() {
       .catch(reportPlaybackError);
   }
 
+  function setSubtitleDelay(delay: number) {
+    if (!media) {
+      return;
+    }
+
+    const nextDelay = clampSubtitleDelay(delay);
+    setSubtitleDelayValue(nextDelay);
+    invalidatePendingSnapshots();
+    invoke<MpvSnapshot>("mpv_embed_set_subtitle_delay", { delay: nextDelay })
+      .then(applyCommandSnapshot)
+      .catch(reportPlaybackError);
+  }
+
   function selectTrack(kind: SelectableTrackKind, trackId: number | null) {
     if (!media) {
       return;
@@ -1203,6 +1237,25 @@ function App() {
               {renderTrackList("audio", "音轨", audioTracks)}
               {renderTrackList("video", "视频轨", videoTracks)}
               {renderTrackList("subtitle", "字幕", subtitleTracks)}
+
+              <section className="media-panel-section subtitle-delay">
+                <header>
+                  <h3>字幕同步</h3>
+                  <span>{formatSubtitleDelay(subtitleDelay)}</span>
+                </header>
+                <div className="subtitle-delay-controls">
+                  <button type="button" onClick={() => setSubtitleDelay(subtitleDelay - SUBTITLE_DELAY_STEP_SECONDS)}>
+                    -0.1s
+                  </button>
+                  <output>{formatSubtitleDelay(subtitleDelay)}</output>
+                  <button type="button" onClick={() => setSubtitleDelay(subtitleDelay + SUBTITLE_DELAY_STEP_SECONDS)}>
+                    +0.1s
+                  </button>
+                  <button type="button" onClick={() => setSubtitleDelay(0)} disabled={Math.abs(subtitleDelay) < 0.005}>
+                    重置
+                  </button>
+                </div>
+              </section>
 
               <button className="subtitle-load" type="button" onClick={addExternalSubtitle} disabled={isPickerOpen}>
                 加载外部字幕
