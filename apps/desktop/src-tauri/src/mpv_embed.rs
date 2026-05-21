@@ -1,4 +1,9 @@
-use std::{path::PathBuf, sync::Mutex};
+use std::{
+    path::PathBuf,
+    sync::Mutex,
+    thread,
+    time::{Duration, Instant},
+};
 
 use libmpv2::{events::Event, mpv_end_file_reason};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -15,6 +20,9 @@ use windows_sys::Win32::{
 const VIDEO_HOST_TOP_RESERVE: i32 = 0;
 const VIDEO_HOST_BOTTOM_RESERVE: i32 = 0;
 const END_OF_MEDIA_SNAP_TOLERANCE_SECONDS: f64 = 0.5;
+const FRAME_STEP_SETTLE_INTERVAL: Duration = Duration::from_millis(6);
+const FRAME_STEP_SETTLE_TIMEOUT: Duration = Duration::from_millis(180);
+const FRAME_STEP_PAUSE_GUARD: Duration = Duration::from_millis(350);
 
 #[derive(Debug, PartialEq, Eq)]
 struct VideoHostRect {
@@ -35,6 +43,7 @@ struct MpvEmbedPlayer {
     path: String,
     volume: f64,
     ended: bool,
+    force_paused_until: Option<Instant>,
 }
 
 struct MpvVideoHost {
@@ -91,6 +100,7 @@ pub fn open_path_for_window(
         path: path_text,
         volume: 82.0,
         ended: false,
+        force_paused_until: None,
     };
     let snapshot = next_player.snapshot(hwnd, "playing");
     *player = Some(next_player);
@@ -101,6 +111,7 @@ pub fn open_path_for_window(
 #[tauri::command]
 pub fn mpv_embed_play(state: State<'_, MpvEmbedState>) -> Result<MpvEmbedSnapshot, String> {
     with_player(&state, |player| {
+        player.force_paused_until = None;
         player
             .mpv
             .set_property("pause", false)
@@ -112,6 +123,7 @@ pub fn mpv_embed_play(state: State<'_, MpvEmbedState>) -> Result<MpvEmbedSnapsho
 #[tauri::command]
 pub fn mpv_embed_pause(state: State<'_, MpvEmbedState>) -> Result<MpvEmbedSnapshot, String> {
     with_player(&state, |player| {
+        player.force_paused_until = None;
         player
             .mpv
             .set_property("pause", true)
@@ -130,12 +142,25 @@ pub fn mpv_embed_seek(
     }
 
     with_player(&state, |player| {
+        player.force_paused_until = None;
         player
             .mpv
             .command("seek", &[&position.to_string(), "absolute"])
             .map_err(|error| format!("mpv seek failed: {error}"))?;
         Ok(player.snapshot(0, "playing"))
     })
+}
+
+#[tauri::command]
+pub fn mpv_embed_frame_step(state: State<'_, MpvEmbedState>) -> Result<MpvEmbedSnapshot, String> {
+    frame_step(&state, "frame-step")
+}
+
+#[tauri::command]
+pub fn mpv_embed_frame_back_step(
+    state: State<'_, MpvEmbedState>,
+) -> Result<MpvEmbedSnapshot, String> {
+    frame_step(&state, "frame-back-step")
 }
 
 #[tauri::command]
@@ -167,7 +192,7 @@ pub fn mpv_embed_snapshot(
         .lock()
         .map_err(|_| "mpv embed state lock failed".to_string())?;
 
-    Ok(player.as_mut().map(|player| player.snapshot(0, "ready")))
+    Ok(player.as_mut().map(|player| player.snapshot(0, "playing")))
 }
 
 fn with_player<T>(
@@ -183,6 +208,32 @@ fn with_player<T>(
         .ok_or_else(|| "mpv has no loaded media".to_string())?;
 
     callback(player)
+}
+
+fn frame_step(state: &MpvEmbedState, command: &str) -> Result<MpvEmbedSnapshot, String> {
+    with_player(state, |player| {
+        player
+            .mpv
+            .command(command, &[])
+            .map_err(|error| format!("mpv {command} failed: {error}"))?;
+        player.force_paused_until = Some(Instant::now() + FRAME_STEP_PAUSE_GUARD);
+        settle_frame_step_pause(&player.mpv)?;
+        Ok(player.snapshot(0, "paused"))
+    })
+}
+
+fn settle_frame_step_pause(mpv: &libmpv2::Mpv) -> Result<(), String> {
+    thread::sleep(FRAME_STEP_SETTLE_INTERVAL);
+    let deadline = Instant::now() + FRAME_STEP_SETTLE_TIMEOUT;
+    while Instant::now() < deadline {
+        if mpv.get_property::<bool>("pause").unwrap_or(false) {
+            return Ok(());
+        }
+        thread::sleep(FRAME_STEP_SETTLE_INTERVAL);
+    }
+
+    mpv.set_property("pause", true)
+        .map_err(|error| format!("mpv frame-step pause settle failed: {error}"))
 }
 
 fn valid_fps(value: f64) -> Option<f64> {
@@ -209,7 +260,14 @@ impl MpvEmbedPlayer {
     fn snapshot(&mut self, hwnd: i64, fallback_status: &str) -> MpvEmbedSnapshot {
         let _ = self.host.resize();
         self.drain_events();
-        let paused = self.mpv.get_property::<bool>("pause").unwrap_or(false);
+        let raw_paused = self.mpv.get_property::<bool>("pause").unwrap_or(false);
+        let pause_guard_active = self
+            .force_paused_until
+            .is_some_and(|deadline| Instant::now() < deadline);
+        if !pause_guard_active {
+            self.force_paused_until = None;
+        }
+        let paused = raw_paused || pause_guard_active;
         let ended = self.ended
             || self
                 .mpv
@@ -302,11 +360,11 @@ fn create_embed_player(hwnd: i64) -> Result<libmpv2::Mpv, String> {
     libmpv2::Mpv::with_initializer(|initializer| {
         initializer.set_option("wid", hwnd)?;
         initializer.set_option("hwdec", "auto-safe")?;
-        initializer.set_option("input-default-bindings", true)?;
-        initializer.set_option("input-vo-keyboard", true)?;
+        initializer.set_option("input-default-bindings", false)?;
+        initializer.set_option("input-vo-keyboard", false)?;
         initializer.set_option("keep-open", true)?;
         initializer.set_option("load-scripts", true)?;
-        initializer.set_option("osc", true)?;
+        initializer.set_option("osc", false)?;
         Ok(())
     })
     .map_err(|error| format!("mpv embed init failed: {error}"))

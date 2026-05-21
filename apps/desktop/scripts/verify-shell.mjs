@@ -89,6 +89,10 @@ const mpvEmbedRunMatch = /#\[cfg\(\s*feature\s*=\s*"mpv-embed"\s*\)\]\s*pub\s+fn
 const mpvEmbedRunSource = mpvEmbedRunMatch
   ? extractFunctionAt(tauriLibSource, mpvEmbedRunMatch.index + mpvEmbedRunMatch[0].lastIndexOf("pub"))
   : "";
+const windowToggleFullscreenMatch = /#\[tauri::command\]\s*fn\s+window_toggle_fullscreen\s*\(/.exec(tauriLibSource);
+const windowToggleFullscreenSource = windowToggleFullscreenMatch
+  ? extractFunctionAt(tauriLibSource, windowToggleFullscreenMatch.index + windowToggleFullscreenMatch[0].lastIndexOf("fn"))
+  : "";
 
 const [mainWindow] = config.app.windows;
 
@@ -124,7 +128,7 @@ assert.ok(packageJson.dependencies["@tauri-apps/plugin-dialog"], "mpv path playb
 assert.match(tauriCargoToml, /default = \["mpv-embed"\]/, "desktop default feature must use the stable mpv embed overlay backend");
 assert.match(ciWorkflow, /libmpv-dev/, "Linux CI must install libmpv-dev so default mpv-embed tests can link libmpv");
 assert.match(tauriCargoToml, /mpv-embed/, "Cargo features must define mpv-embed");
-assert.doesNotMatch(tauriCargoToml, /mpv-render|libmpv2-sys|Win32_Graphics_OpenGL|Win32_System_LibraryLoader/, "desktop crate must not keep the failed mpv render backend or its render-only dependencies");
+assert.doesNotMatch(tauriCargoToml, /mpv-render|libmpv2-sys|Win32_Graphics_OpenGL/, "desktop crate must not keep the failed mpv render backend or its render-only dependencies");
 assert.doesNotMatch(tauriBuildScript, /CARGO_FEATURE_MPV_RENDER/, "build script must not keep the removed mpv-render feature gate");
 assert.match(tauriBuildScript, /CARGO_FEATURE_MPV_SMOKE[\s\S]*CARGO_FEATURE_MPV_EMBED/, "build script must only add mpv link paths when an mpv feature is enabled");
 assert.match(tauriBuildScript, /vendor[\\/]native[\\/]mpv[\\/]windows-x64/, "build script must point at the vendored Windows mpv directory");
@@ -169,6 +173,34 @@ assert.match(appSource, /fps:\s*number/, "frontend snapshot type must include fp
 assert.doesNotMatch(appSource, /mpvSmoke|libmpv|libmpv2|mpv_smoke/, "libmpv2 smoke spike must not change the HTML video frontend path");
 assert.doesNotMatch(appSource, /<video|videoRef|fileInputRef|type="file"|URL\.createObjectURL|URL\.revokeObjectURL|handleFileInputChange|onDrop=\{handleDrop\}/, "mpv-first player must not keep HTML video or browser File playback");
 assert.match(appSource, /togglePlayback/, "player shell must wire play and pause behavior");
+assert.match(appSource, /type ShortcutAction/, "player shell must define configurable shortcut actions");
+assert.match(appSource, /defaultShortcutBindings/, "player shell must define default shortcut bindings");
+assert.match(appSource, /OPENPLAYER_SHORTCUTS_STORAGE_KEY/, "shortcut settings must persist through localStorage");
+assert.match(appSource, /openplayer\.shortcuts\.v3/, "shortcut storage version must reset stale D/F and fullscreen bindings");
+assert.doesNotMatch(appSource, /openplayer\.shortcuts\.v2/, "shortcut storage must not keep the stale v2 bindings");
+assert.match(appSource, /keyboardEventToChord/, "shortcut settings must normalize keyboard events into configurable chords");
+assert.match(appSource, /performShortcutAction/, "global shortcut dispatch must route configured chords to player commands");
+assert.match(appSource, /recordingShortcutAction/, "settings must support recording a replacement shortcut chord");
+assert.match(appSource, /shortcutKeyDownRef/, "global keydown dispatch must use a stable ref so playback progress animation does not reinstall shortcut listeners");
+assert.match(appSource, /window\.addEventListener\("keydown",\s*handleGlobalKeyDown,\s*\{\s*capture:\s*true\s*\}\);\s*return[\s\S]*window\.removeEventListener\("keydown",\s*handleGlobalKeyDown,\s*\{\s*capture:\s*true\s*\}\);\s*},\s*\[\]\)/, "global keydown listener must be installed once and read current state through refs");
+assert.match(appSource, /openplayer-native-shortcut/, "frontend must listen for native shortcut events when the overlay webview is not focused");
+assert.match(appSource, /window_update_shortcuts/, "frontend must mirror custom shortcut bindings to the native shortcut bridge");
+assert.match(appSource, /window_set_shortcuts_enabled/, "frontend must disable native shortcut dispatch while menus or shortcut capture are active");
+assert.match(appSource, /frameForward/, "player shell must define a configurable forward-one-frame shortcut action");
+assert.match(appSource, /frameBackward/, "player shell must define a configurable backward-one-frame shortcut action");
+assert.match(appSource, /toggleFullscreen:\s*"Enter"/, "fullscreen shortcut must default to Enter");
+assert.match(appSource, /frameBackward:\s*"D"/, "backward-one-frame shortcut must default to D");
+assert.match(appSource, /frameForward:\s*"F"/, "forward-one-frame shortcut must default to F");
+assert.match(appSource, /mpv_embed_frame_step/, "forward-one-frame shortcut must use mpv frame-step");
+assert.match(appSource, /mpv_embed_frame_back_step/, "backward-one-frame shortcut must use mpv frame-back-step");
+assert.doesNotMatch(appSource, /closest\([^)]*button|role='button'/, "global shortcuts must not be disabled just because a player button is focused");
+assert.match(appSource, /isTextEntryShortcutTarget/, "global shortcut filtering must only suppress text-entry targets");
+assert.match(appSource, /TEXT_ENTRY_INPUT_TYPES/, "global shortcut filtering must not suppress range sliders or player buttons");
+assert.match(appSource, /releaseShortcutFocusTarget/, "global shortcuts must release non-text control focus before dispatching player actions");
+assert.match(appSource, /window_focus_overlay/, "frontend must be able to restore overlay focus after native dialogs or window commands");
+assert.match(appSource, /context-menu/, "overlay must render a custom right-click context menu");
+assert.match(appSource, /settings-dialog/, "overlay must render a settings dialog for player preferences");
+assert.match(appSource, /onContextMenu=\{openContextMenu\}/, "player surface must open the custom context menu on right click");
 assert.match(appSource, /window_toggle_fullscreen/, "overlay UI must route fullscreen through a backend command targeting the main video window");
 assert.doesNotMatch(appSource, /getCurrentWindow\(\)[\s\S]*setFullscreen/, "overlay UI must not fullscreen the overlay window itself");
 assert.match(appSource, /event\.button\s*===\s*1[\s\S]*window_toggle_fullscreen/, "non-control surface must toggle fullscreen with the middle mouse button");
@@ -190,13 +222,20 @@ assert.match(appSource, /SEEK_SNAPSHOT_SUPPRESS_MS/, "seek UI must bound stale s
 assert.match(appSource, /AUTO_HIDE_CONTROLS_MS\s*=\s*5000/, "overlay chrome must hide after 5 seconds of no user activity");
 assert.match(appSource, /stage--chrome-hidden/, "overlay must apply a hidden chrome class after inactivity");
 assert.match(appSource, /onPointerMove=\{recordUserActivity\}/, "overlay must reveal controls on pointer movement");
+assert.match(appSource, /handleShellPointerLeave/, "overlay must hide player chrome when the pointer leaves the window");
+assert.match(appSource, /onPointerLeave=\{handleShellPointerLeave\}/, "player shell must listen for pointer leave to hide inactive chrome");
 assert.match(appSource, /isChromePinned/, "overlay must pin controls while dialogs, errors, or drawers are active");
-assert.match(appSource, /snapshot\.status\s*!==\s*"ended"/, "frontend must treat ended snapshots as not playing");
+assert.match(appSource, /snapshot\.status\s*===\s*"playing"/, "frontend must only animate the display clock for explicit playing snapshots");
+assert.doesNotMatch(appSource, /snapshot\.status\s*!==\s*"idle"\s*&&\s*snapshot\.status\s*!==\s*"ended"/, "frontend must not treat paused frame-step snapshots as playing");
 assert.match(appSource, /END_OF_MEDIA_SNAP_TOLERANCE_SECONDS/, "frontend must define a near-end snap tolerance for the visible slider value");
 assert.match(appSource, /snapEndOfMediaPosition/, "frontend must snap visible end-of-media slider value to duration");
 assert.match(appSource, /const displayTime\s*=\s*snapEndOfMediaPosition/, "frontend must derive a snapped display time for labels, progress, and range value");
 assert.match(appSource, /value=\{displayTime\}/, "seek slider thumb must use the snapped display time, not raw currentTime");
 assert.match(appSource, /className="seek-slider"[\s\S]*step="any"/, "seek slider must use step=any so short clip durations can render exactly at max");
+assert.match(appSource, /className="seek-control"[\s\S]*--progress/, "seek UI must expose a stable progress wrapper for smooth visual fill");
+assert.match(appSource, /className="seek-progress"/, "seek UI must render an independent progress fill instead of relying only on native range background repainting");
+assert.match(appSource, /--progress-ratio/, "seek UI must expose a unitless progress ratio for exact custom thumb positioning");
+assert.match(appSource, /className="seek-thumb"/, "seek UI must render its own thumb instead of relying on WebView range pseudo-element alignment");
 assert.doesNotMatch(appSource, /setPointerCapture|releasePointerCapture|startDragging|DragIntent|continueWindowDragIntent|beginWindowDragIntent/, "custom chrome must not use pointer-capture startDragging loop that freezes render windows");
 assert.doesNotMatch(appSource, /titlebar-brand|titlebar-center|side-rail|status-line/, "confirmed baseline UI must not regress to the older chrome layout");
 
@@ -213,6 +252,18 @@ assert.match(styles, /\.empty-open-logo/, "empty player state must style the Ope
 assert.match(styles, /\.empty-open\s*\{[\s\S]*justify-items:\s*center/, "empty player state must center each logo and text item");
 assert.match(styles, /\.stage--chrome-hidden[\s\S]*\.window-controls[\s\S]*opacity:\s*0/, "inactive player chrome must hide window controls");
 assert.match(styles, /\.stage--chrome-hidden[\s\S]*\.transport[\s\S]*pointer-events:\s*none/, "inactive player chrome must hide and disable transport controls");
+assert.match(styles, /\.context-menu/, "styles must include the custom context menu");
+assert.match(styles, /\.settings-dialog/, "styles must include the settings dialog");
+assert.match(styles, /\.shortcut-row/, "styles must include shortcut editor rows");
+assert.match(styles, /\.seek-control/, "styles must include a seek progress wrapper");
+assert.match(styles, /--seek-thumb-size:\s*13px/, "seek control must define the thumb size used for rail alignment");
+assert.match(styles, /\.seek-rail[\s\S]*left:\s*calc\(var\(--seek-thumb-size\) \/ 2\)[\s\S]*right:\s*calc\(var\(--seek-thumb-size\) \/ 2\)/, "seek rail must start under the thumb center so frame 0 aligns with the rail origin");
+assert.match(styles, /\.seek-rail[\s\S]*top:\s*50%[\s\S]*transform:\s*translateY\(-50%\)/, "seek rail must be vertically centered with the range thumb");
+assert.match(styles, /\.seek-progress[\s\S]*width:\s*var\(--progress\)/, "seek progress fill must be driven by the smooth display position");
+assert.match(styles, /\.seek-thumb[\s\S]*top:\s*50%[\s\S]*left:\s*calc\(\(var\(--seek-thumb-size\) \/ 2\) \+ \(\(100% - var\(--seek-thumb-size\)\) \* var\(--progress-ratio\)\)\)[\s\S]*transform:\s*translate\(-50%,\s*-50%\)/, "custom seek thumb must share the rail coordinate system and be vertically centered");
+assert.match(styles, /\.seek-slider::-webkit-slider-thumb[\s\S]*opacity:\s*0/, "native WebKit range thumb must be hidden so WebView pseudo-element alignment cannot shift the visible thumb");
+assert.match(styles, /\.seek-slider::-moz-range-thumb[\s\S]*opacity:\s*0/, "native Firefox range thumb must be hidden so the custom thumb is the only visible marker");
+assert.match(styles, /:focus-visible/, "interactive overlays must keep visible keyboard focus states");
 
 assert.match(mpvEmbedSource, /get_property::<bool>\("eof-reached"\)/, "mpv snapshots must read eof-reached to identify true playback end");
 assert.match(mpvEmbedSource, /wait_event\(0\.0\)/, "mpv snapshots must drain the event queue without blocking");
@@ -224,11 +275,39 @@ assert.match(mpvEmbedSource, /if ended \{\s*"ended"/, "mpv snapshots must expose
 assert.match(mpvEmbedSource, /fps:\s*f64/, "mpv snapshots must serialize fps metadata");
 assert.match(mpvEmbedSource, /container-fps/, "mpv snapshots must prefer container-fps for frame-count mode");
 assert.match(mpvEmbedSource, /estimated-vf-fps/, "mpv snapshots must fall back to estimated-vf-fps when container fps is unavailable");
+assert.match(mpvEmbedSource, /mpv_embed_frame_step/, "mpv embed backend must expose a forward-one-frame command");
+assert.match(mpvEmbedSource, /mpv_embed_frame_back_step/, "mpv embed backend must expose a backward-one-frame command");
+assert.match(mpvEmbedSource, /"frame-step"/, "mpv embed backend must call mpv frame-step for forward frame stepping");
+assert.match(mpvEmbedSource, /"frame-back-step"/, "mpv embed backend must call mpv frame-back-step for backward frame stepping");
+assert.match(mpvEmbedSource, /mpv_embed_snapshot[\s\S]*player\.snapshot\(0,\s*"playing"\)/, "periodic mpv snapshots must preserve playing status so smooth progress, frame labels, and Space pause keep working");
+assert.match(mpvEmbedSource, /input-default-bindings"[\s\S]*false/, "embedded mpv must not keep its own default keyboard bindings when the video background has focus");
+assert.match(mpvEmbedSource, /input-vo-keyboard"[\s\S]*false/, "embedded mpv video output must not consume OpenPlayer shortcuts");
+assert.match(mpvEmbedSource, /force_paused_until/, "frame stepping must guard snapshots against mpv's transient unpaused frame-step state");
+assert.match(mpvEmbedSource, /FRAME_STEP_PAUSE_GUARD/, "frame stepping must define a bounded paused-state guard");
+assert.match(mpvEmbedSource, /settle_frame_step_pause/, "frame stepping must wait briefly for mpv to return to paused state");
+assert.match(mpvEmbedSource, /raw_paused\s*\|\|\s*pause_guard_active/, "snapshots must report paused while the frame-step guard is active");
 
 assert.doesNotMatch(tauriLibSource, /mod playback|mod storage|DesktopPlaybackState|DesktopStorageState|playback_|storage_|openplayer_core|openplayer_shared/, "desktop backend must not restore removed playback or storage plumbing");
 assert.match(tauriLibSource, /window_minimize/, "desktop backend must keep minimize command");
 assert.match(tauriLibSource, /window_toggle_maximize/, "desktop backend must keep maximize command");
 assert.match(tauriLibSource, /window_toggle_fullscreen[\s\S]*main_window\(&app\)\?[\s\S]*set_fullscreen/, "desktop backend must toggle fullscreen on the main video window");
+assert.match(tauriLibSource, /struct WindowPlacement/, "desktop backend must record window placement before entering fullscreen");
+assert.match(tauriLibSource, /restore_window_after_fullscreen/, "desktop backend must restore the recorded placement after leaving fullscreen");
+assert.match(tauriLibSource, /fn focus_overlay_window/, "desktop backend must provide a shared way to focus the overlay controls window");
+assert.match(tauriLibSource, /fn window_focus_overlay/, "desktop backend must expose an overlay focus command for frontend shortcut recovery");
+assert.match(tauriLibSource, /fn window_update_shortcuts/, "desktop backend must accept current custom shortcuts for native dispatch");
+assert.match(tauriLibSource, /fn window_set_shortcuts_enabled/, "desktop backend must allow frontend modal states to suspend native shortcut dispatch");
+assert.match(tauriLibSource, /fn install_native_shortcut_hook/, "desktop backend must install a native shortcut bridge for focus-independent shortcuts on Windows");
+assert.match(tauriLibSource, /SetWindowsHookExW/, "Windows shortcut bridge must use a low-level keyboard hook while the app is focused");
+assert.match(tauriLibSource, /GetModuleHandleW/, "Windows shortcut hook must pass the current module handle instead of silently failing with a null module");
+assert.match(tauriLibSource, /GetForegroundWindow/, "Windows shortcut bridge must only dispatch shortcuts when OpenPlayer is the foreground app");
+assert.match(tauriLibSource, /openplayer-native-shortcut/, "native shortcut bridge must emit actions to the overlay frontend");
+assert.match(tauriLibSource, /sync_overlay_to_main[\s\S]*focus_overlay_window\(app\)/, "overlay sync must return keyboard focus to the controls window");
+assert.match(tauriLibSource, /WindowEvent::Focused\(true\)[\s\S]*focus_overlay_window\(&app_handle\)/, "clicking the video/main window must return keyboard focus to the overlay shortcut handler");
+assert.match(tauriLibSource, /fn schedule_overlay_sync_to_main/, "desktop backend must schedule overlay sync after asynchronous fullscreen transitions");
+assert.match(windowToggleFullscreenSource, /schedule_overlay_sync_to_main\(&app\)/, "fullscreen toggling must defer overlay sync until the main window has applied fullscreen bounds");
+assert.doesNotMatch(windowToggleFullscreenSource, /sync_overlay_to_main\(&app\)/, "fullscreen toggling must not immediately sync the overlay using stale fullscreen transition bounds");
+assert.match(mpvEmbedRunSource, /mpv_embed_frame_step[\s\S]*mpv_embed_frame_back_step/, "desktop runtime must register frame-step mpv commands");
 assert.match(tauriLibSource, /window_start_resize[\s\S]*start_resize_dragging/, "desktop backend must start resizing the main video window from overlay hit areas");
 assert.match(tauriLibSource, /window_close/, "desktop backend must keep close command");
 assert.match(tauriLibSource, /window_start_drag[\s\S]*main_window\(&app\)\?[\s\S]*start_dragging/, "backend must drag the main video window when overlay drag strip is used");
