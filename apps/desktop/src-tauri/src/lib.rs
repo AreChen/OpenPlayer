@@ -135,10 +135,10 @@ fn install_native_shortcut_hook(app: AppHandle) {
             return;
         }
 
-        if let Some(state) = NATIVE_SHORTCUT_STATE.get() {
-            if let Ok(mut stored_hook) = state.hook.lock() {
-                *stored_hook = Some(hook as usize);
-            }
+        if let Some(state) = NATIVE_SHORTCUT_STATE.get()
+            && let Ok(mut stored_hook) = state.hook.lock()
+        {
+            *stored_hook = Some(hook as usize);
         }
 
         let mut message: MSG = std::mem::zeroed();
@@ -194,10 +194,8 @@ unsafe extern "system" fn native_shortcut_keyboard_proc(
         return unsafe { CallNextHookEx(std::ptr::null_mut(), ncode, wparam, lparam) };
     };
     let key = unsafe { *(lparam as *const KBDLLHOOKSTRUCT) };
-    if is_key_up {
-        if let Ok(mut pressed_keys) = state.pressed_keys.lock() {
-            pressed_keys.remove(&key.vkCode);
-        }
+    if is_key_up && let Ok(mut pressed_keys) = state.pressed_keys.lock() {
+        pressed_keys.remove(&key.vkCode);
     }
 
     if !state.enabled.load(Ordering::SeqCst) || !is_openplayer_foreground() {
