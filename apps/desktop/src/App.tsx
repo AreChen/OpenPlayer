@@ -88,15 +88,13 @@ const playableExtensions = ["3gp", "aac", "avi", "flac", "m4a", "m4v", "mkv", "m
 const subtitleExtensions = ["ass", "srt", "ssa", "sub", "vtt"];
 const playbackSpeedOptions = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const OPENPLAYER_SHORTCUTS_STORAGE_KEY = "openplayer.shortcuts.v3";
-const OPENPLAYER_HISTORY_STORAGE_KEY = "openplayer.history.v1";
-const HISTORY_LIMIT = 12;
 const HISTORY_WRITE_INTERVAL_MS = 1500;
+const MIN_RESUME_PROGRESS_RATIO = 0.01;
+const RESUME_END_PROGRESS_RATIO = 0.95;
 const SEEK_CONFIRM_TOLERANCE_SECONDS = 0.75;
 const SEEK_SNAPSHOT_SUPPRESS_MS = 1600;
 const AUTO_HIDE_CONTROLS_MS = 5000;
 const END_OF_MEDIA_SNAP_TOLERANCE_SECONDS = 0.5;
-const MIN_RESUME_POSITION_SECONDS = 3;
-const RESUME_END_MARGIN_SECONDS = 5;
 const CONTEXT_MENU_WIDTH = 236;
 const CONTEXT_MENU_HEIGHT = 336;
 const DEFAULT_SEEK_STEP_SECONDS = 5;
@@ -237,61 +235,6 @@ function readShortcutBindings() {
   }
 }
 
-function sanitizePlaybackHistoryEntry(value: unknown): PlaybackHistoryEntry | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const candidate = value as Partial<PlaybackHistoryEntry>;
-  if (typeof candidate.path !== "string" || candidate.path.trim() === "") {
-    return null;
-  }
-
-  const path = candidate.path.trim();
-  const name = typeof candidate.name === "string" && candidate.name.trim() ? candidate.name.trim() : mediaNameFromPath(path);
-  const position = Number.isFinite(candidate.position) ? Math.max(0, Number(candidate.position)) : 0;
-  const duration = Number.isFinite(candidate.duration) ? Math.max(0, Number(candidate.duration)) : 0;
-  const updatedAt = Number.isFinite(candidate.updatedAt) ? Math.max(0, Number(candidate.updatedAt)) : Date.now();
-
-  return { path, name, position, duration, updatedAt };
-}
-
-function readPlaybackHistory() {
-  try {
-    const stored = window.localStorage.getItem(OPENPLAYER_HISTORY_STORAGE_KEY);
-    if (!stored) {
-      return [];
-    }
-
-    const parsed = JSON.parse(stored);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed
-      .map(sanitizePlaybackHistoryEntry)
-      .filter((entry): entry is PlaybackHistoryEntry => entry !== null)
-      .sort((left, right) => right.updatedAt - left.updatedAt)
-      .slice(0, HISTORY_LIMIT);
-  } catch {
-    return [];
-  }
-}
-
-function writePlaybackHistory(entries: PlaybackHistoryEntry[]) {
-  try {
-    window.localStorage.setItem(OPENPLAYER_HISTORY_STORAGE_KEY, JSON.stringify(entries.slice(0, HISTORY_LIMIT)));
-  } catch (error) {
-    console.warn("Failed to persist playback history", error);
-  }
-}
-
-function mergePlaybackHistory(entries: PlaybackHistoryEntry[], update: PlaybackHistoryEntry) {
-  return [update, ...entries.filter((entry) => entry.path !== update.path)]
-    .sort((left, right) => right.updatedAt - left.updatedAt)
-    .slice(0, HISTORY_LIMIT);
-}
-
 function isShortcutAction(value: unknown): value is ShortcutAction {
   return typeof value === "string" && shortcutDefinitions.some((definition) => definition.action === value);
 }
@@ -368,24 +311,27 @@ function formatTimecode(value: number, totalDuration: number) {
 }
 
 function resumePositionWithinDuration(position: number, duration: number) {
-  if (!Number.isFinite(position) || position < MIN_RESUME_POSITION_SECONDS) {
+  if (!Number.isFinite(position) || !Number.isFinite(duration) || duration <= 0 || position <= 0) {
     return 0;
   }
 
-  if (Number.isFinite(duration) && duration > 0) {
-    if (duration - position <= RESUME_END_MARGIN_SECONDS) {
-      return 0;
-    }
-
-    return Math.min(position, duration);
+  const clamped = Math.min(position, duration);
+  const ratio = clamped / duration;
+  if (ratio < MIN_RESUME_PROGRESS_RATIO || ratio >= RESUME_END_PROGRESS_RATIO) {
+    return 0;
   }
 
-  return position;
+  return clamped;
 }
 
-function resumePositionForPath(path: string, entries: PlaybackHistoryEntry[]) {
-  const entry = entries.find((item) => item.path === path);
-  return entry ? resumePositionWithinDuration(entry.position, entry.duration) : 0;
+async function resumePositionForPath(path: string) {
+  try {
+    const position = await invoke<number>("history_resume_position", { path });
+    return Number.isFinite(position) ? Math.max(0, position) : 0;
+  } catch (error) {
+    console.warn("Failed to resolve playback resume position", error);
+    return 0;
+  }
 }
 
 function formatHistoryProgress(entry: PlaybackHistoryEntry) {
@@ -512,7 +458,7 @@ function App() {
 
   const [queue, setQueue] = useState<MediaItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number | null>(null);
-  const [playbackHistory, setPlaybackHistory] = useState<PlaybackHistoryEntry[]>(readPlaybackHistory);
+  const [playbackHistory, setPlaybackHistory] = useState<PlaybackHistoryEntry[]>([]);
   const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -542,6 +488,23 @@ function App() {
   const settingsDialogRef = useRef<HTMLElement | null>(null);
   const media = currentIndex === null ? null : (queue[currentIndex] ?? null);
   const isChromePinned = !media || isPlaylistOpen || isMediaPanelOpen || isPickerOpen || playbackError !== null || contextMenu !== null || isSettingsOpen;
+
+  useEffect(() => {
+    let disposed = false;
+    invoke<PlaybackHistoryEntry[]>("history_list")
+      .then((entries) => {
+        if (!disposed) {
+          setPlaybackHistory(Array.isArray(entries) ? entries : []);
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn("Failed to load playback history", error);
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!media) {
@@ -785,14 +748,6 @@ function App() {
     anchorDisplayClock(snapshotPosition, nextIsPlaying, snapshotDuration, snapshotSpeed);
   }
 
-  function updatePlaybackHistory(update: PlaybackHistoryEntry) {
-    setPlaybackHistory((entries) => {
-      const next = mergePlaybackHistory(entries, update);
-      writePlaybackHistory(next);
-      return next;
-    });
-  }
-
   function rememberPlaybackProgress(path: string, position: number, snapshotDuration: number, force = false) {
     if (!path) {
       return;
@@ -804,13 +759,19 @@ function App() {
     }
 
     lastHistoryWriteRef.current = now;
-    updatePlaybackHistory({
-      path,
-      name: mediaNameFromPath(path),
-      position: Number.isFinite(position) ? Math.max(0, position) : 0,
-      duration: Number.isFinite(snapshotDuration) ? Math.max(0, snapshotDuration) : 0,
-      updatedAt: now,
-    });
+    invoke<PlaybackHistoryEntry[]>("history_remember", {
+      entry: {
+        path,
+        name: mediaNameFromPath(path),
+        position: Number.isFinite(position) ? Math.max(0, position) : 0,
+        duration: Number.isFinite(snapshotDuration) ? Math.max(0, snapshotDuration) : 0,
+        updatedAt: now,
+      },
+    })
+      .then((entries) => setPlaybackHistory(Array.isArray(entries) ? entries : []))
+      .catch((error: unknown) => {
+        console.warn("Failed to remember playback progress", error);
+      });
   }
 
   function reportPlaybackError(error: unknown) {
@@ -819,7 +780,7 @@ function App() {
 
   async function openMpvPath(path: string) {
     invalidatePendingSnapshots();
-    const rememberedPosition = resumePositionForPath(path, playbackHistory);
+    const rememberedPosition = await resumePositionForPath(path);
     const snapshot = await invoke<MpvSnapshot>("mpv_overlay_open_path", { path });
     pendingSeekRef.current = null;
     setPlaybackError(null);

@@ -45,6 +45,8 @@ mod mpv_smoke;
 #[cfg(feature = "mpv-embed")]
 mod mpv_embed;
 
+mod playback_store;
+
 #[cfg(feature = "mpv-embed")]
 use mpv_embed::{
     MpvEmbedSnapshot, MpvEmbedState, mpv_embed_add_subtitle, mpv_embed_frame_back_step,
@@ -52,6 +54,7 @@ use mpv_embed::{
     mpv_embed_set_speed, mpv_embed_set_subtitle_delay, mpv_embed_set_volume, mpv_embed_snapshot,
     mpv_embed_stop,
 };
+use playback_store::{PlaybackStoreState, history_list, history_remember, history_resume_position};
 
 #[cfg(feature = "mpv-smoke")]
 pub use mpv_smoke::{MpvSmokeReport, create_headless_probe};
@@ -549,6 +552,10 @@ pub fn run() {
     tauri::Builder::default()
         .manage(WindowState::default())
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            app.manage(PlaybackStoreState::open(app.handle()));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             window_update_shortcuts,
             window_set_shortcuts_enabled,
@@ -557,7 +564,10 @@ pub fn run() {
             window_toggle_fullscreen,
             window_focus_overlay,
             window_start_resize,
-            window_close
+            window_close,
+            history_list,
+            history_remember,
+            history_resume_position
         ])
         .run(tauri::generate_context!())
         .expect("failed to run OpenPlayer desktop app");
@@ -570,6 +580,7 @@ pub fn run() {
         .manage(WindowState::default())
         .manage(MpvEmbedState::default())
         .setup(|app| {
+            app.manage(PlaybackStoreState::open(app.handle()));
             install_native_shortcut_hook(app.handle().clone());
             if let Some(window) = app.get_webview_window("main") {
                 let overlay = WebviewWindowBuilder::new(
@@ -632,7 +643,10 @@ pub fn run() {
             mpv_embed_add_subtitle,
             mpv_embed_set_volume,
             mpv_embed_snapshot,
-            mpv_embed_stop
+            mpv_embed_stop,
+            history_list,
+            history_remember,
+            history_resume_position
         ])
         .run(tauri::generate_context!())
         .expect("failed to run OpenPlayer desktop app");

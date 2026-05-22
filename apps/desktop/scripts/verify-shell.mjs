@@ -11,6 +11,8 @@ const appSource = await readFile(new URL("../src/App.tsx", import.meta.url), "ut
 const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
 const mainSource = await readFile(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
 const tauriLibSource = await readFile(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
+const playbackStoreUrl = new URL("../src-tauri/src/playback_store.rs", import.meta.url);
+const playbackStoreSource = existsSync(playbackStoreUrl) ? await readFile(playbackStoreUrl, "utf8") : "";
 const capability = JSON.parse(await readFile(new URL("../src-tauri/capabilities/default.json", import.meta.url), "utf8"));
 const ciWorkflow = await readFile(new URL("../../../.github/workflows/ci.yml", import.meta.url), "utf8");
 const releaseWorkflowUrl = new URL("../../../.github/workflows/release.yml", import.meta.url);
@@ -201,14 +203,15 @@ assert.match(appSource, /defaultShortcutBindings/, "player shell must define def
 assert.match(appSource, /OPENPLAYER_SHORTCUTS_STORAGE_KEY/, "shortcut settings must persist through localStorage");
 assert.match(appSource, /openplayer\.shortcuts\.v3/, "shortcut storage version must reset stale D/F and fullscreen bindings");
 assert.doesNotMatch(appSource, /openplayer\.shortcuts\.v2/, "shortcut storage must not keep the stale v2 bindings");
-assert.match(appSource, /OPENPLAYER_HISTORY_STORAGE_KEY/, "player shell must persist local playback history");
-assert.match(appSource, /openplayer\.history\.v1/, "playback history storage must use a versioned localStorage key");
 assert.match(appSource, /type PlaybackHistoryEntry/, "player shell must define typed playback history entries");
-assert.match(appSource, /readPlaybackHistory/, "player shell must read persisted playback history on startup");
-assert.match(appSource, /writePlaybackHistory/, "player shell must write playback history after progress changes");
+assert.match(appSource, /history_list/, "player shell must read persisted playback history through a backend command");
+assert.match(appSource, /history_remember/, "player shell must write playback history through a backend command");
+assert.match(appSource, /history_resume_position/, "player shell must resolve resume positions through a backend command");
 assert.match(appSource, /resumePositionForPath/, "player shell must resume remembered playback positions when opening known paths");
 assert.match(appSource, /rememberPlaybackProgress/, "player shell must remember progress from mpv snapshots");
-assert.match(appSource, /HISTORY_LIMIT/, "playback history must have a bounded size");
+assert.match(appSource, /RESUME_END_PROGRESS_RATIO/, "resume logic must use a duration-relative end threshold");
+assert.match(appSource, /MIN_RESUME_PROGRESS_RATIO/, "resume logic must use a duration-relative start threshold");
+assert.doesNotMatch(appSource, /OPENPLAYER_HISTORY_STORAGE_KEY|openplayer\.history\.v1|readPlaybackHistory|writePlaybackHistory|window\.localStorage\.setItem\(OPENPLAYER_HISTORY_STORAGE_KEY/, "playback history must not remain backed by frontend localStorage");
 assert.match(appSource, /keyboardEventToChord/, "shortcut settings must normalize keyboard events into configurable chords");
 assert.match(appSource, /performShortcutAction/, "global shortcut dispatch must route configured chords to player commands");
 assert.match(appSource, /recordingShortcutAction/, "settings must support recording a replacement shortcut chord");
@@ -338,7 +341,7 @@ assert.match(mpvEmbedSource, /FRAME_STEP_PAUSE_GUARD/, "frame stepping must defi
 assert.match(mpvEmbedSource, /settle_frame_step_pause/, "frame stepping must wait briefly for mpv to return to paused state");
 assert.match(mpvEmbedSource, /raw_paused\s*\|\|\s*pause_guard_active/, "snapshots must report paused while the frame-step guard is active");
 
-assert.doesNotMatch(tauriLibSource, /mod playback|mod storage|DesktopPlaybackState|DesktopStorageState|playback_|storage_|openplayer_core|openplayer_shared/, "desktop backend must not restore removed playback or storage plumbing");
+assert.doesNotMatch(tauriLibSource, /mod playback;|mod storage|DesktopPlaybackState|DesktopStorageState|playback_command|storage_|openplayer_core|openplayer_shared/, "desktop backend must not restore removed playback or storage plumbing");
 assert.match(tauriLibSource, /window_minimize/, "desktop backend must keep minimize command");
 assert.match(tauriLibSource, /window_toggle_maximize/, "desktop backend must keep maximize command");
 assert.match(tauriLibSource, /window_toggle_fullscreen[\s\S]*main_window\(&app\)\?[\s\S]*set_fullscreen/, "desktop backend must toggle fullscreen on the main video window");
@@ -347,6 +350,15 @@ assert.match(tauriLibSource, /restore_window_after_fullscreen/, "desktop backend
 assert.match(tauriLibSource, /fn focus_overlay_window/, "desktop backend must provide a shared way to focus the overlay controls window");
 assert.match(tauriLibSource, /fn window_focus_overlay/, "desktop backend must expose an overlay focus command for frontend shortcut recovery");
 assert.match(tauriLibSource, /fn window_update_shortcuts/, "desktop backend must accept current custom shortcuts for native dispatch");
+assert.match(tauriLibSource, /mod playback_store;/, "desktop backend must include the playback history store module");
+assert.match(tauriLibSource, /PlaybackStoreState/, "desktop backend must manage playback history store state");
+assert.match(tauriLibSource, /history_list[\s\S]*history_remember[\s\S]*history_resume_position/, "desktop runtime must register playback history commands");
+assert.match(tauriCargoToml, /redb/, "desktop backend must depend on redb for high-performance playback history storage");
+assert.match(playbackStoreSource, /redb::Database|use redb::\{Database/, "playback history store must use redb");
+assert.match(playbackStoreSource, /HISTORY_BY_PATH/, "playback history store must index entries by path");
+assert.match(playbackStoreSource, /HISTORY_BY_UPDATED/, "playback history store must index entries by recency");
+assert.match(playbackStoreSource, /resume_position_for_entry/, "playback history store must compute resume positions by ratio");
+assert.match(playbackStoreSource, /RESUME_END_PROGRESS_RATIO/, "playback history store must define a relative end threshold");
 assert.match(tauriLibSource, /fn window_set_shortcuts_enabled/, "desktop backend must allow frontend modal states to suspend native shortcut dispatch");
 assert.match(tauriLibSource, /fn install_native_shortcut_hook/, "desktop backend must install a native shortcut bridge for focus-independent shortcuts on Windows");
 assert.match(tauriLibSource, /SetWindowsHookExW/, "Windows shortcut bridge must use a low-level keyboard hook while the app is focused");

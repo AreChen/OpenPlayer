@@ -12,14 +12,16 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [features]
 default = ["mpv-embed"]
 mpv-smoke = ["dep:libmpv2"]
-mpv-embed = ["dep:libmpv2", "dep:raw-window-handle", "dep:serde", "dep:windows-sys"]
+mpv-embed = ["dep:libmpv2", "dep:raw-window-handle", "dep:windows-sys"]
 
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-runtime = "2"
 libmpv2 = { version = "6.0.0", optional = true, default-features = false }
 raw-window-handle = { version = "0.6", optional = true }
-serde = { version = "1", features = ["derive"], optional = true }
+redb = "2.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 tauri-plugin-dialog = "2"
 windows-sys = { version = "0.60", features = [
   "Win32_Foundation",
