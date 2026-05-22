@@ -21,7 +21,9 @@ use windows_sys::Win32::{
     },
 };
 
+#[cfg(windows)]
 const VIDEO_HOST_TOP_RESERVE: i32 = 0;
+#[cfg(windows)]
 const VIDEO_HOST_BOTTOM_RESERVE: i32 = 0;
 const END_OF_MEDIA_SNAP_TOLERANCE_SECONDS: f64 = 0.5;
 const FRAME_STEP_SETTLE_INTERVAL: Duration = Duration::from_millis(6);
@@ -34,6 +36,7 @@ const MAX_SUBTITLE_DELAY: f64 = 10.0;
 const MAX_TRACKS: i64 = 128;
 const SUPPORTED_SUBTITLE_EXTENSIONS: &[&str] = &["ass", "srt", "ssa", "sub", "vtt"];
 
+#[cfg(windows)]
 #[derive(Debug, PartialEq, Eq)]
 struct VideoHostRect {
     x: i32,
@@ -616,34 +619,32 @@ impl MpvVideoHost {
         0
     }
 
+    #[cfg(windows)]
     fn resize(&self) -> Result<(), String> {
-        #[cfg(not(windows))]
-        {
-            return Ok(());
+        let parent = self.parent_hwnd as HWND;
+        let mut rect = RECT::default();
+        if unsafe { GetClientRect(parent, &mut rect) } == 0 {
+            return Err("failed to read Tauri client size for mpv child window".to_string());
         }
 
-        #[cfg(windows)]
-        {
-            let parent = self.parent_hwnd as HWND;
-            let mut rect = RECT::default();
-            if unsafe { GetClientRect(parent, &mut rect) } == 0 {
-                return Err("failed to read Tauri client size for mpv child window".to_string());
-            }
-
-            let layout = video_host_rect(rect.right - rect.left, rect.bottom - rect.top);
-            unsafe {
-                MoveWindow(
-                    self.hwnd as HWND,
-                    layout.x,
-                    layout.y,
-                    layout.width,
-                    layout.height,
-                    1,
-                );
-            }
-
-            Ok(())
+        let layout = video_host_rect(rect.right - rect.left, rect.bottom - rect.top);
+        unsafe {
+            MoveWindow(
+                self.hwnd as HWND,
+                layout.x,
+                layout.y,
+                layout.width,
+                layout.height,
+                1,
+            );
         }
+
+        Ok(())
+    }
+
+    #[cfg(not(windows))]
+    fn resize(&self) -> Result<(), String> {
+        Ok(())
     }
 }
 
@@ -769,6 +770,7 @@ fn wide_null(text: &str) -> Vec<u16> {
     text.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
+#[cfg(windows)]
 fn video_host_rect(parent_width: i32, parent_height: i32) -> VideoHostRect {
     let width = parent_width.max(1);
     let available_height = parent_height - VIDEO_HOST_TOP_RESERVE - VIDEO_HOST_BOTTOM_RESERVE;
@@ -793,6 +795,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn encodes_win32_class_name_with_null_terminator() {
         let encoded = wide_null("STATIC");
 
@@ -872,6 +875,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn reserves_web_controls_outside_native_video_host() {
         let rect = video_host_rect(1280, 720);
 
