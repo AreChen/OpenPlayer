@@ -7,9 +7,12 @@ use std::{
 };
 
 use libmpv2::{events::Event, mpv_end_file_reason};
-use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use raw_window_handle::HasWindowHandle;
+#[cfg(windows)]
+use raw_window_handle::RawWindowHandle;
 use serde::Serialize;
 use tauri::{State, Window};
+#[cfg(windows)]
 use windows_sys::Win32::{
     Foundation::{HWND, RECT},
     UI::WindowsAndMessaging::{
@@ -53,10 +56,14 @@ struct MpvEmbedPlayer {
     force_paused_until: Option<Instant>,
 }
 
+#[cfg(windows)]
 struct MpvVideoHost {
     parent_hwnd: isize,
     hwnd: isize,
 }
+
+#[cfg(not(windows))]
+struct MpvVideoHost;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -103,10 +110,9 @@ pub fn open_path_for_window(
     path: String,
 ) -> Result<MpvEmbedSnapshot, String> {
     let path = validate_media_path(&path)?;
-    let parent_hwnd = window_hwnd(window)?;
-    let host = MpvVideoHost::new(parent_hwnd)?;
-    let hwnd = host.hwnd as i64;
-    let mpv = create_embed_player(hwnd)?;
+    let host = MpvVideoHost::new(window)?;
+    let wid = host.wid();
+    let mpv = create_embed_player(wid)?;
     let path_text = path.to_string_lossy().to_string();
 
     mpv.command("loadfile", &[&path_text, "replace"])
@@ -125,7 +131,7 @@ pub fn open_path_for_window(
         ended: false,
         force_paused_until: None,
     };
-    let snapshot = next_player.snapshot(hwnd, "playing");
+    let snapshot = next_player.snapshot(wid, "playing");
     *player = Some(next_player);
 
     Ok(snapshot)
@@ -547,7 +553,9 @@ fn create_embed_player(hwnd: i64) -> Result<libmpv2::Mpv, String> {
 }
 
 impl MpvVideoHost {
-    fn new(parent_hwnd: i64) -> Result<Self, String> {
+    #[cfg(windows)]
+    fn new(window: &impl HasWindowHandle) -> Result<Self, String> {
+        let parent_hwnd = window_hwnd(window)?;
         let parent = parent_hwnd as isize as HWND;
         let mut rect = RECT::default();
         if unsafe { GetClientRect(parent, &mut rect) } == 0 {
@@ -590,29 +598,56 @@ impl MpvVideoHost {
         })
     }
 
+    #[cfg(not(windows))]
+    fn new(_window: &impl HasWindowHandle) -> Result<Self, String> {
+        Err(format!(
+            "mpv embed playback currently supports Windows HWND hosts only; {} video host support is not implemented yet",
+            std::env::consts::OS
+        ))
+    }
+
+    #[cfg(windows)]
+    fn wid(&self) -> i64 {
+        self.hwnd as i64
+    }
+
+    #[cfg(not(windows))]
+    fn wid(&self) -> i64 {
+        0
+    }
+
     fn resize(&self) -> Result<(), String> {
-        let parent = self.parent_hwnd as HWND;
-        let mut rect = RECT::default();
-        if unsafe { GetClientRect(parent, &mut rect) } == 0 {
-            return Err("failed to read Tauri client size for mpv child window".to_string());
+        #[cfg(not(windows))]
+        {
+            return Ok(());
         }
 
-        let layout = video_host_rect(rect.right - rect.left, rect.bottom - rect.top);
-        unsafe {
-            MoveWindow(
-                self.hwnd as HWND,
-                layout.x,
-                layout.y,
-                layout.width,
-                layout.height,
-                1,
-            );
-        }
+        #[cfg(windows)]
+        {
+            let parent = self.parent_hwnd as HWND;
+            let mut rect = RECT::default();
+            if unsafe { GetClientRect(parent, &mut rect) } == 0 {
+                return Err("failed to read Tauri client size for mpv child window".to_string());
+            }
 
-        Ok(())
+            let layout = video_host_rect(rect.right - rect.left, rect.bottom - rect.top);
+            unsafe {
+                MoveWindow(
+                    self.hwnd as HWND,
+                    layout.x,
+                    layout.y,
+                    layout.width,
+                    layout.height,
+                    1,
+                );
+            }
+
+            Ok(())
+        }
     }
 }
 
+#[cfg(windows)]
 impl Drop for MpvVideoHost {
     fn drop(&mut self) {
         unsafe {
@@ -717,6 +752,7 @@ fn load_sidecar_subtitles(mpv: &libmpv2::Mpv, media_path: &Path) {
     }
 }
 
+#[cfg(windows)]
 fn window_hwnd(window: &impl HasWindowHandle) -> Result<i64, String> {
     let handle = window
         .window_handle()
@@ -728,6 +764,7 @@ fn window_hwnd(window: &impl HasWindowHandle) -> Result<i64, String> {
     }
 }
 
+#[cfg(windows)]
 fn wide_null(text: &str) -> Vec<u16> {
     text.encode_utf16().chain(std::iter::once(0)).collect()
 }

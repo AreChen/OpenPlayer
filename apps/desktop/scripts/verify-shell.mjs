@@ -164,7 +164,8 @@ assert.match(tauriLibSource, /mpv_overlay_open_path[\s\S]*main_window\(&app\)\?[
 assert.doesNotMatch(mpvEmbedRunSource, /\.always_on_top\(true\)/, "overlay controls must not be globally topmost over other apps");
 assert.doesNotMatch(mpvEmbedRunSource, /\.position\(position\.x as f64, position\.y as f64\)|\.inner_size\(size\.width as f64, size\.height as f64\)/, "overlay startup must not pass physical main window pixels to logical builder sizing APIs");
 assert.match(mpvEmbedRunSource, /\.visible\(false\)[\s\S]*sync_overlay_to_main\(&app_handle\)[\s\S]*overlay\.show\(\)/, "overlay startup must stay hidden until physical-position sync prevents DPI-scale misalignment");
-assert.match(tauriLibSource, /GWLP_HWNDPARENT|set_overlay_owner/, "overlay controls should be owned by the main player window instead of global topmost");
+assert.match(tauriLibSource, /#\[cfg\(all\(feature = "mpv-embed", windows\)\)\][\s\S]*SetWindowLongPtrW/, "overlay HWND ownership must be isolated to Windows mpv-embed builds");
+assert.match(tauriLibSource, /#\[cfg\(all\(feature = "mpv-embed", not\(windows\)\)\)\][\s\S]*fn set_overlay_owner/, "non-Windows mpv-embed builds must not call Windows overlay ownership APIs");
 assert.doesNotMatch(mpvEmbedRunSource, /OPENPLAYER_MPV_EMBED_FILE/, "normal embed overlay runtime must not auto-play the old Abbott embed smoke file");
 assert.match(tauriLibSource, /tauri_plugin_dialog::init\(\)/, "desktop app must register Tauri dialog plugin for path-based mpv playback");
 assert.ok(capability.permissions.includes("dialog:allow-open"), "capability must allow file-open dialog for path-based mpv playback");
@@ -333,6 +334,9 @@ assert.match(mpvEmbedSource, /track-list\/count/, "mpv embed backend must read m
 assert.match(mpvEmbedSource, /sub-add/, "mpv embed backend must use mpv sub-add for external subtitles");
 assert.match(mpvEmbedSource, /discover_sidecar_subtitles/, "mpv embed backend must discover same-folder sidecar subtitles when opening media");
 assert.match(mpvEmbedSource, /"sub-delay"/, "mpv embed backend must control mpv sub-delay for subtitle sync");
+assert.match(mpvEmbedSource, /#\[cfg\(windows\)\][\s\S]*use windows_sys::Win32/, "mpv native video host must keep Win32 imports behind a Windows platform gate");
+assert.match(mpvEmbedSource, /#\[cfg\(not\(windows\)\)\][\s\S]*mpv embed playback currently supports Windows HWND hosts only/, "mpv native video host must return an explicit unsupported-platform error outside Windows");
+assert.match(mpvEmbedSource, /fn wid\(&self\) -> i64/, "mpv native video host must expose a platform-owned mpv wid boundary");
 assert.match(mpvEmbedSource, /mpv_embed_snapshot[\s\S]*player\.snapshot\(0,\s*"playing"\)/, "periodic mpv snapshots must preserve playing status so smooth progress, frame labels, and Space pause keep working");
 assert.match(mpvEmbedSource, /input-default-bindings"[\s\S]*false/, "embedded mpv must not keep its own default keyboard bindings when the video background has focus");
 assert.match(mpvEmbedSource, /input-vo-keyboard"[\s\S]*false/, "embedded mpv video output must not consume OpenPlayer shortcuts");

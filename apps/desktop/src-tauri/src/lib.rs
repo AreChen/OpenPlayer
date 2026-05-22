@@ -1,4 +1,4 @@
-#[cfg(feature = "mpv-embed")]
+#[cfg(all(feature = "mpv-embed", windows))]
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::{collections::HashMap, sync::Mutex, thread, time::Duration};
 #[cfg(windows)]
@@ -17,7 +17,7 @@ use tauri::{
 #[cfg(feature = "mpv-embed")]
 use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tauri_runtime::ResizeDirection;
-#[cfg(feature = "mpv-embed")]
+#[cfg(all(feature = "mpv-embed", windows))]
 use windows_sys::Win32::UI::WindowsAndMessaging::{GWLP_HWNDPARENT, SetWindowLongPtrW};
 #[cfg(windows)]
 use windows_sys::Win32::{
@@ -480,7 +480,7 @@ fn restore_window_after_fullscreen(
     Ok(())
 }
 
-#[cfg(feature = "mpv-embed")]
+#[cfg(all(feature = "mpv-embed", windows))]
 fn set_overlay_owner(main: &WebviewWindow, overlay: &WebviewWindow) {
     let Ok(main_hwnd) = window_hwnd(main) else {
         return;
@@ -493,7 +493,10 @@ fn set_overlay_owner(main: &WebviewWindow, overlay: &WebviewWindow) {
     }
 }
 
-#[cfg(feature = "mpv-embed")]
+#[cfg(all(feature = "mpv-embed", not(windows)))]
+fn set_overlay_owner(_main: &WebviewWindow, _overlay: &WebviewWindow) {}
+
+#[cfg(all(feature = "mpv-embed", windows))]
 fn window_hwnd(window: &impl HasWindowHandle) -> Result<isize, String> {
     let handle = window
         .window_handle()
