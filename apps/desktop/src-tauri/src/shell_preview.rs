@@ -1,11 +1,17 @@
 use serde::Serialize;
 use std::collections::HashSet;
 
+#[cfg(windows)]
 const THUMBNAIL_HANDLER_GUID: &str = "{e357fccd-a995-4576-b01f-234630154e96}";
+#[cfg(windows)]
 const LEGACY_IMAGE_HANDLER_GUID: &str = "{BB2E617C-0920-11D1-9A0B-00C04FC2D6C1}";
+#[cfg(windows)]
 const PROPERTY_THUMBNAIL_HANDLER_CLSID: &str = "{9DBD2C50-62AD-11D0-B806-00C04FD706EC}";
+#[cfg(windows)]
 const OPENPLAYER_PROG_ID: &str = "OpenPlayer.Media";
+#[cfg(windows)]
 const OPENPLAYER_REGISTERED_APP_NAME: &str = "OpenPlayer";
+#[cfg(windows)]
 const OPENPLAYER_CAPABILITIES_KEY: &str = "Software\\OpenPlayer\\Capabilities";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -256,6 +262,7 @@ fn normalize_extension(extension: &str) -> String {
         .to_ascii_lowercase()
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 fn registration_summary(formats: &[ShellPreviewFormat]) -> ShellPreviewRegistrationSummary {
     ShellPreviewRegistrationSummary {
         registered_count: formats.len(),

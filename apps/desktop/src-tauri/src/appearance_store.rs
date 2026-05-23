@@ -1049,7 +1049,7 @@ mod tests {
         store
             .set_bool_preference(INCOGNITO_MODE_KEY, true)
             .expect("incognito mode should be persisted");
-        let preferences = store
+        store
             .set_bool_preference(QUIET_KEYBOARD_CONTROLS_KEY, true)
             .expect("quiet keyboard controls should be persisted");
         let preferences = store
