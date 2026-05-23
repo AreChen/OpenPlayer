@@ -28,7 +28,7 @@ function matchVersion(source, pattern, label) {
 }
 
 function cargoLockPackageVersion(source, packageName) {
-  const packageBlocks = source.split(/\n\[\[package\]\]\n/);
+  const packageBlocks = source.split(/\r?\n\[\[package\]\]\r?\n/);
   for (const block of packageBlocks) {
     if (new RegExp(`name = "${packageName}"`).test(block)) {
       return matchVersion(block, /^version = "([^"]+)"$/m, `Cargo.lock package ${packageName}`);
