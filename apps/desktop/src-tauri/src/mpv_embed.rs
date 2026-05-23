@@ -1,11 +1,15 @@
 use std::{
-    ffi::{CStr, CString, c_char, c_void},
+    ffi::CString,
     fs,
     path::{Path, PathBuf},
-    ptr,
     sync::Mutex,
     thread,
     time::{Duration, Instant},
+};
+#[cfg(target_os = "macos")]
+use std::{
+    ffi::{CStr, c_char, c_void},
+    ptr,
 };
 
 use libmpv2::{events::Event, mpv_end_file_reason};

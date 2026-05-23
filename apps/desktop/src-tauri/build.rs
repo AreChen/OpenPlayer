@@ -129,7 +129,7 @@ fn pkg_config_link_search_paths(package: &str) -> Option<Vec<std::path::PathBuf>
     )
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(target_os = "macos")]
 fn pkg_config_include_paths(package: &str) -> Vec<std::path::PathBuf> {
     let pkg_config = std::env::var_os("PKG_CONFIG").unwrap_or_else(|| "pkg-config".into());
     let Ok(output) = std::process::Command::new(pkg_config)

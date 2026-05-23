@@ -1,6 +1,8 @@
 #[cfg(all(feature = "mpv-embed", any(windows, target_os = "macos")))]
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use std::{collections::HashMap, ffi::c_void, sync::Mutex, thread, time::Duration};
+#[cfg(all(feature = "mpv-embed", target_os = "macos"))]
+use std::ffi::c_void;
+use std::{collections::HashMap, sync::Mutex, thread, time::Duration};
 #[cfg(windows)]
 use std::{
     collections::HashSet,
