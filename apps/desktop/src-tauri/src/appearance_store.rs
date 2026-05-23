@@ -893,11 +893,16 @@ pub fn appearance_reset(state: State<'_, AppearanceStoreState>) -> Result<Appear
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEMP_STORE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     fn temp_store() -> (AppearanceStore, PathBuf) {
+        let counter = TEMP_STORE_COUNTER.fetch_add(1, Ordering::Relaxed);
         let directory = std::env::temp_dir().join(format!(
-            "openplayer-appearance-{}-{}",
+            "openplayer-appearance-{}-{}-{}",
             std::process::id(),
+            counter,
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("system time should be after unix epoch")

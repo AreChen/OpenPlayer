@@ -199,3 +199,98 @@ jobs:
             "$OPENPLAYER_LINUX_APPIMAGE" \
             "$OPENPLAYER_LINUX_APPIMAGE_CHECKSUM" \
             --clobber
+
+  macos-packages:
+    name: macOS unsigned packages (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Install Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install macOS dependencies
+        run: |
+          brew install mpv pkg-config
+          echo "PKG_CONFIG_PATH=$(brew --prefix mpv)/lib/pkgconfig:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
+
+      - name: Install frontend dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Verify release metadata
+        working-directory: apps/desktop
+        run: npm run verify:release -- --tag=$RELEASE_TAG
+
+      - name: Verify shell architecture
+        working-directory: apps/desktop
+        run: npm run verify:shell
+
+      - name: Build macOS app bundle
+        working-directory: apps/desktop
+        run: npm run tauri:build -- --config src-tauri/tauri.macos.conf.json --bundles app
+
+      - name: Bundle macOS libmpv dylibs
+        working-directory: apps/desktop
+        run: node scripts/bundle-macos-libmpv.mjs
+
+      - name: Verify macOS dylib references
+        run: |
+          app="target/release/bundle/macos/OpenPlayer.app"
+          unresolved=0
+          exe="$(find "$app/Contents/MacOS" -maxdepth 1 -type f | head -1)"
+          if otool -L "$exe" | grep -E "/opt/homebrew|/usr/local|/Cellar"; then
+            unresolved=1
+          fi
+          while IFS= read -r binary; do
+            if otool -L "$binary" 2>/dev/null | grep -E "/opt/homebrew|/usr/local|/Cellar"; then
+              echo "unrewritten dependency in $binary"
+              unresolved=1
+            fi
+          done < <(find "$app/Contents/Frameworks" -type f \( -name "*.dylib" -o -name "*.so" -o -perm +111 \))
+          exit "$unresolved"
+
+      - name: Ad-hoc sign macOS app
+        run: |
+          app="target/release/bundle/macos/OpenPlayer.app"
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+
+      - name: Prepare unsigned DMG checksum
+        run: |
+          version="$(node -e "const fs=require('fs'); console.log(JSON.parse(fs.readFileSync('apps/desktop/package.json','utf8')).version)")"
+          app="$(realpath target/release/bundle/macos/OpenPlayer.app)"
+          dmg_dir="target/release/bundle/dmg"
+          mkdir -p "$dmg_dir"
+          dmg="$PWD/$dmg_dir/OpenPlayer_${version}_${{ matrix.arch }}.dmg"
+          rm -f "$dmg" "$dmg.sha256"
+          hdiutil create -volname OpenPlayer -srcfolder "$app" -ov -format UDZO "$dmg"
+          shasum -a 256 "$dmg" > "$dmg.sha256"
+
+      - name: Upload unsigned macOS package artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: openplayer-macos-${{ matrix.arch }}-unsigned
+          path: |
+            target/release/bundle/dmg/*.dmg
+            target/release/bundle/dmg/*.sha256

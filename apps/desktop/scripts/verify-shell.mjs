@@ -7,6 +7,8 @@ const windowsConfigUrl = new URL("../src-tauri/tauri.windows.conf.json", import.
 const windowsConfig = existsSync(windowsConfigUrl) ? JSON.parse(await readFile(windowsConfigUrl, "utf8")) : {};
 const linuxConfigUrl = new URL("../src-tauri/tauri.linux.conf.json", import.meta.url);
 const linuxConfig = existsSync(linuxConfigUrl) ? JSON.parse(await readFile(linuxConfigUrl, "utf8")) : {};
+const macosConfigUrl = new URL("../src-tauri/tauri.macos.conf.json", import.meta.url);
+const macosConfig = existsSync(macosConfigUrl) ? JSON.parse(await readFile(macosConfigUrl, "utf8")) : {};
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 const indexHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
 const appSource = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
@@ -29,6 +31,8 @@ const ciWorkflow = await readFile(new URL("../../../.github/workflows/ci.yml", i
 const releaseWorkflowUrl = new URL("../../../.github/workflows/release.yml", import.meta.url);
 const releaseWorkflow = existsSync(releaseWorkflowUrl) ? await readFile(releaseWorkflowUrl, "utf8") : "";
 const releaseVerifyScriptUrl = new URL("./verify-release.mjs", import.meta.url);
+const macosBundleScriptUrl = new URL("./bundle-macos-libmpv.mjs", import.meta.url);
+const macosBundleScriptSource = existsSync(macosBundleScriptUrl) ? await readFile(macosBundleScriptUrl, "utf8") : "";
 const releaseMpvManifestUrl = new URL("../../../docs/native-deps/mpv-windows-x64.json", import.meta.url);
 const workspaceToml = await readFile(new URL("../../../Cargo.toml", import.meta.url), "utf8");
 const tauriCargoToml = await readFile(new URL("../src-tauri/Cargo.toml", import.meta.url), "utf8");
@@ -37,6 +41,8 @@ const nsisHooksUrl = new URL("../src-tauri/nsis-hooks.nsh", import.meta.url);
 const nsisHooksSource = existsSync(nsisHooksUrl) ? await readFile(nsisHooksUrl, "utf8") : "";
 const mpvEmbedUrl = new URL("../src-tauri/src/mpv_embed.rs", import.meta.url);
 const mpvEmbedSource = existsSync(mpvEmbedUrl) ? await readFile(mpvEmbedUrl, "utf8") : "";
+const macosGlViewUrl = new URL("../src-tauri/src/macos_mpv_gl_view.m", import.meta.url);
+const macosGlViewSource = existsSync(macosGlViewUrl) ? await readFile(macosGlViewUrl, "utf8") : "";
 const mpvRenderFiles = [
   new URL("../src-tauri/src/mpv_render.rs", import.meta.url),
   new URL("../src-tauri/src/mpv_render/sys.rs", import.meta.url),
@@ -46,6 +52,7 @@ const rootLogoUrl = new URL("../../../openplayer_logo_10001000.png", import.meta
 const uiLogoUrl = new URL("../src/assets/openplayer-logo.png", import.meta.url);
 const tauriIconPngUrl = new URL("../src-tauri/icons/icon.png", import.meta.url);
 const tauriIconIcoUrl = new URL("../src-tauri/icons/icon.ico", import.meta.url);
+const tauriIconIcnsUrl = new URL("../src-tauri/icons/icon.icns", import.meta.url);
 const embedCommandPattern = /mpv_embed_open_path|mpv_embed_play|mpv_embed_pause|mpv_embed_seek|mpv_embed_set_volume|mpv_embed_set_speed|mpv_embed_select_track|mpv_embed_add_subtitle|mpv_embed_snapshot|mpv_embed_stop/;
 
 function extractCfgFunction(source, cfgPattern, fnPattern) {
@@ -110,6 +117,23 @@ const windowToggleFullscreenMatch = /#\[tauri::command\]\s*fn\s+window_toggle_fu
 const windowToggleFullscreenSource = windowToggleFullscreenMatch
   ? extractFunctionAt(tauriLibSource, windowToggleFullscreenMatch.index + windowToggleFullscreenMatch[0].lastIndexOf("fn"))
   : "";
+const windowApplyResizeDeltaMatch = /#\[tauri::command\]\s*fn\s+window_apply_resize_delta\s*\(/.exec(tauriLibSource);
+const windowApplyResizeDeltaSource = windowApplyResizeDeltaMatch
+  ? extractFunctionAt(tauriLibSource, windowApplyResizeDeltaMatch.index + windowApplyResizeDeltaMatch[0].lastIndexOf("fn"))
+  : "";
+const mpvSnapshotMatch = /fn\s+snapshot\s*\(/.exec(mpvEmbedSource);
+const mpvSnapshotSource = mpvSnapshotMatch ? extractFunctionAt(mpvEmbedSource, mpvSnapshotMatch.index) : "";
+const dragRegionSources = [
+  "handleDragRegionPointerDown",
+  "handleDragRegionPointerMove",
+  "handleDragRegionPointerEnd",
+  "handleDragRegionDoubleClick",
+]
+  .map((name) => {
+    const match = new RegExp(`function\\s+${name}\\s*\\(`).exec(appSource);
+    return match ? extractFunctionAt(appSource, match.index) : "";
+  })
+  .join("\n");
 
 const [mainWindow] = config.app.windows;
 
@@ -144,6 +168,17 @@ assert.deepEqual(linuxConfig.bundle?.targets, ["deb", "appimage"], "Linux deskto
 assert.ok(linuxConfig.bundle?.icon?.includes("icons/128x128.png"), "Linux AppImage bundle must declare a square PNG icon");
 assert.ok(linuxConfig.bundle?.linux?.deb?.depends?.includes("libmpv2"), "Linux deb packages must declare the libmpv runtime dependency");
 assert.ok(linuxConfig.bundle?.linux?.deb?.depends?.includes("libwebkit2gtk-4.1-0"), "Linux deb packages must declare the WebKitGTK runtime dependency");
+assert.ok(existsSync(macosConfigUrl), "macOS desktop release builds must have a platform-specific Tauri config");
+assert.equal(macosConfig.identifier, "dev.openplayer.desktop", "macOS bundle identifier must not end with the .app extension");
+assert.equal(macosConfig.bundle?.active, true, "macOS desktop release builds must produce native bundles by default");
+assert.deepEqual(macosConfig.bundle?.targets, ["app", "dmg"], "macOS desktop release build should target app and DMG bundles");
+assert.equal(config.app?.macOSPrivateApi, true, "macOS overlay builds must enable Tauri private APIs for transparent control windows");
+assert.match(tauriCargoToml, /tauri\s*=\s*\{[^\n]*macos-private-api/, "Tauri's macos-private-api feature must be enabled for transparent macOS overlay windows");
+assert.match(tauriCargoToml, /objc2-app-kit/, "macOS mpv embedding must use objc2 AppKit bindings");
+assert.match(tauriBuildScript, /pkg-config[\s\S]*--libs-only-L[\s\S]*mpv/, "macOS mpv linking must read Homebrew lib paths from pkg-config");
+assert.ok(existsSync(macosBundleScriptUrl), "macOS release builds must include a libmpv dylib bundling script");
+assert.match(macosBundleScriptSource, /Contents\/Frameworks[\s\S]*otool[\s\S]*install_name_tool/, "macOS libmpv bundling must copy dylibs into Contents/Frameworks and rewrite install names");
+assert.match(macosBundleScriptSource, /\.framework\/[\s\S]*cpSync/, "macOS libmpv bundling must include Homebrew framework dependencies such as Python.framework");
 assert.match(config.build.devUrl, /23142$/, "Tauri dev URL must use the non-reserved Windows port");
 assert.match(packageJson.scripts.dev, /23142$/, "Vite dev script must use the non-reserved Windows port");
 assert.match(packageJson.scripts.preview, /23142$/, "Vite preview script must use the non-reserved Windows port");
@@ -169,6 +204,16 @@ assert.match(releaseWorkflow, /target\/release\/bundle\/deb\/\*\.deb/, "release 
 assert.match(releaseWorkflow, /target\/release\/bundle\/appimage\/\*\.AppImage/, "release workflow must locate the Linux AppImage artifact");
 assert.match(releaseWorkflow, /sha256sum[\s\S]*deb[\s\S]*sha256sum[\s\S]*appimage/, "release workflow must generate SHA256 checksums for Linux packages");
 assert.match(releaseWorkflow, /gh release upload[\s\S]*OPENPLAYER_LINUX_DEB[\s\S]*OPENPLAYER_LINUX_APPIMAGE/, "release workflow must upload Linux packages and checksums to GitHub Releases");
+assert.match(releaseWorkflow, /macos-packages:/, "release workflow must build unsigned macOS packages for internal testing");
+assert.match(releaseWorkflow, /macos-15-intel/, "macOS release workflow must cover Intel runners explicitly");
+assert.match(releaseWorkflow, /macos-15/, "macOS release workflow must cover Apple Silicon runners explicitly");
+assert.match(releaseWorkflow, /brew install[\s\S]*mpv[\s\S]*pkg-config|brew install[\s\S]*pkg-config[\s\S]*mpv/, "macOS release job must install Homebrew mpv and pkg-config");
+assert.match(releaseWorkflow, /npm run tauri:build -- --config src-tauri\/tauri\.macos\.conf\.json/, "release workflow must build macOS app and DMG bundles");
+assert.match(releaseWorkflow, /bundle-macos-libmpv\.mjs/, "release workflow must bundle libmpv dylibs before packaging macOS DMGs");
+assert.match(releaseWorkflow, /otool -L[\s\S]*\/opt\/homebrew[\s\S]*\/Cellar/, "release workflow must reject unbundled Homebrew dylib references in macOS packages");
+assert.match(releaseWorkflow, /codesign --force --deep --sign -[\s\S]*OpenPlayer\.app/, "release workflow must re-sign the app bundle after rewriting macOS dylib references");
+assert.match(releaseWorkflow, /target\/release\/bundle\/dmg\/\*\.dmg/, "release workflow must locate the macOS DMG artifact");
+assert.match(releaseWorkflow, /shasum -a 256[\s\S]*dmg/, "release workflow must generate SHA256 checksums for macOS packages");
 assert.match(indexHtml, /surface["')\s.]*={1,3}\s*"video"[\s\S]*surface-video/, "index.html must classify the main video surface before React mounts");
 assert.match(indexHtml, /surface-overlay/, "index.html must classify non-video surfaces as transparent overlays before React mounts");
 assert.match(indexHtml, /html\.surface-video[\s\S]*background:\s*#000/, "video surface must paint black before React and mpv finish loading");
@@ -177,6 +222,7 @@ assert.ok(!existsSync(rootLogoUrl), "source logo must live under app assets, not
 assert.ok(existsSync(uiLogoUrl), "frontend logo asset must exist");
 assert.ok(existsSync(tauriIconPngUrl), "Tauri PNG icon must exist");
 assert.ok(existsSync(tauriIconIcoUrl), "Windows ICO icon must exist");
+assert.ok(existsSync(tauriIconIcnsUrl), "macOS ICNS icon must exist");
 
 assert.equal(packageJson.dependencies["movi-player"], undefined, "minimal branch must not ship WASM/software decoder dependency");
 assert.ok(packageJson.dependencies["@tauri-apps/plugin-dialog"], "mpv path playback must use Tauri dialog to obtain real local paths");
@@ -189,6 +235,7 @@ assert.match(tauriCargoToml, /libmpv2-sys/, "desktop crate must keep libmpv2-sys
 assert.doesNotMatch(tauriBuildScript, /CARGO_FEATURE_MPV_RENDER/, "build script must not keep the removed mpv-render feature gate");
 assert.match(tauriBuildScript, /CARGO_FEATURE_MPV_SMOKE[\s\S]*CARGO_FEATURE_MPV_EMBED/, "build script must only add mpv link paths when an mpv feature is enabled");
 assert.match(tauriBuildScript, /vendor[\\/]native[\\/]mpv[\\/]windows-x64/, "build script must point at the vendored Windows mpv directory");
+assert.match(tauriBuildScript, /macos_mpv_gl_view\.m[\s\S]*framework=OpenGL/, "macOS mpv render API host must compile the AppKit OpenGL child view and link OpenGL");
 assert.match(tauriLibSource, /#\[cfg\(feature = "mpv-smoke"\)\]\s*mod mpv_smoke;/, "desktop crate must keep libmpv2 smoke code feature-gated");
 assert.match(tauriLibSource, /#\[cfg\(feature = "mpv-embed"\)\]\s*mod mpv_embed;/, "desktop crate must compile the stable mpv child HWND backend behind mpv-embed");
 assert.match(tauriLibSource, /mod platform_support;/, "desktop backend must expose platform capability metadata");
@@ -307,6 +354,7 @@ assert.match(appSource, /mpv_embed_frame_back_step/, "backward-one-frame shortcu
 assert.doesNotMatch(appSource, /audioVisualizerColor/, "audio visualization must use app theme CSS variables instead of passing accent colors into mpv");
 assert.match(appSource, /mpv_embed_set_speed/, "frontend must control mpv playback speed through a backend command");
 assert.match(appSource, /mpv_embed_set_hwdec/, "frontend must control mpv hardware decoding mode through a backend command");
+assert.match(appSource, /mpv_embed_set_video_fill/, "frontend must expose mpv video fill as an explicit media option instead of changing it during fullscreen");
 assert.match(appSource, /decode-toggle/, "control strip must replace the prominent settings button with the decode-mode toggle");
 assert.doesNotMatch(appSource, /aria-label="Open settings"/, "settings must remain available through the context menu instead of the bottom control strip");
 assert.match(appSource, /mpv_embed_select_track/, "frontend must switch audio, video, and subtitle tracks through a backend command");
@@ -327,6 +375,19 @@ assert.match(appSource, /onDoubleClick=\{handleDragRegionDoubleClick\}/, "non-co
 assert.doesNotMatch(appSource, /data-tauri-drag-region/, "full-surface video interaction layer must not use Tauri's automatic drag region because it swallows double-click playback toggles");
 assert.match(appSource, /WINDOW_DRAG_START_DISTANCE_PX[\s\S]*handleDragRegionPointerMove[\s\S]*startMainWindowDrag/, "video-surface drag must start from pointer movement threshold instead of a timer so dragging remains responsive while double-click works");
 assert.doesNotMatch(appSource, /dragStartTimerRef|setTimeout\(\(\) => \{\s*[^}]*startMainWindowDrag/, "video-surface drag must not wait on a double-click delay timer");
+assert.match(appSource, /window_apply_resize_delta/, "macOS overlay resize handles must use a manual resize delta fallback because tao does not support drag_resize_window on macOS");
+assert.match(appSource, /platformSupport\?\.os\s*===\s*"macos"[\s\S]*manualResizeDragRef/, "macOS resize handles must select the manual resize path only on macOS");
+assert.match(appSource, /setPointerCapture[\s\S]*manualResizeDragRef|manualResizeDragRef[\s\S]*setPointerCapture/, "manual macOS resize fallback must capture pointer movement until release");
+assert.match(appSource, /requestManualResizeFlush[\s\S]*resizeCommandInFlight/, "manual macOS resize fallback must coalesce pointer deltas and keep only one resize IPC in flight");
+assert.match(appSource, /flushManualResizeDelta[\s\S]*applyManualMainWindowResize/, "manual macOS resize fallback must flush coalesced deltas through the backend resize command");
+assert.match(appSource, /window_set_resize_cursor/, "resize handles must explicitly set native cursor icons instead of relying only on CSS over transparent macOS overlays");
+assert.match(appSource, /onPointerEnter=\{\(event\) => handleResizePointerEnter\(event, region\.direction\)\}/, "resize handles must set the matching cursor as soon as the pointer enters the hit area");
+assert.match(appSource, /onPointerLeave=\{handleResizePointerLeave\}/, "resize handles must restore the default cursor when the pointer leaves the hit area");
+assert.match(appSource, /resizeFeedback/, "resize handles must maintain visible in-app resize feedback state for macOS when native cursor icons are unavailable");
+assert.match(appSource, /resize-feedback--active/, "resize dragging must strengthen the in-app resize feedback");
+assert.match(appSource, /resize-feedback--/, "player shell must render a direction-specific resize feedback layer");
+assert.match(appSource, /handleResizePointerEnd[\s\S]*setNativeResizeCursor\(null\)[\s\S]*setResizeBoundaryFeedback\(null\)/, "resize feedback must disappear immediately when resize dragging ends instead of falling back to hover state");
+assert.match(appSource, /videoLayout[\s\S]*video-layout-options[\s\S]*setVideoFillMode/, "video fill/crop must live with the track and subtitle media options");
 assert.match(appSource, /onWheel=\{handleShellWheel\}/, "player shell must support mouse wheel volume control");
 assert.match(appSource, /volumeFeedback/, "volume changes from wheel and shortcuts must display a transient volume overlay");
 assert.doesNotMatch(appSource, /volume-feedback-track/, "volume feedback overlay must stay compact and not render a progress track");
@@ -385,7 +446,7 @@ assert.match(appSource, /className="seek-control"[\s\S]*--progress/, "seek UI mu
 assert.match(appSource, /className="seek-progress"/, "seek UI must render an independent progress fill instead of relying only on native range background repainting");
 assert.match(appSource, /--progress-ratio/, "seek UI must expose a unitless progress ratio for exact custom thumb positioning");
 assert.match(appSource, /className="seek-thumb"/, "seek UI must render its own thumb instead of relying on WebView range pseudo-element alignment");
-assert.doesNotMatch(appSource, /setPointerCapture|releasePointerCapture|startDragging|DragIntent|continueWindowDragIntent|beginWindowDragIntent/, "custom chrome must not use pointer-capture startDragging loop that freezes render windows");
+assert.doesNotMatch(dragRegionSources, /setPointerCapture|releasePointerCapture|startDragging|DragIntent|continueWindowDragIntent|beginWindowDragIntent/, "custom chrome drag regions must not use a pointer-capture startDragging loop that freezes render windows");
 assert.doesNotMatch(appSource, /titlebar-brand|titlebar-center|side-rail|status-line/, "confirmed baseline UI must not regress to the older chrome layout");
 
 assert.match(styles, /\.window-shell[\s\S]*border:\s*0/, "window shell must not draw an outer border");
@@ -400,6 +461,10 @@ assert.match(styles, /\.history-item/, "styles must include playback history ite
 assert.match(styles, /\.drag-region\s*\{[\s\S]*inset:\s*0/, "drag region must cover the non-control player surface, not just the title strip");
 assert.match(styles, /\.resize-region\s*\{[\s\S]*z-index:\s*95/, "overlay must keep resize hit areas above modal backdrops");
 assert.match(styles, /\.resize-region--south-east/, "overlay must include corner resize hit areas");
+assert.match(styles, /\.resize-feedback\s*\{[\s\S]*pointer-events:\s*none/, "resize feedback must be visible without blocking media controls or resize hit areas");
+assert.match(styles, /\.resize-feedback\s*\{[\s\S]*z-index:\s*96/, "resize feedback must render above transparent resize hit areas so edge hints are complete");
+assert.match(styles, /\.resize-feedback--north[\s\S]*\.resize-feedback-line--north/, "resize feedback must show a top edge hint");
+assert.match(styles, /\.resize-feedback--south-east[\s\S]*\.resize-feedback-corner--south-east/, "resize feedback must show a corner hint");
 assert.match(styles, /\.transport\s*\{[\s\S]*pointer-events:\s*auto/, "transport controls must remain interactive above the full-surface drag region");
 assert.match(styles, /\.playlist-drawer--open\s*\{[\s\S]*pointer-events:\s*auto/, "open playlist drawer must remain interactive above the full-surface drag region");
 assert.match(styles, /\.empty-open-logo/, "empty player state must style the OpenPlayer logo");
@@ -505,6 +570,22 @@ assert.match(mpvEmbedSource, /#\[cfg\(windows\)\][\s\S]*use windows_sys::Win32/,
 assert.match(mpvEmbedSource, /SetWindowPos[\s\S]*HWND_TOP[\s\S]*SWP_NOACTIVATE[\s\S]*SWP_SHOWWINDOW/, "Windows mpv child window resizes must reassert top child z-order over the black WebView video surface");
 assert.match(mpvEmbedSource, /RawWindowHandle::Xlib[\s\S]*RawWindowHandle::Xcb/, "mpv native video host must support X11 window ids on Linux");
 assert.match(mpvEmbedSource, /Wayland[\s\S]*not implemented yet/, "mpv native video host must explicitly reject Wayland until a separate host path exists");
+assert.match(mpvEmbedSource, /RawWindowHandle::AppKit[\s\S]*ns_view/, "mpv native video host must support AppKit NSView ids on macOS");
+assert.match(mpvEmbedSource, /openplayer_mpv_gl_view_create[\s\S]*create_macos_render_context/, "macOS mpv embedding must create an AppKit render view before wiring libmpv rendering");
+assert.match(mpvEmbedSource, /mpv_render_context_create[\s\S]*mpv_render_context_set_update_callback/, "macOS mpv embedding must use libmpv's render API instead of relying on unsupported --wid window nesting");
+assert.match(mpvEmbedSource, /openplayer_mpv_gl_view_resize/, "macOS mpv render view must resize with the Tauri video host");
+assert.match(mpvEmbedSource, /#\[cfg\(target_os = "macos"\)\]\s*fn platform_video_output_config[\s\S]*vo:\s*Some\("libmpv"\.to_string\(\)\)/, "macOS mpv embedding must use vo=libmpv so mpv does not create its own Cocoa window");
+assert.match(mpvEmbedSource, /#\[cfg\(target_os = "macos"\)\][\s\S]*video-timing-offset"[\s\S]*"0"/, "macOS libmpv render path must avoid blocking AppKit on mpv frame timing");
+assert.match(macosGlViewSource, /NSOpenGLView[\s\S]*MPV_RENDER_PARAM_OPENGL_FBO[\s\S]*mpv_render_context_render/, "macOS AppKit host must render libmpv frames into an OpenGL child view");
+assert.match(macosGlViewSource, /dispatch_async\(dispatch_get_main_queue\(\)/, "macOS mpv render updates must schedule drawing on the AppKit main thread");
+assert.doesNotMatch(macosGlViewSource, /\[[^\]]+\s+display(?:IfNeeded)?\]/, "macOS mpv render update callbacks must not synchronously render on the AppKit main thread");
+assert.match(macosGlViewSource, /renderScheduled[\s\S]*setNeedsDisplay:YES/, "macOS mpv render updates must be coalesced into asynchronous redraw requests");
+assert.match(mpvEmbedSource, /async fn mpv_embed_play[\s\S]*run_mpv_command/, "macOS mpv play commands must run libmpv calls away from the AppKit/WebKit main thread");
+assert.match(mpvEmbedSource, /async fn mpv_embed_set_loop_file[\s\S]*run_mpv_command/, "macOS mpv loop commands must run libmpv calls away from the AppKit/WebKit main thread");
+assert.match(mpvEmbedSource, /async fn mpv_embed_snapshot[\s\S]*run_mpv_command/, "periodic mpv snapshots must not block the AppKit/WebKit main thread");
+assert.match(mpvEmbedSource, /tauri::async_runtime::spawn_blocking/, "mpv command dispatch must use a blocking worker to avoid AppKit/libmpv main-thread deadlocks on macOS");
+assert.doesNotMatch(mpvSnapshotSource, /host\.resize/, "mpv snapshots must not resize the AppKit video host while holding the player mutex");
+assert.match(mpvEmbedSource, /mpv_embed_set_video_fill[\s\S]*set_property\("panscan"[\s\S]*1\.0[\s\S]*0\.0/, "mpv video fill must use panscan only when the explicit video layout option is enabled");
 assert.match(mpvEmbedSource, /fn window_mpv_wid/, "mpv native video host must map raw platform handles to mpv wid values");
 assert.match(mpvEmbedSource, /fn wid\(&self\) -> i64/, "mpv native video host must expose a platform-owned mpv wid boundary");
 assert.match(mpvEmbedSource, /mpv_embed_snapshot[\s\S]*player\.snapshot\(0,\s*"playing"\)/, "periodic mpv snapshots must preserve playing status so smooth progress, frame labels, and Space pause keep working");
@@ -518,7 +599,11 @@ assert.match(mpvEmbedSource, /raw_paused\s*\|\|\s*pause_guard_active/, "snapshot
 assert.doesNotMatch(tauriLibSource, /mod playback;|mod storage|DesktopPlaybackState|DesktopStorageState|playback_command|storage_|openplayer_core|openplayer_shared/, "desktop backend must not restore removed playback or storage plumbing");
 assert.match(tauriLibSource, /window_minimize/, "desktop backend must keep minimize command");
 assert.match(tauriLibSource, /window_toggle_maximize/, "desktop backend must keep maximize command");
-assert.match(tauriLibSource, /window_toggle_fullscreen[\s\S]*main_window\(&app\)\?[\s\S]*set_fullscreen/, "desktop backend must toggle fullscreen on the main video window");
+assert.match(tauriLibSource, /window_toggle_fullscreen[\s\S]*main_window\(&app\)\?[\s\S]*set_main_window_fullscreen/, "desktop backend must toggle fullscreen on the main video window");
+assert.match(windowToggleFullscreenSource, /fullscreen_restore[\s\S]*is_some\(\)[\s\S]*is_fullscreen/, "fullscreen restore state must be treated as authoritative so one middle click exits macOS fullscreen transitions");
+assert.doesNotMatch(windowToggleFullscreenSource, /set_fullscreen_video_fill|mpv_embed_set_video_fill|panscan/, "fullscreen toggling must preserve mpv's current video layout instead of forcing fill/crop");
+assert.match(tauriLibSource, /#\[cfg\(target_os = "macos"\)\][\s\S]*fn set_main_window_fullscreen[\s\S]*prepare_macos_main_window_chrome[\s\S]*set_fullscreen/, "macOS fullscreen should keep native fullscreen but hide AppKit titlebar chrome before transitions");
+assert.match(macosGlViewSource, /openplayer_macos_prepare_main_window[\s\S]*titleVisibility[\s\S]*titlebarAppearsTransparent[\s\S]*standardWindowButton/, "macOS main window must hide native titlebar controls to avoid titlebar flashes during fullscreen transitions");
 assert.match(tauriLibSource, /struct WindowPlacement/, "desktop backend must record window placement before entering fullscreen");
 assert.match(tauriLibSource, /restore_window_after_fullscreen/, "desktop backend must restore the recorded placement after leaving fullscreen");
 assert.match(tauriLibSource, /fn focus_overlay_window/, "desktop backend must provide a shared way to focus the overlay controls window");
@@ -584,12 +669,17 @@ assert.match(tauriLibSource, /GetModuleHandleW/, "Windows shortcut hook must pas
 assert.match(tauriLibSource, /GetForegroundWindow/, "Windows shortcut bridge must only dispatch shortcuts when OpenPlayer is the foreground app");
 assert.match(tauriLibSource, /openplayer-native-shortcut/, "native shortcut bridge must emit actions to the overlay frontend");
 assert.match(tauriLibSource, /sync_overlay_to_main[\s\S]*focus_overlay_window\(app\)/, "overlay sync must return keyboard focus to the controls window");
+assert.match(tauriLibSource, /openplayer_macos_prepare_overlay_window/, "macOS overlay window must be marked as a fullscreen auxiliary child of the video window");
+assert.match(macosGlViewSource, /NSWindowCollectionBehaviorFullScreenAuxiliary[\s\S]*addChildWindow/, "macOS overlay must join the main video fullscreen space instead of creating a separate fullscreen space");
 assert.match(tauriLibSource, /WindowEvent::Focused\(true\)[\s\S]*focus_overlay_window\(&app_handle\)/, "clicking the video/main window must return keyboard focus to the overlay shortcut handler");
 assert.match(tauriLibSource, /fn schedule_overlay_sync_to_main/, "desktop backend must schedule overlay sync after asynchronous fullscreen transitions");
 assert.match(windowToggleFullscreenSource, /schedule_overlay_sync_to_main\(&app\)/, "fullscreen toggling must defer overlay sync until the main window has applied fullscreen bounds");
 assert.doesNotMatch(windowToggleFullscreenSource, /sync_overlay_to_main\(&app\)/, "fullscreen toggling must not immediately sync the overlay using stale fullscreen transition bounds");
-assert.match(mpvEmbedRunSource, /mpv_embed_frame_step[\s\S]*mpv_embed_frame_back_step[\s\S]*mpv_embed_set_speed[\s\S]*mpv_embed_set_subtitle_delay[\s\S]*mpv_embed_select_track[\s\S]*mpv_embed_add_subtitle/, "desktop runtime must register frame, speed, subtitle delay, track, and subtitle mpv commands");
+assert.match(mpvEmbedRunSource, /mpv_embed_frame_step[\s\S]*mpv_embed_frame_back_step[\s\S]*mpv_embed_set_speed[\s\S]*mpv_embed_set_video_fill[\s\S]*mpv_embed_set_subtitle_delay[\s\S]*mpv_embed_select_track[\s\S]*mpv_embed_add_subtitle/, "desktop runtime must register frame, speed, video layout, subtitle delay, track, and subtitle mpv commands");
 assert.match(tauriLibSource, /window_start_resize[\s\S]*start_resize_dragging/, "desktop backend must start resizing the main video window from overlay hit areas");
+assert.match(tauriLibSource, /fn window_set_resize_cursor[\s\S]*CursorIcon::NeResize[\s\S]*CursorIcon::Default/, "desktop backend must expose native resize cursor icons for overlay hit areas");
+assert.match(windowApplyResizeDeltaSource, /set_position[\s\S]*set_size/, "macOS manual resize fallback must resize the main video window");
+assert.doesNotMatch(windowApplyResizeDeltaSource, /sync_overlay_to_main|sync_mpv_video_host/, "macOS manual resize deltas must not run immediate duplicate overlay/mpv sync on every pointermove");
 assert.match(tauriLibSource, /window_close/, "desktop backend must keep close command");
 assert.match(tauriLibSource, /window_start_drag[\s\S]*main_window\(&app\)\?[\s\S]*start_dragging/, "backend must drag the main video window when overlay drag strip is used");
 assert.match(mainSource, /windows_subsystem\s*=\s*"windows"/, "release Windows app must use GUI subsystem instead of opening a console");

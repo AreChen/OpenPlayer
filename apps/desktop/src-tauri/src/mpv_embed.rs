@@ -1,16 +1,19 @@
 use std::{
-    ffi::CString,
+    ffi::{CStr, CString, c_char, c_void},
     fs,
     path::{Path, PathBuf},
+    ptr,
     sync::Mutex,
     thread,
     time::{Duration, Instant},
 };
 
 use libmpv2::{events::Event, mpv_end_file_reason};
+#[cfg(target_os = "macos")]
+use objc2::MainThreadMarker;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use serde::Serialize;
-use tauri::{State, Window};
+use tauri::{AppHandle, Manager, State, Window};
 #[cfg(windows)]
 use windows_sys::Win32::{
     Foundation::{HWND, RECT},
@@ -63,10 +66,13 @@ pub struct MpvEmbedState {
 }
 
 struct MpvEmbedPlayer {
+    #[cfg(target_os = "macos")]
+    _render_context: MacosMpvRenderContext,
     mpv: libmpv2::Mpv,
     host: MpvVideoHost,
     path: String,
     volume: f64,
+    video_fill: bool,
     ended: bool,
     force_paused_until: Option<Instant>,
 }
@@ -77,7 +83,29 @@ struct MpvVideoHost {
     hwnd: isize,
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+struct MpvVideoHost {
+    render_view: usize,
+}
+
+#[cfg(target_os = "macos")]
+struct MacosMpvRenderContext {
+    ctx: usize,
+    view: usize,
+}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
+    fn openplayer_mpv_gl_view_create(parent: *mut c_void) -> *mut c_void;
+    fn openplayer_mpv_gl_view_remove(view: *mut c_void);
+    fn openplayer_mpv_gl_view_resize(view: *mut c_void);
+    fn openplayer_mpv_gl_view_set_render_context(view: *mut c_void, render_context: *mut c_void);
+    fn openplayer_mpv_gl_view_make_current(view: *mut c_void);
+    fn openplayer_mpv_gl_view_draw(view: *mut c_void);
+    fn openplayer_mpv_gl_get_proc_address(name: *const c_char) -> *mut c_void;
+}
+
+#[cfg(all(not(windows), not(target_os = "macos")))]
 struct MpvVideoHost {
     wid: i64,
 }
@@ -112,6 +140,7 @@ pub struct MpvEmbedSnapshot {
     fps: f64,
     speed: f64,
     hwdec: String,
+    video_fill: bool,
     subtitle_delay: f64,
     volume: f64,
     tracks: Vec<MpvEmbedTrack>,
@@ -148,6 +177,8 @@ pub fn open_path_for_window(
     let host = MpvVideoHost::new(window)?;
     let wid = host.wid();
     let mpv = create_embed_player(wid)?;
+    #[cfg(target_os = "macos")]
+    let render_context = create_macos_render_context(&mpv, &host)?;
     let path_text = path.to_string_lossy().to_string();
 
     configure_audio_visualizer(&mpv, &path);
@@ -160,10 +191,13 @@ pub fn open_path_for_window(
         .lock()
         .map_err(|_| "mpv embed state lock failed".to_string())?;
     let mut next_player = MpvEmbedPlayer {
+        #[cfg(target_os = "macos")]
+        _render_context: render_context,
         mpv,
         host,
         path: path_text,
         volume: 82.0,
+        video_fill: false,
         ended: false,
         force_paused_until: None,
     };
@@ -174,150 +208,175 @@ pub fn open_path_for_window(
 }
 
 #[tauri::command]
-pub fn mpv_embed_play(state: State<'_, MpvEmbedState>) -> Result<MpvEmbedSnapshot, String> {
-    with_player(&state, |player| {
-        player.force_paused_until = None;
-        player.ended = false;
-        player
-            .mpv
-            .set_property("pause", false)
-            .map_err(|error| format!("mpv play failed: {error}"))?;
-        Ok(player.snapshot(0, "playing"))
+pub async fn mpv_embed_play(app: AppHandle) -> Result<MpvEmbedSnapshot, String> {
+    run_mpv_command(app, |state| {
+        with_player(state, |player| {
+            player.force_paused_until = None;
+            player.ended = false;
+            player
+                .mpv
+                .set_property("pause", false)
+                .map_err(|error| format!("mpv play failed: {error}"))?;
+            Ok(player.snapshot(0, "playing"))
+        })
     })
+    .await
 }
 
 #[tauri::command]
-pub fn mpv_embed_pause(state: State<'_, MpvEmbedState>) -> Result<MpvEmbedSnapshot, String> {
-    with_player(&state, |player| {
-        player.force_paused_until = None;
-        player
-            .mpv
-            .set_property("pause", true)
-            .map_err(|error| format!("mpv pause failed: {error}"))?;
-        Ok(player.snapshot(0, "paused"))
+pub async fn mpv_embed_pause(app: AppHandle) -> Result<MpvEmbedSnapshot, String> {
+    run_mpv_command(app, |state| {
+        with_player(state, |player| {
+            player.force_paused_until = None;
+            player
+                .mpv
+                .set_property("pause", true)
+                .map_err(|error| format!("mpv pause failed: {error}"))?;
+            Ok(player.snapshot(0, "paused"))
+        })
     })
+    .await
 }
 
 #[tauri::command]
-pub fn mpv_embed_seek(
-    state: State<'_, MpvEmbedState>,
-    position: f64,
-) -> Result<MpvEmbedSnapshot, String> {
+pub async fn mpv_embed_seek(app: AppHandle, position: f64) -> Result<MpvEmbedSnapshot, String> {
     if !position.is_finite() || position < 0.0 {
         return Err("invalid mpv seek target".to_string());
     }
 
-    with_player(&state, |player| {
-        player.force_paused_until = None;
-        player.ended = false;
-        player
-            .mpv
-            .command("seek", &[&position.to_string(), "absolute"])
-            .map_err(|error| format!("mpv seek failed: {error}"))?;
-        Ok(player.snapshot(0, "playing"))
+    run_mpv_command(app, move |state| {
+        with_player(state, |player| {
+            player.force_paused_until = None;
+            player.ended = false;
+            player
+                .mpv
+                .command("seek", &[&position.to_string(), "absolute"])
+                .map_err(|error| format!("mpv seek failed: {error}"))?;
+            Ok(player.snapshot(0, "playing"))
+        })
     })
+    .await
 }
 
 #[tauri::command]
-pub fn mpv_embed_frame_step(state: State<'_, MpvEmbedState>) -> Result<MpvEmbedSnapshot, String> {
-    frame_step(&state, "frame-step")
+pub async fn mpv_embed_frame_step(app: AppHandle) -> Result<MpvEmbedSnapshot, String> {
+    run_mpv_command(app, |state| frame_step(state, "frame-step")).await
 }
 
 #[tauri::command]
-pub fn mpv_embed_frame_back_step(
-    state: State<'_, MpvEmbedState>,
-) -> Result<MpvEmbedSnapshot, String> {
-    frame_step(&state, "frame-back-step")
+pub async fn mpv_embed_frame_back_step(app: AppHandle) -> Result<MpvEmbedSnapshot, String> {
+    run_mpv_command(app, |state| frame_step(state, "frame-back-step")).await
 }
 
 #[tauri::command]
-pub fn mpv_embed_set_volume(
-    state: State<'_, MpvEmbedState>,
-    volume: f64,
-) -> Result<MpvEmbedSnapshot, String> {
+pub async fn mpv_embed_set_volume(app: AppHandle, volume: f64) -> Result<MpvEmbedSnapshot, String> {
     if !volume.is_finite() {
         return Err("invalid mpv volume".to_string());
     }
 
     let volume = volume.clamp(0.0, 100.0);
-    with_player(&state, |player| {
-        player
-            .mpv
-            .set_property("volume", volume)
-            .map_err(|error| format!("mpv volume failed: {error}"))?;
-        player.volume = volume;
-        Ok(player.snapshot(0, "playing"))
+    run_mpv_command(app, move |state| {
+        with_player(state, |player| {
+            player
+                .mpv
+                .set_property("volume", volume)
+                .map_err(|error| format!("mpv volume failed: {error}"))?;
+            player.volume = volume;
+            Ok(player.snapshot(0, "playing"))
+        })
     })
+    .await
 }
 
 #[tauri::command]
-pub fn mpv_embed_set_speed(
-    state: State<'_, MpvEmbedState>,
-    speed: f64,
-) -> Result<MpvEmbedSnapshot, String> {
+pub async fn mpv_embed_set_speed(app: AppHandle, speed: f64) -> Result<MpvEmbedSnapshot, String> {
     let speed = normalize_playback_speed(speed)?;
 
-    with_player(&state, |player| {
-        player
-            .mpv
-            .set_property("speed", speed)
-            .map_err(|error| format!("mpv speed failed: {error}"))?;
-        Ok(player.snapshot(0, "playing"))
+    run_mpv_command(app, move |state| {
+        with_player(state, |player| {
+            player
+                .mpv
+                .set_property("speed", speed)
+                .map_err(|error| format!("mpv speed failed: {error}"))?;
+            Ok(player.snapshot(0, "playing"))
+        })
     })
+    .await
 }
 
 #[tauri::command]
-pub fn mpv_embed_set_hwdec(
-    state: State<'_, MpvEmbedState>,
-    mode: String,
-) -> Result<MpvEmbedSnapshot, String> {
+pub async fn mpv_embed_set_hwdec(app: AppHandle, mode: String) -> Result<MpvEmbedSnapshot, String> {
     let hwdec = normalize_hwdec_mode(&mode)?;
 
-    with_player(&state, |player| {
-        player
-            .mpv
-            .set_property("hwdec", hwdec)
-            .map_err(|error| format!("mpv hardware decoding switch failed: {error}"))?;
-        Ok(player.snapshot(0, "playing"))
+    run_mpv_command(app, move |state| {
+        with_player(state, |player| {
+            player
+                .mpv
+                .set_property("hwdec", hwdec)
+                .map_err(|error| format!("mpv hardware decoding switch failed: {error}"))?;
+            Ok(player.snapshot(0, "playing"))
+        })
     })
+    .await
 }
 
 #[tauri::command]
-pub fn mpv_embed_set_loop_file(
-    state: State<'_, MpvEmbedState>,
+pub async fn mpv_embed_set_video_fill(
+    app: AppHandle,
     enabled: bool,
 ) -> Result<MpvEmbedSnapshot, String> {
-    with_player(&state, |player| {
-        player
-            .mpv
-            .set_property("loop-file", if enabled { "inf" } else { "no" })
-            .map_err(|error| format!("mpv loop-file mode failed: {error}"))?;
-        if enabled {
-            player.ended = false;
-        }
-        Ok(player.snapshot(0, "playing"))
+    run_mpv_command(app, move |state| {
+        with_player(state, |player| {
+            set_video_fill_mode(&player.mpv, enabled)?;
+            player.video_fill = enabled;
+            Ok(player.snapshot(0, "playing"))
+        })
     })
+    .await
 }
 
 #[tauri::command]
-pub fn mpv_embed_set_subtitle_delay(
-    state: State<'_, MpvEmbedState>,
+pub async fn mpv_embed_set_loop_file(
+    app: AppHandle,
+    enabled: bool,
+) -> Result<MpvEmbedSnapshot, String> {
+    run_mpv_command(app, move |state| {
+        with_player(state, |player| {
+            player
+                .mpv
+                .set_property("loop-file", if enabled { "inf" } else { "no" })
+                .map_err(|error| format!("mpv loop-file mode failed: {error}"))?;
+            if enabled {
+                player.ended = false;
+            }
+            Ok(player.snapshot(0, "playing"))
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn mpv_embed_set_subtitle_delay(
+    app: AppHandle,
     delay: f64,
 ) -> Result<MpvEmbedSnapshot, String> {
     let delay = normalize_subtitle_delay(delay)?;
 
-    with_player(&state, |player| {
-        player
-            .mpv
-            .set_property("sub-delay", delay)
-            .map_err(|error| format!("mpv subtitle delay failed: {error}"))?;
-        Ok(player.snapshot(0, "playing"))
+    run_mpv_command(app, move |state| {
+        with_player(state, |player| {
+            player
+                .mpv
+                .set_property("sub-delay", delay)
+                .map_err(|error| format!("mpv subtitle delay failed: {error}"))?;
+            Ok(player.snapshot(0, "playing"))
+        })
     })
+    .await
 }
 
 #[tauri::command]
-pub fn mpv_embed_select_track(
-    state: State<'_, MpvEmbedState>,
+pub async fn mpv_embed_select_track(
+    app: AppHandle,
     kind: String,
     track_id: Option<i64>,
 ) -> Result<MpvEmbedSnapshot, String> {
@@ -326,49 +385,56 @@ pub fn mpv_embed_select_track(
         return Err("invalid mpv track id".to_string());
     }
 
-    with_player(&state, |player| {
-        if let Some(id) = track_id {
-            player
-                .mpv
-                .set_property(property, id)
-                .map_err(|error| format!("mpv track selection failed: {error}"))?;
-        } else {
-            player
-                .mpv
-                .set_property(property, "no")
-                .map_err(|error| format!("mpv track disable failed: {error}"))?;
-        }
-        Ok(player.snapshot(0, "playing"))
+    run_mpv_command(app, move |state| {
+        with_player(state, |player| {
+            if let Some(id) = track_id {
+                player
+                    .mpv
+                    .set_property(property, id)
+                    .map_err(|error| format!("mpv track selection failed: {error}"))?;
+            } else {
+                player
+                    .mpv
+                    .set_property(property, "no")
+                    .map_err(|error| format!("mpv track disable failed: {error}"))?;
+            }
+            Ok(player.snapshot(0, "playing"))
+        })
     })
+    .await
 }
 
 #[tauri::command]
-pub fn mpv_embed_add_subtitle(
-    state: State<'_, MpvEmbedState>,
+pub async fn mpv_embed_add_subtitle(
+    app: AppHandle,
     path: String,
 ) -> Result<MpvEmbedSnapshot, String> {
     let path = validate_subtitle_path(&path)?;
     let path_text = path.to_string_lossy().to_string();
 
-    with_player(&state, |player| {
-        player
-            .mpv
-            .command("sub-add", &[&path_text, "select"])
-            .map_err(|error| format!("mpv subtitle load failed: {error}"))?;
-        Ok(player.snapshot(0, "playing"))
+    run_mpv_command(app, move |state| {
+        with_player(state, |player| {
+            player
+                .mpv
+                .command("sub-add", &[&path_text, "select"])
+                .map_err(|error| format!("mpv subtitle load failed: {error}"))?;
+            Ok(player.snapshot(0, "playing"))
+        })
     })
+    .await
 }
 
 #[tauri::command]
-pub fn mpv_embed_snapshot(
-    state: State<'_, MpvEmbedState>,
-) -> Result<Option<MpvEmbedSnapshot>, String> {
-    let mut player = state
-        .player
-        .lock()
-        .map_err(|_| "mpv embed state lock failed".to_string())?;
+pub async fn mpv_embed_snapshot(app: AppHandle) -> Result<Option<MpvEmbedSnapshot>, String> {
+    run_mpv_command(app, |state| {
+        let mut player = state
+            .player
+            .lock()
+            .map_err(|_| "mpv embed state lock failed".to_string())?;
 
-    Ok(player.as_mut().map(|player| player.snapshot(0, "playing")))
+        Ok(player.as_mut().map(|player| player.snapshot(0, "playing")))
+    })
+    .await
 }
 
 fn with_player<T>(
@@ -384,6 +450,21 @@ fn with_player<T>(
         .ok_or_else(|| "mpv has no loaded media".to_string())?;
 
     callback(player)
+}
+
+async fn run_mpv_command<T>(
+    app: AppHandle,
+    callback: impl FnOnce(&MpvEmbedState) -> Result<T, String> + Send + 'static,
+) -> Result<T, String>
+where
+    T: Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<MpvEmbedState>();
+        callback(state.inner())
+    })
+    .await
+    .map_err(|error| format!("mpv command task failed: {error}"))?
 }
 
 fn frame_step(state: &MpvEmbedState, command: &str) -> Result<MpvEmbedSnapshot, String> {
@@ -490,6 +571,12 @@ fn normalize_subtitle_delay(delay: f64) -> Result<f64, String> {
     Ok(delay.clamp(MIN_SUBTITLE_DELAY, MAX_SUBTITLE_DELAY))
 }
 
+fn set_video_fill_mode(mpv: &libmpv2::Mpv, enabled: bool) -> Result<(), String> {
+    let panscan = if enabled { 1.0 } else { 0.0 };
+    mpv.set_property("panscan", panscan)
+        .map_err(|error| format!("mpv video layout failed: {error}"))
+}
+
 fn normalize_hwdec_mode(mode: &str) -> Result<&'static str, String> {
     match mode.trim().to_ascii_lowercase().as_str() {
         "hardware" | "auto" | "auto-safe" => Ok("auto-safe"),
@@ -509,7 +596,6 @@ fn track_property_for_kind(kind: &str) -> Result<&'static str, String> {
 
 impl MpvEmbedPlayer {
     fn snapshot(&mut self, hwnd: i64, fallback_status: &str) -> MpvEmbedSnapshot {
-        let _ = self.host.resize();
         self.drain_events();
         let raw_paused = self.mpv.get_property::<bool>("pause").unwrap_or(false);
         let pause_guard_active = self
@@ -564,6 +650,7 @@ impl MpvEmbedPlayer {
             fps,
             speed,
             hwdec,
+            video_fill: self.video_fill,
             subtitle_delay: if subtitle_delay.is_finite() {
                 subtitle_delay
             } else {
@@ -614,7 +701,34 @@ impl MpvEmbedState {
 }
 
 #[tauri::command]
-pub fn mpv_embed_stop(state: State<'_, MpvEmbedState>) -> Result<(), String> {
+pub fn mpv_embed_stop(window: Window, state: State<'_, MpvEmbedState>) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        if MainThreadMarker::new().is_none() {
+            let app = window.app_handle().clone();
+            let app_for_stop = app.clone();
+            let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+            app.run_on_main_thread(move || {
+                let state = app_for_stop.state::<MpvEmbedState>();
+                let _ = sender.send(stop_player(state.inner()));
+            })
+            .map_err(|error| {
+                format!("failed to schedule macOS mpv AppKit host teardown: {error}")
+            })?;
+
+            return receiver.recv().map_err(|_| {
+                "macOS mpv AppKit host teardown did not return a result".to_string()
+            })?;
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    let _ = window;
+
+    stop_player(state.inner())
+}
+
+fn stop_player(state: &MpvEmbedState) -> Result<(), String> {
     let mut player = state
         .player
         .lock()
@@ -636,8 +750,13 @@ fn create_embed_player(hwnd: i64) -> Result<libmpv2::Mpv, String> {
     log_selected_mpv_video_output_config(&video_output_config);
 
     let mpv = libmpv2::Mpv::with_initializer(|initializer| {
+        #[cfg(not(target_os = "macos"))]
         initializer.set_option("wid", hwnd)?;
+        #[cfg(target_os = "macos")]
+        let _ = hwnd;
         configure_native_video_output(&initializer, &video_output_config)?;
+        #[cfg(target_os = "macos")]
+        initializer.set_option("video-timing-offset", "0")?;
         initializer.set_option("input-default-bindings", false)?;
         initializer.set_option("input-vo-keyboard", false)?;
         initializer.set_option("keep-open", true)?;
@@ -650,6 +769,102 @@ fn create_embed_player(hwnd: i64) -> Result<libmpv2::Mpv, String> {
     request_mpv_log_messages(&mpv);
 
     Ok(mpv)
+}
+
+#[cfg(target_os = "macos")]
+fn create_macos_render_context(
+    mpv: &libmpv2::Mpv,
+    host: &MpvVideoHost,
+) -> Result<MacosMpvRenderContext, String> {
+    unsafe {
+        openplayer_mpv_gl_view_make_current(host.render_view_ptr());
+    }
+
+    let mut init_params = libmpv2_sys::mpv_opengl_init_params {
+        get_proc_address: Some(macos_mpv_get_proc_address),
+        get_proc_address_ctx: ptr::null_mut(),
+    };
+    let mut render_params = [
+        libmpv2_sys::mpv_render_param {
+            type_: libmpv2_sys::mpv_render_param_type_MPV_RENDER_PARAM_API_TYPE,
+            data: libmpv2_sys::MPV_RENDER_API_TYPE_OPENGL.as_ptr() as *mut c_void,
+        },
+        libmpv2_sys::mpv_render_param {
+            type_: libmpv2_sys::mpv_render_param_type_MPV_RENDER_PARAM_OPENGL_INIT_PARAMS,
+            data: (&mut init_params as *mut libmpv2_sys::mpv_opengl_init_params).cast(),
+        },
+        libmpv2_sys::mpv_render_param {
+            type_: 0,
+            data: ptr::null_mut(),
+        },
+    ];
+    let mut context: *mut libmpv2_sys::mpv_render_context = ptr::null_mut();
+    let result = unsafe {
+        libmpv2_sys::mpv_render_context_create(
+            &mut context,
+            mpv.ctx.as_ptr(),
+            render_params.as_mut_ptr(),
+        )
+    };
+    if result < 0 {
+        return Err(format!(
+            "mpv render context init failed: {}",
+            mpv_error_message(result)
+        ));
+    }
+
+    unsafe {
+        openplayer_mpv_gl_view_set_render_context(host.render_view_ptr(), context.cast());
+        libmpv2_sys::mpv_render_context_set_update_callback(
+            context,
+            Some(macos_mpv_render_update),
+            host.render_view_ptr(),
+        );
+    }
+
+    Ok(MacosMpvRenderContext {
+        ctx: context as usize,
+        view: host.render_view,
+    })
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for MacosMpvRenderContext {
+    fn drop(&mut self) {
+        let context = self.ctx as *mut libmpv2_sys::mpv_render_context;
+        unsafe {
+            libmpv2_sys::mpv_render_context_set_update_callback(context, None, ptr::null_mut());
+            openplayer_mpv_gl_view_set_render_context(self.view as *mut c_void, ptr::null_mut());
+            libmpv2_sys::mpv_render_context_free(context);
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C" fn macos_mpv_get_proc_address(
+    _ctx: *mut c_void,
+    name: *const c_char,
+) -> *mut c_void {
+    unsafe { openplayer_mpv_gl_get_proc_address(name) }
+}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C" fn macos_mpv_render_update(ctx: *mut c_void) {
+    unsafe {
+        openplayer_mpv_gl_view_draw(ctx);
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn mpv_error_message(code: i32) -> String {
+    let message = unsafe { libmpv2_sys::mpv_error_string(code) };
+    if message.is_null() {
+        return code.to_string();
+    }
+
+    unsafe { CStr::from_ptr(message) }
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn configure_native_video_output(
@@ -739,7 +954,16 @@ fn platform_video_output_config() -> MpvVideoOutputConfig {
     })
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "macos")]
+fn platform_video_output_config() -> MpvVideoOutputConfig {
+    MpvVideoOutputConfig {
+        vo: Some("libmpv".to_string()),
+        gpu_context: None,
+        hwdec: "auto-safe".to_string(),
+    }
+}
+
+#[cfg(all(not(target_os = "linux"), not(target_os = "macos")))]
 fn platform_video_output_config() -> MpvVideoOutputConfig {
     MpvVideoOutputConfig {
         vo: None,
@@ -930,7 +1154,23 @@ impl MpvVideoHost {
         })
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    fn new(window: &impl HasWindowHandle) -> Result<Self, String> {
+        let parent_ns_view = window_appkit_ns_view(window)?;
+        let Some(_mtm) = MainThreadMarker::new() else {
+            return Err("macOS mpv video host must be created on the main thread".to_string());
+        };
+
+        let render_view =
+            unsafe { openplayer_mpv_gl_view_create(parent_ns_view as *mut c_void) } as usize;
+        if render_view == 0 {
+            return Err("failed to create macOS mpv OpenGL render view".to_string());
+        }
+
+        Ok(Self { render_view })
+    }
+
+    #[cfg(all(not(windows), not(target_os = "macos")))]
     fn new(window: &impl HasWindowHandle) -> Result<Self, String> {
         Ok(Self {
             wid: window_mpv_wid(window)?,
@@ -942,7 +1182,12 @@ impl MpvVideoHost {
         self.hwnd as i64
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    fn wid(&self) -> i64 {
+        self.render_view as i64
+    }
+
+    #[cfg(all(not(windows), not(target_os = "macos")))]
     fn wid(&self) -> i64 {
         self.wid
     }
@@ -959,7 +1204,20 @@ impl MpvVideoHost {
         position_video_host(self.hwnd as HWND, layout)
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    fn resize(&self) -> Result<(), String> {
+        unsafe {
+            openplayer_mpv_gl_view_resize(self.render_view_ptr());
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    fn render_view_ptr(&self) -> *mut c_void {
+        self.render_view as *mut c_void
+    }
+
+    #[cfg(all(not(windows), not(target_os = "macos")))]
     fn resize(&self) -> Result<(), String> {
         Ok(())
     }
@@ -990,6 +1248,15 @@ impl Drop for MpvVideoHost {
     fn drop(&mut self) {
         unsafe {
             DestroyWindow(self.hwnd as HWND);
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for MpvVideoHost {
+    fn drop(&mut self) {
+        unsafe {
+            openplayer_mpv_gl_view_remove(self.render_view_ptr());
         }
     }
 }
@@ -1111,6 +1378,7 @@ fn load_sidecar_subtitles(mpv: &libmpv2::Mpv, media_path: &Path) {
     }
 }
 
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn window_mpv_wid(window: &impl HasWindowHandle) -> Result<i64, String> {
     let handle = window
         .window_handle()
@@ -1119,6 +1387,19 @@ fn window_mpv_wid(window: &impl HasWindowHandle) -> Result<i64, String> {
     mpv_wid_from_raw_window_handle(handle.as_raw())
 }
 
+#[cfg(target_os = "macos")]
+fn window_appkit_ns_view(window: &impl HasWindowHandle) -> Result<usize, String> {
+    let handle = window
+        .window_handle()
+        .map_err(|error| format!("failed to read Tauri window handle: {error}"))?;
+
+    match handle.as_raw() {
+        RawWindowHandle::AppKit(handle) => Ok(handle.ns_view.as_ptr() as usize),
+        _ => Err("window operation is only wired for macOS AppKit NSView targets".to_string()),
+    }
+}
+
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn mpv_wid_from_raw_window_handle(handle: RawWindowHandle) -> Result<i64, String> {
     match handle {
         RawWindowHandle::Win32(handle) => Ok(handle.hwnd.get() as i64),
@@ -1128,12 +1409,9 @@ fn mpv_wid_from_raw_window_handle(handle: RawWindowHandle) -> Result<i64, String
             "mpv embed playback currently supports Windows HWND and X11 window hosts; Wayland video host support is not implemented yet"
                 .to_string(),
         ),
-        RawWindowHandle::AppKit(_) => Err(
-            "mpv embed playback currently supports Windows HWND and X11 window hosts; macOS AppKit video host support is not implemented yet"
-                .to_string(),
-        ),
+        RawWindowHandle::AppKit(handle) => Ok(handle.ns_view.as_ptr() as isize as i64),
         _ => Err(format!(
-            "mpv embed playback currently supports Windows HWND and X11 window hosts; {} video host support is not implemented yet",
+            "mpv embed playback currently supports Windows HWND, X11 window, and macOS AppKit NSView hosts; {} video host support is not implemented yet",
             std::env::consts::OS
         )),
     }
@@ -1145,6 +1423,7 @@ fn xlib_window_to_mpv_wid(window: core::ffi::c_ulong) -> Result<i64, String> {
 }
 
 #[cfg(not(windows))]
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn xlib_window_to_mpv_wid(window: core::ffi::c_ulong) -> Result<i64, String> {
     if window > i64::MAX as core::ffi::c_ulong {
         Err("Xlib window id is too large for mpv wid".to_string())
@@ -1427,6 +1706,21 @@ mod tests {
             "cplayer",
             "Playing: sample.mp4"
         ));
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn macos_video_output_uses_libmpv_render_api_vo() {
+        let config = platform_video_output_config();
+
+        assert_eq!(
+            config,
+            MpvVideoOutputConfig {
+                vo: Some("libmpv".to_string()),
+                gpu_context: None,
+                hwdec: "auto-safe".to_string(),
+            }
+        );
     }
 
     #[test]

@@ -59,7 +59,7 @@ fn native_video_support_for_environment(
     match environment.os {
         "windows" => ("win32", true),
         "linux" => linux_video_support(environment),
-        "macos" => ("appkit", false),
+        "macos" => ("appkit", true),
         _ => ("unknown", false),
     }
 }
@@ -210,5 +210,19 @@ mod tests {
         };
 
         assert!(!should_default_linux_gdk_backend_to_x11(environment));
+    }
+
+    #[test]
+    fn macos_appkit_session_supports_native_mpv_embedding() {
+        let environment = PlatformEnvironment {
+            os: "macos",
+            display: None,
+            wayland_display: None,
+            gdk_backend: None,
+        };
+        let support = PlatformSupport::for_environment(environment);
+
+        assert_eq!(support.display_server, "appkit");
+        assert!(support.mpv_embed_video);
     }
 }

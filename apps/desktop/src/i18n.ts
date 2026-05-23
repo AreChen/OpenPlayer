@@ -148,6 +148,11 @@ export const translations = {
     media: {
       speed: "Playback Speed",
       loopMode: "Loop Mode",
+      videoLayout: "Video Layout",
+      videoFit: "Fit",
+      videoFitDescription: "Show the full frame",
+      videoFill: "Fill",
+      videoFillDescription: "Crop edges to fill the window",
       audioTracks: "Audio Tracks",
       videoTracks: "Video Tracks",
       subtitles: "Subtitles",
@@ -320,6 +325,11 @@ export const translations = {
     media: {
       speed: "播放速度",
       loopMode: "循环模式",
+      videoLayout: "视频布局",
+      videoFit: "完整显示",
+      videoFitDescription: "保留完整画面",
+      videoFill: "铺满裁切",
+      videoFillDescription: "裁切边缘以填满窗口",
       audioTracks: "音轨",
       videoTracks: "视频轨",
       subtitles: "字幕",

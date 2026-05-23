@@ -1,6 +1,6 @@
-#[cfg(all(feature = "mpv-embed", windows))]
+#[cfg(all(feature = "mpv-embed", any(windows, target_os = "macos")))]
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use std::{collections::HashMap, sync::Mutex, thread, time::Duration};
+use std::{collections::HashMap, ffi::c_void, sync::Mutex, thread, time::Duration};
 #[cfg(windows)]
 use std::{
     collections::HashSet,
@@ -14,7 +14,8 @@ use tauri::Emitter;
 #[cfg(feature = "mpv-embed")]
 use tauri::utils::config::Color;
 use tauri::{
-    AppHandle, Manager, PhysicalPosition, PhysicalSize, Position, Size, State, WebviewWindow,
+    AppHandle, CursorIcon, Manager, PhysicalPosition, PhysicalSize, Position, Size, State,
+    WebviewWindow,
 };
 #[cfg(feature = "mpv-embed")]
 use tauri::{WebviewUrl, WebviewWindowBuilder};
@@ -65,7 +66,8 @@ use mpv_embed::{
     MpvEmbedSnapshot, MpvEmbedState, mpv_embed_add_subtitle, mpv_embed_frame_back_step,
     mpv_embed_frame_step, mpv_embed_pause, mpv_embed_play, mpv_embed_seek, mpv_embed_select_track,
     mpv_embed_set_hwdec, mpv_embed_set_loop_file, mpv_embed_set_speed,
-    mpv_embed_set_subtitle_delay, mpv_embed_set_volume, mpv_embed_snapshot, mpv_embed_stop,
+    mpv_embed_set_subtitle_delay, mpv_embed_set_video_fill, mpv_embed_set_volume,
+    mpv_embed_snapshot, mpv_embed_stop,
 };
 use platform_support::{platform_support, prepare_platform_runtime};
 use playback_store::{
@@ -116,6 +118,15 @@ static NATIVE_SHORTCUT_STATE: OnceLock<NativeShortcutState> = OnceLock::new();
 #[cfg(feature = "mpv-embed")]
 static MPV_VIDEO_HOST_SYNC_PENDING: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
+
+const MIN_MAIN_WINDOW_WIDTH: i32 = 960;
+const MIN_MAIN_WINDOW_HEIGHT: i32 = 540;
+
+#[cfg(all(feature = "mpv-embed", target_os = "macos"))]
+unsafe extern "C" {
+    fn openplayer_macos_prepare_main_window(main_view: *mut c_void);
+    fn openplayer_macos_prepare_overlay_window(main_view: *mut c_void, overlay_view: *mut c_void);
+}
 
 #[tauri::command]
 fn window_update_shortcuts(bindings: HashMap<String, Option<String>>) -> Result<(), String> {
@@ -374,32 +385,26 @@ fn window_toggle_fullscreen(
     window_state: State<'_, WindowState>,
 ) -> Result<(), String> {
     let main = main_window(&app)?;
-    let is_fullscreen = main.is_fullscreen().map_err(|error| error.to_string())?;
+    let mut fullscreen_restore = window_state
+        .fullscreen_restore
+        .lock()
+        .map_err(|_| "window state lock failed".to_string())?;
+    let has_restore_placement = fullscreen_restore.is_some();
+    let is_fullscreen =
+        has_restore_placement || main.is_fullscreen().map_err(|error| error.to_string())?;
     if is_fullscreen {
-        let placement = window_state
-            .fullscreen_restore
-            .lock()
-            .map_err(|_| "window state lock failed".to_string())?
-            .clone();
-
-        if let Some(placement) = placement {
+        if let Some(placement) = fullscreen_restore.take() {
+            drop(fullscreen_restore);
             restore_window_after_fullscreen(&main, placement)?;
-            *window_state
-                .fullscreen_restore
-                .lock()
-                .map_err(|_| "window state lock failed".to_string())? = None;
         } else {
-            main.set_fullscreen(false)
-                .map_err(|error| error.to_string())?;
+            drop(fullscreen_restore);
+            set_main_window_fullscreen(&main, false)?;
         }
     } else {
         let placement = capture_window_placement(&main)?;
-        main.set_fullscreen(true)
-            .map_err(|error| error.to_string())?;
-        *window_state
-            .fullscreen_restore
-            .lock()
-            .map_err(|_| "window state lock failed".to_string())? = Some(placement);
+        set_main_window_fullscreen(&main, true)?;
+        *fullscreen_restore = Some(placement);
+        drop(fullscreen_restore);
     }
 
     schedule_overlay_sync_to_main(&app);
@@ -417,6 +422,14 @@ fn window_close(app: AppHandle) -> Result<(), String> {
 }
 
 fn sync_overlay_to_main(app: &AppHandle) {
+    sync_overlay_to_main_with_focus(app, true);
+}
+
+fn sync_overlay_to_main_without_focus(app: &AppHandle) {
+    sync_overlay_to_main_with_focus(app, false);
+}
+
+fn sync_overlay_to_main_with_focus(app: &AppHandle, focus_overlay: bool) {
     let Ok(main) = main_window(app) else {
         return;
     };
@@ -437,7 +450,9 @@ fn sync_overlay_to_main(app: &AppHandle) {
         width: size.width,
         height: size.height,
     }));
-    focus_overlay_window(app);
+    if focus_overlay {
+        focus_overlay_window(app);
+    }
 }
 
 fn focus_overlay_window(app: &AppHandle) {
@@ -507,13 +522,26 @@ fn capture_window_placement(window: &WebviewWindow) -> Result<WindowPlacement, S
     })
 }
 
+#[cfg(target_os = "macos")]
+fn set_main_window_fullscreen(window: &WebviewWindow, fullscreen: bool) -> Result<(), String> {
+    prepare_macos_main_window_chrome(window);
+    window
+        .set_fullscreen(fullscreen)
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_main_window_fullscreen(window: &WebviewWindow, fullscreen: bool) -> Result<(), String> {
+    window
+        .set_fullscreen(fullscreen)
+        .map_err(|error| error.to_string())
+}
+
 fn restore_window_after_fullscreen(
     window: &WebviewWindow,
     placement: WindowPlacement,
 ) -> Result<(), String> {
-    window
-        .set_fullscreen(false)
-        .map_err(|error| error.to_string())?;
+    set_main_window_fullscreen(window, false)?;
 
     if placement.maximized {
         window.maximize().map_err(|error| error.to_string())?;
@@ -542,7 +570,37 @@ fn set_overlay_owner(main: &WebviewWindow, overlay: &WebviewWindow) {
     }
 }
 
+#[cfg(all(feature = "mpv-embed", target_os = "macos"))]
+fn prepare_macos_main_window_chrome(main: &WebviewWindow) {
+    let Ok(main_view) = window_appkit_ns_view(main) else {
+        return;
+    };
+    unsafe {
+        openplayer_macos_prepare_main_window(main_view as *mut c_void);
+    }
+}
+
+#[cfg(any(not(feature = "mpv-embed"), not(target_os = "macos")))]
+fn prepare_macos_main_window_chrome(_main: &WebviewWindow) {}
+
+#[cfg(all(feature = "mpv-embed", target_os = "macos"))]
+fn set_overlay_owner(main: &WebviewWindow, overlay: &WebviewWindow) {
+    let Ok(main_view) = window_appkit_ns_view(main) else {
+        return;
+    };
+    let Ok(overlay_view) = window_appkit_ns_view(overlay) else {
+        return;
+    };
+    unsafe {
+        openplayer_macos_prepare_overlay_window(
+            main_view as *mut c_void,
+            overlay_view as *mut c_void,
+        );
+    }
+}
+
 #[cfg(all(feature = "mpv-embed", not(windows)))]
+#[cfg(not(target_os = "macos"))]
 fn set_overlay_owner(_main: &WebviewWindow, _overlay: &WebviewWindow) {}
 
 #[cfg(all(feature = "mpv-embed", windows))]
@@ -556,6 +614,17 @@ fn window_hwnd(window: &impl HasWindowHandle) -> Result<isize, String> {
     }
 }
 
+#[cfg(all(feature = "mpv-embed", target_os = "macos"))]
+fn window_appkit_ns_view(window: &impl HasWindowHandle) -> Result<usize, String> {
+    let handle = window
+        .window_handle()
+        .map_err(|error| format!("failed to read Tauri window handle: {error}"))?;
+    match handle.as_raw() {
+        RawWindowHandle::AppKit(handle) => Ok(handle.ns_view.as_ptr() as usize),
+        _ => Err("window operation is only wired for macOS AppKit NSView targets".to_string()),
+    }
+}
+
 #[cfg(feature = "mpv-embed")]
 #[tauri::command]
 fn window_start_drag(app: AppHandle) -> Result<(), String> {
@@ -566,7 +635,44 @@ fn window_start_drag(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn window_start_resize(app: AppHandle, direction: String) -> Result<(), String> {
-    let direction = match direction.as_str() {
+    let direction = resize_direction_from_str(&direction)?;
+
+    main_window(&app)?
+        .as_ref()
+        .window()
+        .start_resize_dragging(direction)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn window_set_resize_cursor(app: AppHandle, direction: Option<String>) -> Result<(), String> {
+    let icon = match direction.as_deref() {
+        Some("East") => CursorIcon::EResize,
+        Some("North") => CursorIcon::NResize,
+        Some("NorthEast") => CursorIcon::NeResize,
+        Some("NorthWest") => CursorIcon::NwResize,
+        Some("South") => CursorIcon::SResize,
+        Some("SouthEast") => CursorIcon::SeResize,
+        Some("SouthWest") => CursorIcon::SwResize,
+        Some("West") => CursorIcon::WResize,
+        Some("Default") | None => CursorIcon::Default,
+        Some(direction) => return Err(format!("invalid resize cursor direction: {direction}")),
+    };
+
+    main_window(&app)?
+        .set_cursor_icon(icon)
+        .map_err(|error| error.to_string())?;
+    if let Some(overlay) = overlay_window(&app) {
+        overlay
+            .set_cursor_icon(icon)
+            .map_err(|error| error.to_string())?;
+    }
+
+    Ok(())
+}
+
+fn resize_direction_from_str(direction: &str) -> Result<ResizeDirection, String> {
+    Ok(match direction {
         "East" => ResizeDirection::East,
         "North" => ResizeDirection::North,
         "NorthEast" => ResizeDirection::NorthEast,
@@ -576,13 +682,103 @@ fn window_start_resize(app: AppHandle, direction: String) -> Result<(), String> 
         "SouthWest" => ResizeDirection::SouthWest,
         "West" => ResizeDirection::West,
         _ => return Err(format!("invalid resize direction: {direction}")),
-    };
+    })
+}
 
-    main_window(&app)?
-        .as_ref()
-        .window()
-        .start_resize_dragging(direction)
-        .map_err(|error| error.to_string())
+#[tauri::command]
+fn window_apply_resize_delta(
+    app: AppHandle,
+    direction: String,
+    delta_x: f64,
+    delta_y: f64,
+) -> Result<(), String> {
+    if !delta_x.is_finite() || !delta_y.is_finite() {
+        return Err("invalid resize delta".to_string());
+    }
+
+    let direction = resize_direction_from_str(&direction)?;
+    let main = main_window(&app)?;
+    if main.is_fullscreen().map_err(|error| error.to_string())?
+        || main.is_maximized().map_err(|error| error.to_string())?
+    {
+        return Ok(());
+    }
+
+    let position = main.outer_position().map_err(|error| error.to_string())?;
+    let size = main.outer_size().map_err(|error| error.to_string())?;
+    let old_width = size.width as i32;
+    let old_height = size.height as i32;
+    let dx = delta_x.round() as i32;
+    let dy = delta_y.round() as i32;
+    let mut x = position.x;
+    let mut y = position.y;
+    let mut width = old_width;
+    let mut height = old_height;
+
+    if resize_direction_has_west_edge(direction) {
+        x += dx;
+        width -= dx;
+    }
+    if resize_direction_has_east_edge(direction) {
+        width += dx;
+    }
+    if resize_direction_has_north_edge(direction) {
+        y += dy;
+        height -= dy;
+    }
+    if resize_direction_has_south_edge(direction) {
+        height += dy;
+    }
+
+    if width < MIN_MAIN_WINDOW_WIDTH {
+        if resize_direction_has_west_edge(direction) {
+            x -= MIN_MAIN_WINDOW_WIDTH - width;
+        }
+        width = MIN_MAIN_WINDOW_WIDTH;
+    }
+    if height < MIN_MAIN_WINDOW_HEIGHT {
+        if resize_direction_has_north_edge(direction) {
+            y -= MIN_MAIN_WINDOW_HEIGHT - height;
+        }
+        height = MIN_MAIN_WINDOW_HEIGHT;
+    }
+
+    main.set_position(Position::Physical(PhysicalPosition { x, y }))
+        .map_err(|error| error.to_string())?;
+    main.set_size(Size::Physical(PhysicalSize {
+        width: width as u32,
+        height: height as u32,
+    }))
+    .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+fn resize_direction_has_west_edge(direction: ResizeDirection) -> bool {
+    matches!(
+        direction,
+        ResizeDirection::West | ResizeDirection::NorthWest | ResizeDirection::SouthWest
+    )
+}
+
+fn resize_direction_has_east_edge(direction: ResizeDirection) -> bool {
+    matches!(
+        direction,
+        ResizeDirection::East | ResizeDirection::NorthEast | ResizeDirection::SouthEast
+    )
+}
+
+fn resize_direction_has_north_edge(direction: ResizeDirection) -> bool {
+    matches!(
+        direction,
+        ResizeDirection::North | ResizeDirection::NorthEast | ResizeDirection::NorthWest
+    )
+}
+
+fn resize_direction_has_south_edge(direction: ResizeDirection) -> bool {
+    matches!(
+        direction,
+        ResizeDirection::South | ResizeDirection::SouthEast | ResizeDirection::SouthWest
+    )
 }
 
 #[cfg(feature = "mpv-embed")]
@@ -592,8 +788,50 @@ fn mpv_overlay_open_path(
     state: tauri::State<'_, MpvEmbedState>,
     path: String,
 ) -> Result<MpvEmbedSnapshot, String> {
-    let main = main_window(&app)?;
-    sync_overlay_to_main(&app);
+    #[cfg(target_os = "macos")]
+    {
+        let _ = state;
+        return open_path_for_main_window_on_main_thread(app, path);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let main = main_window(&app)?;
+        sync_overlay_to_main(&app);
+        mpv_embed::open_path_for_window(&main, state.inner(), path)
+    }
+}
+
+#[cfg(all(feature = "mpv-embed", target_os = "macos"))]
+fn open_path_for_main_window_on_main_thread(
+    app: AppHandle,
+    path: String,
+) -> Result<MpvEmbedSnapshot, String> {
+    if objc2::MainThreadMarker::new().is_some() {
+        return open_path_for_main_window_now(&app, path);
+    }
+
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    let app_for_open = app.clone();
+    app.run_on_main_thread(move || {
+        let result = open_path_for_main_window_now(&app_for_open, path);
+        let _ = sender.send(result);
+    })
+    .map_err(|error| format!("failed to schedule macOS mpv AppKit host setup: {error}"))?;
+
+    receiver
+        .recv()
+        .map_err(|_| "macOS mpv AppKit host setup did not return a result".to_string())?
+}
+
+#[cfg(all(feature = "mpv-embed", target_os = "macos"))]
+fn open_path_for_main_window_now(
+    app: &AppHandle,
+    path: String,
+) -> Result<MpvEmbedSnapshot, String> {
+    let main = main_window(app)?;
+    sync_overlay_to_main(app);
+    let state = app.state::<MpvEmbedState>();
     mpv_embed::open_path_for_window(&main, state.inner(), path)
 }
 
@@ -617,6 +855,8 @@ pub fn run() {
             window_toggle_fullscreen,
             window_focus_overlay,
             window_start_resize,
+            window_set_resize_cursor,
+            window_apply_resize_delta,
             window_close,
             media_files_in_directory,
             startup_media_paths,
@@ -656,6 +896,7 @@ pub fn run() {
             app.manage(PlaybackStoreState::open(app.handle()));
             install_native_shortcut_hook(app.handle().clone());
             if let Some(window) = app.get_webview_window("main") {
+                prepare_macos_main_window_chrome(&window);
                 let overlay = WebviewWindowBuilder::new(
                     app,
                     "overlay",
@@ -677,6 +918,7 @@ pub fn run() {
                 let app_handle = app.handle().clone();
                 sync_overlay_to_main(&app_handle);
                 let _ = overlay.show();
+                set_overlay_owner(&window, &overlay);
                 window.on_window_event(move |event| {
                     if matches!(
                         event,
@@ -684,7 +926,7 @@ pub fn run() {
                             | WindowEvent::Resized(_)
                             | WindowEvent::ScaleFactorChanged { .. }
                     ) {
-                        sync_overlay_to_main(&app_handle);
+                        sync_overlay_to_main_without_focus(&app_handle);
                         sync_mpv_video_host(&app_handle);
                         schedule_mpv_video_host_sync(&app_handle);
                     }
@@ -706,6 +948,8 @@ pub fn run() {
             window_focus_overlay,
             window_start_drag,
             window_start_resize,
+            window_set_resize_cursor,
+            window_apply_resize_delta,
             mpv_overlay_open_path,
             mpv_embed_play,
             mpv_embed_pause,
@@ -715,6 +959,7 @@ pub fn run() {
             mpv_embed_set_hwdec,
             mpv_embed_set_loop_file,
             mpv_embed_set_speed,
+            mpv_embed_set_video_fill,
             mpv_embed_set_subtitle_delay,
             mpv_embed_select_track,
             mpv_embed_add_subtitle,

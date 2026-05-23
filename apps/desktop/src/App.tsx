@@ -38,6 +38,7 @@ type MpvSnapshot = {
   fps: number;
   speed: number;
   hwdec: string;
+  videoFill: boolean;
   subtitleDelay: number;
   volume: number;
   tracks: MpvTrack[];
@@ -122,6 +123,18 @@ type PendingWindowDrag = {
   startY: number;
 };
 
+type ManualResizeDrag = {
+  pointerId: number;
+  direction: ResizeDirection;
+  lastX: number;
+  lastY: number;
+  pendingDeltaX: number;
+  pendingDeltaY: number;
+  animationFrameId: number | null;
+  resizeCommandInFlight: boolean;
+  finishing: boolean;
+};
+
 type PlaybackClockAnchor = {
   position: number;
   startedAt: number;
@@ -141,6 +154,10 @@ type VolumeFeedback = {
 };
 
 type ResizeDirection = "East" | "North" | "NorthEast" | "NorthWest" | "South" | "SouthEast" | "SouthWest" | "West";
+type ResizeFeedback = {
+  direction: ResizeDirection;
+  active: boolean;
+};
 
 type WindowCommand = "window_minimize" | "window_toggle_maximize" | "window_toggle_fullscreen" | "window_close";
 type ShortcutAction =
@@ -621,10 +638,26 @@ function startMainWindowDrag() {
   });
 }
 
-function startMainWindowResize(direction: ResizeDirection) {
+function startNativeMainWindowResize(direction: ResizeDirection) {
   invoke("window_start_resize", { direction }).catch((error: unknown) => {
     console.error(`Window resize failed: ${direction}`, error);
   });
+}
+
+function applyManualMainWindowResize(direction: ResizeDirection, deltaX: number, deltaY: number) {
+  return invoke("window_apply_resize_delta", { direction, deltaX, deltaY }).catch((error: unknown) => {
+    console.error(`Window resize failed: ${direction}`, error);
+  });
+}
+
+function applyResizeCursor(direction: ResizeDirection | null) {
+  return invoke("window_set_resize_cursor", { direction }).catch((error: unknown) => {
+    console.warn("Resize cursor update failed", error);
+  });
+}
+
+function resizeDirectionClassName(direction: ResizeDirection) {
+  return direction.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
 }
 
 function formatTimecode(value: number, totalDuration: number) {
@@ -855,6 +888,7 @@ function App() {
   const [volumeLevel, setVolumeLevel] = useState(0.82);
   const [playbackSpeed, setPlaybackSpeedValue] = useState(1);
   const [hardwareDecodingMode, setHardwareDecodingModeValue] = useState<HardwareDecodingMode>("hardware");
+  const [isVideoFillEnabled, setIsVideoFillEnabled] = useState(false);
   const [subtitleDelay, setSubtitleDelayValue] = useState(0);
   const [tracks, setTracks] = useState<MpvTrack[]>([]);
   const [loadedMediaPath, setLoadedMediaPath] = useState<string | null>(null);
@@ -873,6 +907,7 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("appearance");
   const [mediaPanelMode, setMediaPanelMode] = useState<MediaPanelMode | null>(null);
+  const [resizeFeedback, setResizeFeedback] = useState<ResizeFeedback | null>(null);
   const [shellPreviewFormats, setShellPreviewFormats] = useState<ShellPreviewFormatInfo[]>([]);
   const [selectedShellPreviewFormats, setSelectedShellPreviewFormats] = useState<string[]>([]);
   const [shellPreviewRegistrationStatus, setShellPreviewRegistrationStatus] = useState<string | null>(null);
@@ -885,6 +920,8 @@ function App() {
   const chromeHideTimerRef = useRef<number | null>(null);
   const volumeFeedbackTimerRef = useRef<number | null>(null);
   const pendingWindowDragRef = useRef<PendingWindowDrag | null>(null);
+  const manualResizeDragRef = useRef<ManualResizeDrag | null>(null);
+  const resizeCursorDirectionRef = useRef<ResizeDirection | null>(null);
   const handledEndedPathRef = useRef<string | null>(null);
   const lastHistoryWriteRef = useRef(0);
   const hardwareDecodingModeRef = useRef<HardwareDecodingMode>("hardware");
@@ -1034,6 +1071,9 @@ function App() {
     return () => {
       clearChromeHideTimer();
       clearPendingWindowDrag();
+      clearManualResizeDrag();
+      setNativeResizeCursor(null);
+      setResizeFeedback(null);
     };
   }, [media?.id, isChromePinned]);
 
@@ -1201,6 +1241,98 @@ function App() {
     pendingWindowDragRef.current = null;
   }
 
+  function clearManualResizeDrag() {
+    const pendingResize = manualResizeDragRef.current;
+    if (pendingResize?.animationFrameId != null) {
+      window.cancelAnimationFrame(pendingResize.animationFrameId);
+    }
+    manualResizeDragRef.current = null;
+  }
+
+  function setNativeResizeCursor(direction: ResizeDirection | null) {
+    if (resizeCursorDirectionRef.current === direction) {
+      return;
+    }
+
+    resizeCursorDirectionRef.current = direction;
+    void applyResizeCursor(direction);
+  }
+
+  function setResizeBoundaryFeedback(direction: ResizeDirection | null, active = false) {
+    setResizeFeedback((feedback) => {
+      if (!direction) {
+        return feedback === null ? feedback : null;
+      }
+
+      if (feedback?.direction === direction && feedback.active === active) {
+        return feedback;
+      }
+
+      return { direction, active };
+    });
+  }
+
+  function completeManualResizeIfIdle(pendingResize: ManualResizeDrag) {
+    if (
+      pendingResize.finishing &&
+      !pendingResize.resizeCommandInFlight &&
+      pendingResize.animationFrameId === null &&
+      Math.abs(pendingResize.pendingDeltaX) < 0.5 &&
+      Math.abs(pendingResize.pendingDeltaY) < 0.5 &&
+      manualResizeDragRef.current === pendingResize
+    ) {
+      manualResizeDragRef.current = null;
+    }
+  }
+
+  function requestManualResizeFlush() {
+    const pendingResize = manualResizeDragRef.current;
+    if (!pendingResize || pendingResize.animationFrameId !== null || pendingResize.resizeCommandInFlight) {
+      return;
+    }
+
+    pendingResize.animationFrameId = window.requestAnimationFrame(() => {
+      const activeResize = manualResizeDragRef.current;
+      if (!activeResize) {
+        return;
+      }
+
+      activeResize.animationFrameId = null;
+      flushManualResizeDelta();
+    });
+  }
+
+  function flushManualResizeDelta() {
+    const pendingResize = manualResizeDragRef.current;
+    if (!pendingResize || pendingResize.resizeCommandInFlight) {
+      return;
+    }
+
+    const deltaX = pendingResize.pendingDeltaX;
+    const deltaY = pendingResize.pendingDeltaY;
+    if (Math.abs(deltaX) < 0.5 && Math.abs(deltaY) < 0.5) {
+      completeManualResizeIfIdle(pendingResize);
+      return;
+    }
+
+    pendingResize.pendingDeltaX = 0;
+    pendingResize.pendingDeltaY = 0;
+    pendingResize.resizeCommandInFlight = true;
+    applyManualMainWindowResize(pendingResize.direction, deltaX, deltaY).finally(() => {
+      if (manualResizeDragRef.current !== pendingResize) {
+        return;
+      }
+
+      pendingResize.resizeCommandInFlight = false;
+      if (Math.abs(pendingResize.pendingDeltaX) >= 0.5 || Math.abs(pendingResize.pendingDeltaY) >= 0.5) {
+        requestManualResizeFlush();
+        return;
+      }
+
+      completeManualResizeIfIdle(pendingResize);
+    });
+  }
+
   function scheduleChromeHide() {
     clearChromeHideTimer();
     if (isChromePinned) {
@@ -1260,6 +1392,7 @@ function App() {
     setPlaybackSpeedValue(snapshotSpeed);
     setHardwareDecodingModeValue(hwdecModeFromSnapshot(snapshot.hwdec));
     hardwareDecodingModeRef.current = hwdecModeFromSnapshot(snapshot.hwdec);
+    setIsVideoFillEnabled(snapshot.videoFill === true);
     setSubtitleDelayValue(clampSubtitleDelay(snapshot.subtitleDelay));
     setTracks(Array.isArray(snapshot.tracks) ? snapshot.tracks : []);
     setLoadedMediaPath(snapshot.path);
@@ -1575,6 +1708,10 @@ function App() {
 
   function handleShellPointerLeave() {
     clearChromeHideTimer();
+    if (!manualResizeDragRef.current) {
+      setNativeResizeCursor(null);
+      setResizeBoundaryFeedback(null);
+    }
     if (media && !isChromePinned) {
       setIsChromeVisible(false);
     }
@@ -1969,6 +2106,44 @@ function App() {
     togglePlayback();
   }
 
+  function startMainWindowResize(event: ReactPointerEvent<HTMLDivElement>, direction: ResizeDirection) {
+    setNativeResizeCursor(direction);
+    setResizeBoundaryFeedback(direction, true);
+    if (platformSupport?.os === "macos") {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      manualResizeDragRef.current = {
+        pointerId: event.pointerId,
+        direction,
+        lastX: event.clientX,
+        lastY: event.clientY,
+        pendingDeltaX: 0,
+        pendingDeltaY: 0,
+        animationFrameId: null,
+        resizeCommandInFlight: false,
+        finishing: false,
+      };
+      return;
+    }
+
+    startNativeMainWindowResize(direction);
+  }
+
+  function handleResizePointerEnter(event: ReactPointerEvent<HTMLDivElement>, direction: ResizeDirection) {
+    event.stopPropagation();
+    setNativeResizeCursor(direction);
+    setResizeBoundaryFeedback(direction);
+  }
+
+  function handleResizePointerLeave(event: ReactPointerEvent<HTMLDivElement>) {
+    if (manualResizeDragRef.current?.pointerId === event.pointerId) {
+      return;
+    }
+
+    event.stopPropagation();
+    setNativeResizeCursor(null);
+    setResizeBoundaryFeedback(null);
+  }
+
   function handleResizePointerDown(event: ReactPointerEvent<HTMLDivElement>, direction: ResizeDirection) {
     if (event.button !== 0) {
       return;
@@ -1977,7 +2152,47 @@ function App() {
     event.preventDefault();
     event.stopPropagation();
     recordUserActivity();
-    startMainWindowResize(direction);
+    startMainWindowResize(event, direction);
+  }
+
+  function handleResizePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const pendingResize = manualResizeDragRef.current;
+    if (!pendingResize || pendingResize.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    recordUserActivity();
+    const scale = window.devicePixelRatio || 1;
+    const deltaX = (event.clientX - pendingResize.lastX) * scale;
+    const deltaY = (event.clientY - pendingResize.lastY) * scale;
+    if (Math.abs(deltaX) < 0.5 && Math.abs(deltaY) < 0.5) {
+      return;
+    }
+    pendingResize.lastX = event.clientX;
+    pendingResize.lastY = event.clientY;
+    pendingResize.pendingDeltaX += deltaX;
+    pendingResize.pendingDeltaY += deltaY;
+    requestManualResizeFlush();
+  }
+
+  function handleResizePointerEnd(event: ReactPointerEvent<HTMLDivElement>) {
+    const pendingResize = manualResizeDragRef.current;
+    if (pendingResize?.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    pendingResize.finishing = true;
+    requestManualResizeFlush();
+    completeManualResizeIfIdle(pendingResize);
+    setNativeResizeCursor(null);
+    setResizeBoundaryFeedback(null);
   }
 
   function togglePlayback() {
@@ -2073,6 +2288,22 @@ function App() {
       .catch((error: unknown) => {
         setHardwareDecodingModeValue(hardwareDecodingMode);
         hardwareDecodingModeRef.current = hardwareDecodingMode;
+        reportPlaybackError(error);
+      });
+  }
+
+  function setVideoFillMode(enabled: boolean) {
+    if (!media) {
+      return;
+    }
+
+    const previousValue = isVideoFillEnabled;
+    setIsVideoFillEnabled(enabled);
+    invalidatePendingSnapshots();
+    invoke<MpvSnapshot>("mpv_embed_set_video_fill", { enabled })
+      .then(applyCommandSnapshot)
+      .catch((error: unknown) => {
+        setIsVideoFillEnabled(previousValue);
         reportPlaybackError(error);
       });
   }
@@ -2209,6 +2440,39 @@ function App() {
             </button>
           ))}
           {!items.length && kind !== "subtitle" && <div className="track-empty">{t.media.noSwitchableTracks}</div>}
+        </div>
+      </section>
+    );
+  }
+
+  function renderVideoLayoutOptions() {
+    if (isAudioOnlyMedia) {
+      return null;
+    }
+
+    return (
+      <section className="media-panel-section video-layout">
+        <header>
+          <h3>{t.media.videoLayout}</h3>
+          <span>{isVideoFillEnabled ? t.media.videoFill : t.media.videoFit}</span>
+        </header>
+        <div className="video-layout-options">
+          <button
+            className={isVideoFillEnabled ? "video-layout-option" : "video-layout-option video-layout-option--active"}
+            type="button"
+            onClick={() => setVideoFillMode(false)}
+          >
+            <span>{t.media.videoFit}</span>
+            <small>{t.media.videoFitDescription}</small>
+          </button>
+          <button
+            className={isVideoFillEnabled ? "video-layout-option video-layout-option--active" : "video-layout-option"}
+            type="button"
+            onClick={() => setVideoFillMode(true)}
+          >
+            <span>{t.media.videoFill}</span>
+            <small>{t.media.videoFillDescription}</small>
+          </button>
         </div>
       </section>
     );
@@ -2566,9 +2830,30 @@ function App() {
               key={region.direction}
               aria-hidden="true"
               className={`resize-region ${region.className}`}
+              onPointerEnter={(event) => handleResizePointerEnter(event, region.direction)}
+              onPointerLeave={handleResizePointerLeave}
               onPointerDown={(event) => handleResizePointerDown(event, region.direction)}
+              onPointerMove={handleResizePointerMove}
+              onPointerUp={handleResizePointerEnd}
+              onPointerCancel={handleResizePointerEnd}
             />
           ))}
+
+          {resizeFeedback && (
+            <div
+              aria-hidden="true"
+              className={`resize-feedback resize-feedback--${resizeDirectionClassName(resizeFeedback.direction)} ${resizeFeedback.active ? "resize-feedback--active" : ""}`}
+            >
+              <span className="resize-feedback-line resize-feedback-line--north" />
+              <span className="resize-feedback-line resize-feedback-line--south" />
+              <span className="resize-feedback-line resize-feedback-line--east" />
+              <span className="resize-feedback-line resize-feedback-line--west" />
+              <span className="resize-feedback-corner resize-feedback-corner--north-east" />
+              <span className="resize-feedback-corner resize-feedback-corner--north-west" />
+              <span className="resize-feedback-corner resize-feedback-corner--south-east" />
+              <span className="resize-feedback-corner resize-feedback-corner--south-west" />
+            </div>
+          )}
 
           <div className="window-controls" aria-label={t.contextMenu.closeWindow}>
             <button type="button" aria-label={t.controls.minimize} onClick={() => runWindowCommand("window_minimize")}>
@@ -2767,6 +3052,7 @@ function App() {
               onContextMenu={(event) => event.stopPropagation()}
               onPointerDown={(event) => event.stopPropagation()}
             >
+              {renderVideoLayoutOptions()}
               {renderTrackList("audio", t.media.audioTracks, audioTracks)}
               {renderTrackList("video", t.media.videoTracks, videoTracks)}
               {renderTrackList("subtitle", t.media.subtitles, subtitleTracks)}

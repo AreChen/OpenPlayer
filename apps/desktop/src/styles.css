@@ -141,6 +141,7 @@ input:focus-visible {
 .resize-region {
   position: absolute;
   z-index: 95;
+  background: rgba(0, 0, 0, 0.001);
   pointer-events: auto;
 }
 
@@ -206,6 +207,135 @@ input:focus-visible {
   bottom: 0;
   left: 0;
   cursor: nesw-resize;
+}
+
+.resize-feedback {
+  position: absolute;
+  inset: 0;
+  z-index: 96;
+  pointer-events: none;
+}
+
+.resize-feedback-line,
+.resize-feedback-corner {
+  position: absolute;
+  opacity: 0;
+  transition:
+    opacity 110ms ease,
+    transform 110ms ease;
+}
+
+.resize-feedback-line {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 88%, white 12%);
+  box-shadow:
+    0 0 14px color-mix(in srgb, var(--accent) 42%, transparent),
+    0 0 1px rgba(0, 0, 0, 0.42);
+}
+
+.resize-feedback-line--north,
+.resize-feedback-line--south {
+  right: 20px;
+  left: 20px;
+  height: 2px;
+}
+
+.resize-feedback-line--north {
+  top: 3px;
+}
+
+.resize-feedback-line--south {
+  bottom: 3px;
+}
+
+.resize-feedback-line--east,
+.resize-feedback-line--west {
+  top: 20px;
+  bottom: 20px;
+  width: 2px;
+}
+
+.resize-feedback-line--east {
+  right: 3px;
+}
+
+.resize-feedback-line--west {
+  left: 3px;
+}
+
+.resize-feedback-corner {
+  width: 30px;
+  height: 30px;
+  color: color-mix(in srgb, var(--accent) 90%, white 10%);
+  border-color: color-mix(in srgb, var(--accent) 90%, white 10%);
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--accent) 50%, transparent));
+}
+
+.resize-feedback-corner--north-east {
+  top: 5px;
+  right: 5px;
+  border-top: 3px solid currentColor;
+  border-right: 3px solid currentColor;
+  border-radius: 0 8px 0 0;
+}
+
+.resize-feedback-corner--north-west {
+  top: 5px;
+  left: 5px;
+  border-top: 3px solid currentColor;
+  border-left: 3px solid currentColor;
+  border-radius: 8px 0 0 0;
+}
+
+.resize-feedback-corner--south-east {
+  right: 5px;
+  bottom: 5px;
+  border-right: 3px solid currentColor;
+  border-bottom: 3px solid currentColor;
+  border-radius: 0 0 8px 0;
+}
+
+.resize-feedback-corner--south-west {
+  bottom: 5px;
+  left: 5px;
+  border-bottom: 3px solid currentColor;
+  border-left: 3px solid currentColor;
+  border-radius: 0 0 0 8px;
+}
+
+.resize-feedback--north .resize-feedback-line--north,
+.resize-feedback--south .resize-feedback-line--south,
+.resize-feedback--east .resize-feedback-line--east,
+.resize-feedback--west .resize-feedback-line--west {
+  opacity: 0.82;
+}
+
+.resize-feedback--north-east .resize-feedback-line--north,
+.resize-feedback--north-east .resize-feedback-line--east,
+.resize-feedback--north-west .resize-feedback-line--north,
+.resize-feedback--north-west .resize-feedback-line--west,
+.resize-feedback--south-east .resize-feedback-line--south,
+.resize-feedback--south-east .resize-feedback-line--east,
+.resize-feedback--south-west .resize-feedback-line--south,
+.resize-feedback--south-west .resize-feedback-line--west {
+  opacity: 0.34;
+}
+
+.resize-feedback--north-east .resize-feedback-corner--north-east,
+.resize-feedback--north-west .resize-feedback-corner--north-west,
+.resize-feedback--south-east .resize-feedback-corner--south-east,
+.resize-feedback--south-west .resize-feedback-corner--south-west {
+  opacity: 0.9;
+}
+
+.resize-feedback--active .resize-feedback-line {
+  opacity: 0.96;
+  transform: scale(1.01);
+}
+
+.resize-feedback--active .resize-feedback-corner {
+  opacity: 1;
+  transform: scale(1.08);
 }
 
 .empty-open {
@@ -746,6 +876,7 @@ input:focus-visible {
 
 .speed-options,
 .loop-options,
+.video-layout-options,
 .track-list,
 .subtitle-delay-controls {
   display: grid;
@@ -756,8 +887,13 @@ input:focus-visible {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.video-layout-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .speed-option,
 .loop-option,
+.video-layout-option,
 .track-item,
 .subtitle-delay-controls button,
 .subtitle-load {
@@ -774,7 +910,8 @@ input:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
-.loop-option {
+.loop-option,
+.video-layout-option {
   display: grid;
   min-height: 48px;
   gap: 2px;
@@ -782,12 +919,14 @@ input:focus-visible {
   text-align: left;
 }
 
-.loop-option span {
+.loop-option span,
+.video-layout-option span {
   color: var(--text);
   font-size: 0.84rem;
 }
 
-.loop-option small {
+.loop-option small,
+.video-layout-option small {
   color: var(--faint);
   font-size: 0.72rem;
 }
@@ -796,6 +935,8 @@ input:focus-visible {
 .speed-option--active,
 .loop-option:hover,
 .loop-option--active,
+.video-layout-option:hover,
+.video-layout-option--active,
 .track-item:hover,
 .track-item--active,
 .subtitle-delay-controls button:hover:not(:disabled),
