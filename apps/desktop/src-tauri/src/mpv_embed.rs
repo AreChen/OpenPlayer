@@ -1,4 +1,5 @@
 use std::{
+    ffi::CString,
     fs,
     path::{Path, PathBuf},
     sync::Mutex,
@@ -7,17 +8,16 @@ use std::{
 };
 
 use libmpv2::{events::Event, mpv_end_file_reason};
-use raw_window_handle::HasWindowHandle;
-#[cfg(windows)]
-use raw_window_handle::RawWindowHandle;
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use serde::Serialize;
 use tauri::{State, Window};
 #[cfg(windows)]
 use windows_sys::Win32::{
     Foundation::{HWND, RECT},
     UI::WindowsAndMessaging::{
-        CreateWindowExW, DestroyWindow, GetClientRect, MoveWindow, SW_SHOW, SetParent, ShowWindow,
-        WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_VISIBLE,
+        CreateWindowExW, DestroyWindow, GetClientRect, HWND_TOP, SW_SHOW, SWP_NOACTIVATE,
+        SWP_SHOWWINDOW, SetParent, SetWindowPos, ShowWindow, WS_CHILD, WS_CLIPCHILDREN,
+        WS_CLIPSIBLINGS, WS_VISIBLE,
     },
 };
 
@@ -35,9 +35,21 @@ const MIN_SUBTITLE_DELAY: f64 = -10.0;
 const MAX_SUBTITLE_DELAY: f64 = 10.0;
 const MAX_TRACKS: i64 = 128;
 const SUPPORTED_SUBTITLE_EXTENSIONS: &[&str] = &["ass", "srt", "ssa", "sub", "vtt"];
+const AUDIO_VISUALIZER_EXTENSIONS: &[&str] = &[
+    "aac", "ac3", "adts", "aif", "aifc", "aiff", "alac", "amr", "ape", "au", "awb", "caf", "dff",
+    "dsf", "dts", "dtshd", "eac3", "flac", "gsm", "m4a", "m4b", "m4r", "mka", "mlp", "mp1", "mp2",
+    "mp3", "mpa", "mpc", "oga", "ogg", "opus", "ra", "snd", "spx", "tak", "tta", "voc", "wav",
+    "weba", "wma", "wv",
+];
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const OPENPLAYER_MPV_VO_ENV: &str = "OPENPLAYER_MPV_VO";
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const OPENPLAYER_MPV_GPU_CONTEXT_ENV: &str = "OPENPLAYER_MPV_GPU_CONTEXT";
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const OPENPLAYER_MPV_HWDEC_ENV: &str = "OPENPLAYER_MPV_HWDEC";
 
 #[cfg(windows)]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct VideoHostRect {
     x: i32,
     y: i32,
@@ -66,7 +78,26 @@ struct MpvVideoHost {
 }
 
 #[cfg(not(windows))]
-struct MpvVideoHost;
+struct MpvVideoHost {
+    wid: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MpvVideoOutputConfig {
+    vo: Option<String>,
+    gpu_context: Option<String>,
+    hwdec: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+struct LinuxVideoOutputEnvironment<'a> {
+    override_vo: Option<&'a str>,
+    override_gpu_context: Option<&'a str>,
+    override_hwdec: Option<&'a str>,
+    has_dri_render_node: bool,
+    virtual_drm_driver: bool,
+}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -80,6 +111,7 @@ pub struct MpvEmbedSnapshot {
     duration: f64,
     fps: f64,
     speed: f64,
+    hwdec: String,
     subtitle_delay: f64,
     volume: f64,
     tracks: Vec<MpvEmbedTrack>,
@@ -118,6 +150,7 @@ pub fn open_path_for_window(
     let mpv = create_embed_player(wid)?;
     let path_text = path.to_string_lossy().to_string();
 
+    configure_audio_visualizer(&mpv, &path);
     mpv.command("loadfile", &[&path_text, "replace"])
         .map_err(|error| format!("mpv loadfile failed: {error}"))?;
     load_sidecar_subtitles(&mpv, &path);
@@ -144,6 +177,7 @@ pub fn open_path_for_window(
 pub fn mpv_embed_play(state: State<'_, MpvEmbedState>) -> Result<MpvEmbedSnapshot, String> {
     with_player(&state, |player| {
         player.force_paused_until = None;
+        player.ended = false;
         player
             .mpv
             .set_property("pause", false)
@@ -175,6 +209,7 @@ pub fn mpv_embed_seek(
 
     with_player(&state, |player| {
         player.force_paused_until = None;
+        player.ended = false;
         player
             .mpv
             .command("seek", &[&position.to_string(), "absolute"])
@@ -227,6 +262,39 @@ pub fn mpv_embed_set_speed(
             .mpv
             .set_property("speed", speed)
             .map_err(|error| format!("mpv speed failed: {error}"))?;
+        Ok(player.snapshot(0, "playing"))
+    })
+}
+
+#[tauri::command]
+pub fn mpv_embed_set_hwdec(
+    state: State<'_, MpvEmbedState>,
+    mode: String,
+) -> Result<MpvEmbedSnapshot, String> {
+    let hwdec = normalize_hwdec_mode(&mode)?;
+
+    with_player(&state, |player| {
+        player
+            .mpv
+            .set_property("hwdec", hwdec)
+            .map_err(|error| format!("mpv hardware decoding switch failed: {error}"))?;
+        Ok(player.snapshot(0, "playing"))
+    })
+}
+
+#[tauri::command]
+pub fn mpv_embed_set_loop_file(
+    state: State<'_, MpvEmbedState>,
+    enabled: bool,
+) -> Result<MpvEmbedSnapshot, String> {
+    with_player(&state, |player| {
+        player
+            .mpv
+            .set_property("loop-file", if enabled { "inf" } else { "no" })
+            .map_err(|error| format!("mpv loop-file mode failed: {error}"))?;
+        if enabled {
+            player.ended = false;
+        }
         Ok(player.snapshot(0, "playing"))
     })
 }
@@ -422,6 +490,14 @@ fn normalize_subtitle_delay(delay: f64) -> Result<f64, String> {
     Ok(delay.clamp(MIN_SUBTITLE_DELAY, MAX_SUBTITLE_DELAY))
 }
 
+fn normalize_hwdec_mode(mode: &str) -> Result<&'static str, String> {
+    match mode.trim().to_ascii_lowercase().as_str() {
+        "hardware" | "auto" | "auto-safe" => Ok("auto-safe"),
+        "software" | "no" | "off" => Ok("no"),
+        _ => Err("invalid mpv hardware decoding mode".to_string()),
+    }
+}
+
 fn track_property_for_kind(kind: &str) -> Result<&'static str, String> {
     match kind {
         "audio" => Ok("aid"),
@@ -452,6 +528,10 @@ impl MpvEmbedPlayer {
         let duration = self.mpv.get_property::<f64>("duration").unwrap_or(0.0);
         let fps = read_player_fps(&self.mpv);
         let speed = self.mpv.get_property::<f64>("speed").unwrap_or(1.0);
+        let hwdec = self
+            .mpv
+            .get_property::<String>("hwdec")
+            .unwrap_or_else(|_| "auto-safe".to_string());
         let subtitle_delay = self.mpv.get_property::<f64>("sub-delay").unwrap_or(0.0);
         let tracks = read_tracks(&self.mpv);
         let percent_pos = self.mpv.get_property::<f64>("percent-pos").unwrap_or(0.0);
@@ -483,6 +563,7 @@ impl MpvEmbedPlayer {
             duration,
             fps,
             speed,
+            hwdec,
             subtitle_delay: if subtitle_delay.is_finite() {
                 subtitle_delay
             } else {
@@ -501,6 +582,14 @@ impl MpvEmbedPlayer {
                 }
                 Ok(Event::StartFile | Event::Seek | Event::PlaybackRestart) => {
                     self.ended = false;
+                }
+                Ok(Event::LogMessage {
+                    prefix,
+                    level,
+                    text,
+                    ..
+                }) => {
+                    log_mpv_video_diagnostic(prefix, level, text);
                 }
                 _ => {}
             }
@@ -542,9 +631,13 @@ pub fn mpv_embed_stop(state: State<'_, MpvEmbedState>) -> Result<(), String> {
 }
 
 fn create_embed_player(hwnd: i64) -> Result<libmpv2::Mpv, String> {
-    libmpv2::Mpv::with_initializer(|initializer| {
+    prepare_libmpv_numeric_locale()?;
+    let video_output_config = platform_video_output_config();
+    log_selected_mpv_video_output_config(&video_output_config);
+
+    let mpv = libmpv2::Mpv::with_initializer(|initializer| {
         initializer.set_option("wid", hwnd)?;
-        initializer.set_option("hwdec", "auto-safe")?;
+        configure_native_video_output(&initializer, &video_output_config)?;
         initializer.set_option("input-default-bindings", false)?;
         initializer.set_option("input-vo-keyboard", false)?;
         initializer.set_option("keep-open", true)?;
@@ -552,7 +645,236 @@ fn create_embed_player(hwnd: i64) -> Result<libmpv2::Mpv, String> {
         initializer.set_option("osc", false)?;
         Ok(())
     })
-    .map_err(|error| format!("mpv embed init failed: {error}"))
+    .map_err(|error| format!("mpv embed init failed: {error}"))?;
+
+    request_mpv_log_messages(&mpv);
+
+    Ok(mpv)
+}
+
+fn configure_native_video_output(
+    initializer: &libmpv2::MpvInitializer,
+    config: &MpvVideoOutputConfig,
+) -> libmpv2::Result<()> {
+    apply_video_output_config(initializer, config)
+}
+
+fn apply_video_output_config(
+    initializer: &libmpv2::MpvInitializer,
+    config: &MpvVideoOutputConfig,
+) -> libmpv2::Result<()> {
+    if let Some(vo) = config.vo.as_ref() {
+        initializer.set_option("vo", vo.as_str())?;
+    }
+    if let Some(gpu_context) = config.gpu_context.as_ref() {
+        initializer.set_option("gpu-context", gpu_context.as_str())?;
+    }
+    initializer.set_option("hwdec", config.hwdec.as_str())?;
+    Ok(())
+}
+
+fn request_mpv_log_messages(mpv: &libmpv2::Mpv) {
+    let Ok(min_level) = CString::new("v") else {
+        return;
+    };
+    let result =
+        unsafe { libmpv2_sys::mpv_request_log_messages(mpv.ctx.as_ptr(), min_level.as_ptr()) };
+    if result < 0 {
+        eprintln!("OpenPlayer mpv log subscription failed: {result}");
+    }
+}
+
+fn log_selected_mpv_video_output_config(config: &MpvVideoOutputConfig) {
+    eprintln!(
+        "OpenPlayer mpv video output: vo={}, gpu-context={}, hwdec={}",
+        config.vo.as_deref().unwrap_or("mpv-default"),
+        config.gpu_context.as_deref().unwrap_or("mpv-default"),
+        config.hwdec
+    );
+}
+
+fn log_mpv_video_diagnostic(prefix: &str, level: &str, text: &str) {
+    if is_mpv_video_diagnostic_log(level, prefix, text) {
+        eprintln!(
+            "OpenPlayer mpv {level}/{prefix}: {}",
+            text.trim_end_matches(['\r', '\n'])
+        );
+    }
+}
+
+fn is_mpv_video_diagnostic_log(level: &str, prefix: &str, text: &str) -> bool {
+    let level = level.to_ascii_lowercase();
+    if matches!(level.as_str(), "fatal" | "error" | "warn") {
+        return true;
+    }
+
+    let prefix = prefix.to_ascii_lowercase();
+    if prefix.starts_with("vo") || matches!(prefix.as_str(), "vd" | "ffmpeg/video") {
+        return true;
+    }
+
+    let text = text.to_ascii_lowercase();
+    text.contains("vo:")
+        || text.contains("[vo")
+        || text.contains("gpu")
+        || text.contains("egl")
+        || text.contains("dri")
+        || text.contains("vaapi")
+        || text.contains("vdpau")
+        || text.contains("hwdec")
+}
+
+#[cfg(target_os = "linux")]
+fn platform_video_output_config() -> MpvVideoOutputConfig {
+    let override_vo = std::env::var(OPENPLAYER_MPV_VO_ENV).ok();
+    let override_gpu_context = std::env::var(OPENPLAYER_MPV_GPU_CONTEXT_ENV).ok();
+    let override_hwdec = std::env::var(OPENPLAYER_MPV_HWDEC_ENV).ok();
+
+    resolve_linux_video_output_config(LinuxVideoOutputEnvironment {
+        override_vo: override_vo.as_deref(),
+        override_gpu_context: override_gpu_context.as_deref(),
+        override_hwdec: override_hwdec.as_deref(),
+        has_dri_render_node: has_linux_dri_render_node(),
+        virtual_drm_driver: has_virtual_linux_drm_driver(),
+    })
+}
+
+#[cfg(not(target_os = "linux"))]
+fn platform_video_output_config() -> MpvVideoOutputConfig {
+    MpvVideoOutputConfig {
+        vo: None,
+        gpu_context: None,
+        hwdec: "auto-safe".to_string(),
+    }
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn resolve_linux_video_output_config(
+    environment: LinuxVideoOutputEnvironment<'_>,
+) -> MpvVideoOutputConfig {
+    let override_vo = normalized_override(environment.override_vo);
+    let override_gpu_context = normalized_override(environment.override_gpu_context);
+    let override_hwdec = normalized_override(environment.override_hwdec);
+
+    if let Some(vo) = override_vo {
+        let vo_lower = vo.to_ascii_lowercase();
+        let mut config = if vo_lower == "x11" {
+            x11_software_video_output_config()
+        } else {
+            x11_gpu_video_output_config()
+        };
+        config.vo = Some(vo);
+        if vo_lower != "gpu" && override_gpu_context.is_none() {
+            config.gpu_context = None;
+        }
+        if let Some(gpu_context) = override_gpu_context {
+            config.gpu_context = Some(gpu_context);
+        }
+        if let Some(hwdec) = override_hwdec {
+            config.hwdec = hwdec;
+        }
+        return config;
+    }
+
+    let mut config = if environment.has_dri_render_node && !environment.virtual_drm_driver {
+        x11_gpu_video_output_config()
+    } else {
+        x11_software_video_output_config()
+    };
+
+    if config.vo.as_deref() == Some("gpu")
+        && let Some(gpu_context) = override_gpu_context
+    {
+        config.gpu_context = Some(gpu_context);
+    }
+    if let Some(hwdec) = override_hwdec {
+        config.hwdec = hwdec;
+    }
+
+    config
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn x11_software_video_output_config() -> MpvVideoOutputConfig {
+    MpvVideoOutputConfig {
+        vo: Some("x11".to_string()),
+        gpu_context: None,
+        hwdec: "no".to_string(),
+    }
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn x11_gpu_video_output_config() -> MpvVideoOutputConfig {
+    MpvVideoOutputConfig {
+        vo: Some("gpu".to_string()),
+        gpu_context: Some("x11egl".to_string()),
+        hwdec: "auto-safe".to_string(),
+    }
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn normalized_override(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn has_linux_dri_render_node() -> bool {
+    let Ok(entries) = fs::read_dir("/dev/dri") else {
+        return false;
+    };
+
+    entries
+        .filter_map(Result::ok)
+        .any(|entry| entry.file_name().to_string_lossy().starts_with("renderD"))
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn has_virtual_linux_drm_driver() -> bool {
+    let Ok(entries) = fs::read_dir("/sys/class/drm") else {
+        return false;
+    };
+
+    entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| fs::read_link(entry.path().join("device/driver")).ok())
+        .filter_map(|driver| {
+            driver
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(ToOwned::to_owned)
+        })
+        .any(|driver| is_virtual_linux_drm_driver(&driver))
+}
+
+fn is_virtual_linux_drm_driver(driver: &str) -> bool {
+    let driver = driver.to_ascii_lowercase().replace('_', "-");
+
+    matches!(
+        driver.as_str(),
+        "bochs" | "bochs-drm" | "cirrus" | "qxl" | "virtio-gpu"
+    )
+}
+
+#[cfg(unix)]
+fn prepare_libmpv_numeric_locale() -> Result<(), String> {
+    let locale = std::ffi::CString::new("C")
+        .map_err(|_| "failed to prepare LC_NUMERIC=C for libmpv".to_string())?;
+    // SAFETY: libmpv requires the process C numeric locale to be "C" before
+    // mpv_create(). We set only LC_NUMERIC immediately before initializing mpv.
+    let result = unsafe { libc::setlocale(libc::LC_NUMERIC, locale.as_ptr()) };
+    if result.is_null() {
+        Err("failed to set LC_NUMERIC=C before libmpv initialization".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(not(unix))]
+fn prepare_libmpv_numeric_locale() -> Result<(), String> {
+    Ok(())
 }
 
 impl MpvVideoHost {
@@ -591,7 +913,14 @@ impl MpvVideoHost {
 
         unsafe {
             SetParent(hwnd, parent);
-            MoveWindow(hwnd, layout.x, layout.y, layout.width, layout.height, 1);
+        }
+        if let Err(error) = position_video_host(hwnd, layout) {
+            unsafe {
+                DestroyWindow(hwnd);
+            }
+            return Err(error);
+        }
+        unsafe {
             ShowWindow(hwnd, SW_SHOW);
         }
 
@@ -602,11 +931,10 @@ impl MpvVideoHost {
     }
 
     #[cfg(not(windows))]
-    fn new(_window: &impl HasWindowHandle) -> Result<Self, String> {
-        Err(format!(
-            "mpv embed playback currently supports Windows HWND hosts only; {} video host support is not implemented yet",
-            std::env::consts::OS
-        ))
+    fn new(window: &impl HasWindowHandle) -> Result<Self, String> {
+        Ok(Self {
+            wid: window_mpv_wid(window)?,
+        })
     }
 
     #[cfg(windows)]
@@ -616,7 +944,7 @@ impl MpvVideoHost {
 
     #[cfg(not(windows))]
     fn wid(&self) -> i64 {
-        0
+        self.wid
     }
 
     #[cfg(windows)]
@@ -628,22 +956,31 @@ impl MpvVideoHost {
         }
 
         let layout = video_host_rect(rect.right - rect.left, rect.bottom - rect.top);
-        unsafe {
-            MoveWindow(
-                self.hwnd as HWND,
-                layout.x,
-                layout.y,
-                layout.width,
-                layout.height,
-                1,
-            );
-        }
-
-        Ok(())
+        position_video_host(self.hwnd as HWND, layout)
     }
 
     #[cfg(not(windows))]
     fn resize(&self) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+fn position_video_host(hwnd: HWND, layout: VideoHostRect) -> Result<(), String> {
+    let result = unsafe {
+        SetWindowPos(
+            hwnd,
+            HWND_TOP,
+            layout.x,
+            layout.y,
+            layout.width,
+            layout.height,
+            SWP_NOACTIVATE | SWP_SHOWWINDOW,
+        )
+    };
+    if result == 0 {
+        Err("failed to position mpv child window above the video surface".to_string())
+    } else {
         Ok(())
     }
 }
@@ -687,6 +1024,27 @@ fn is_supported_subtitle_path(path: &Path) -> bool {
             SUPPORTED_SUBTITLE_EXTENSIONS
                 .iter()
                 .any(|supported| extension.eq_ignore_ascii_case(supported))
+        })
+        .unwrap_or(false)
+}
+
+fn configure_audio_visualizer(mpv: &libmpv2::Mpv, path: &Path) {
+    if !is_likely_audio_path(path) {
+        return;
+    }
+
+    if let Err(error) = mpv.set_property("audio-display", "no") {
+        eprintln!("OpenPlayer mpv audio visualizer: failed to disable cover art: {error}");
+    }
+}
+
+fn is_likely_audio_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| {
+            AUDIO_VISUALIZER_EXTENSIONS
+                .iter()
+                .any(|candidate| candidate.eq_ignore_ascii_case(extension))
         })
         .unwrap_or(false)
 }
@@ -753,16 +1111,51 @@ fn load_sidecar_subtitles(mpv: &libmpv2::Mpv, media_path: &Path) {
     }
 }
 
-#[cfg(windows)]
-fn window_hwnd(window: &impl HasWindowHandle) -> Result<i64, String> {
+fn window_mpv_wid(window: &impl HasWindowHandle) -> Result<i64, String> {
     let handle = window
         .window_handle()
         .map_err(|error| format!("failed to read Tauri window handle: {error}"))?;
 
-    match handle.as_raw() {
+    mpv_wid_from_raw_window_handle(handle.as_raw())
+}
+
+fn mpv_wid_from_raw_window_handle(handle: RawWindowHandle) -> Result<i64, String> {
+    match handle {
         RawWindowHandle::Win32(handle) => Ok(handle.hwnd.get() as i64),
-        _ => Err("mpv embed playback is only wired for Windows HWND targets".to_string()),
+        RawWindowHandle::Xlib(handle) if handle.window > 0 => xlib_window_to_mpv_wid(handle.window),
+        RawWindowHandle::Xcb(handle) => Ok(i64::from(handle.window.get())),
+        RawWindowHandle::Wayland(_) => Err(
+            "mpv embed playback currently supports Windows HWND and X11 window hosts; Wayland video host support is not implemented yet"
+                .to_string(),
+        ),
+        RawWindowHandle::AppKit(_) => Err(
+            "mpv embed playback currently supports Windows HWND and X11 window hosts; macOS AppKit video host support is not implemented yet"
+                .to_string(),
+        ),
+        _ => Err(format!(
+            "mpv embed playback currently supports Windows HWND and X11 window hosts; {} video host support is not implemented yet",
+            std::env::consts::OS
+        )),
     }
+}
+
+#[cfg(windows)]
+fn xlib_window_to_mpv_wid(window: core::ffi::c_ulong) -> Result<i64, String> {
+    Ok(i64::from(window))
+}
+
+#[cfg(not(windows))]
+fn xlib_window_to_mpv_wid(window: core::ffi::c_ulong) -> Result<i64, String> {
+    if window > i64::MAX as core::ffi::c_ulong {
+        Err("Xlib window id is too large for mpv wid".to_string())
+    } else {
+        Ok(window as i64)
+    }
+}
+
+#[cfg(windows)]
+fn window_hwnd(window: &impl HasWindowHandle) -> Result<i64, String> {
+    window_mpv_wid(window)
 }
 
 #[cfg(windows)]
@@ -826,6 +1219,18 @@ mod tests {
     }
 
     #[test]
+    fn maps_hardware_decoding_modes_to_mpv_hwdec_values() {
+        assert_eq!(normalize_hwdec_mode("hardware").unwrap(), "auto-safe");
+        assert_eq!(normalize_hwdec_mode("software").unwrap(), "no");
+        assert_eq!(normalize_hwdec_mode("auto-safe").unwrap(), "auto-safe");
+        assert_eq!(normalize_hwdec_mode("no").unwrap(), "no");
+        assert_eq!(
+            normalize_hwdec_mode("gpu-next").expect_err("unsupported modes should be rejected"),
+            "invalid mpv hardware decoding mode"
+        );
+    }
+
+    #[test]
     fn discovers_same_stem_sidecar_subtitles() {
         let directory = std::env::temp_dir().join(format!(
             "openplayer-sidecars-{}-{}",
@@ -863,6 +1268,18 @@ mod tests {
     }
 
     #[test]
+    fn enables_real_audio_visualizer_for_audio_files_only() {
+        assert!(is_likely_audio_path(Path::new("song.MP3")));
+        assert!(is_likely_audio_path(Path::new("voice.amr")));
+        assert!(is_likely_audio_path(Path::new("audiobook.m4b")));
+        assert!(is_likely_audio_path(Path::new("sample.caf")));
+        assert!(is_likely_audio_path(Path::new("album.track.flac")));
+        assert!(is_likely_audio_path(Path::new("mix.opus")));
+        assert!(!is_likely_audio_path(Path::new("movie.mp4")));
+        assert!(!is_likely_audio_path(Path::new("clip.mkv")));
+    }
+
+    #[test]
     fn maps_track_kinds_to_mpv_properties() {
         assert_eq!(track_property_for_kind("audio").unwrap(), "aid");
         assert_eq!(track_property_for_kind("video").unwrap(), "vid");
@@ -871,6 +1288,165 @@ mod tests {
         assert_eq!(
             track_property_for_kind("chapter").expect_err("unsupported kinds should be rejected"),
             "invalid mpv track kind"
+        );
+    }
+
+    #[test]
+    fn prepares_numeric_locale_for_libmpv_initialization() {
+        assert!(prepare_libmpv_numeric_locale().is_ok());
+    }
+
+    #[test]
+    fn linux_video_output_falls_back_to_x11_when_dri_render_node_is_missing() {
+        let config = resolve_linux_video_output_config(LinuxVideoOutputEnvironment {
+            override_vo: None,
+            override_gpu_context: None,
+            override_hwdec: None,
+            has_dri_render_node: false,
+            virtual_drm_driver: false,
+        });
+
+        assert_eq!(
+            config,
+            MpvVideoOutputConfig {
+                vo: Some("x11".to_string()),
+                gpu_context: None,
+                hwdec: "no".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn linux_video_output_falls_back_to_x11_for_virtual_drm_drivers() {
+        let config = resolve_linux_video_output_config(LinuxVideoOutputEnvironment {
+            override_vo: None,
+            override_gpu_context: None,
+            override_hwdec: None,
+            has_dri_render_node: true,
+            virtual_drm_driver: true,
+        });
+
+        assert_eq!(
+            config,
+            MpvVideoOutputConfig {
+                vo: Some("x11".to_string()),
+                gpu_context: None,
+                hwdec: "no".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn linux_video_output_uses_x11egl_when_dri_render_node_is_available() {
+        let config = resolve_linux_video_output_config(LinuxVideoOutputEnvironment {
+            override_vo: None,
+            override_gpu_context: None,
+            override_hwdec: None,
+            has_dri_render_node: true,
+            virtual_drm_driver: false,
+        });
+
+        assert_eq!(
+            config,
+            MpvVideoOutputConfig {
+                vo: Some("gpu".to_string()),
+                gpu_context: Some("x11egl".to_string()),
+                hwdec: "auto-safe".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn linux_video_output_allows_field_vo_override() {
+        let config = resolve_linux_video_output_config(LinuxVideoOutputEnvironment {
+            override_vo: Some("x11"),
+            override_gpu_context: None,
+            override_hwdec: None,
+            has_dri_render_node: true,
+            virtual_drm_driver: false,
+        });
+
+        assert_eq!(
+            config,
+            MpvVideoOutputConfig {
+                vo: Some("x11".to_string()),
+                gpu_context: None,
+                hwdec: "no".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn linux_video_output_allows_gpu_context_and_hwdec_overrides() {
+        let config = resolve_linux_video_output_config(LinuxVideoOutputEnvironment {
+            override_vo: Some("gpu"),
+            override_gpu_context: Some("x11"),
+            override_hwdec: Some("no"),
+            has_dri_render_node: false,
+            virtual_drm_driver: true,
+        });
+
+        assert_eq!(
+            config,
+            MpvVideoOutputConfig {
+                vo: Some("gpu".to_string()),
+                gpu_context: Some("x11".to_string()),
+                hwdec: "no".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn identifies_known_virtual_linux_drm_drivers() {
+        assert!(is_virtual_linux_drm_driver("bochs-drm"));
+        assert!(is_virtual_linux_drm_driver("QXL"));
+        assert!(is_virtual_linux_drm_driver("virtio_gpu"));
+        assert!(!is_virtual_linux_drm_driver("i915"));
+        assert!(!is_virtual_linux_drm_driver("amdgpu"));
+    }
+
+    #[test]
+    fn forwards_mpv_video_diagnostic_log_messages() {
+        assert!(is_mpv_video_diagnostic_log(
+            "warn",
+            "vo/gpu",
+            "libEGL warning: DRI3 error: Could not get DRI3 device"
+        ));
+        assert!(is_mpv_video_diagnostic_log(
+            "info",
+            "cplayer",
+            "VO: [x11] 1280x720 yuv420p"
+        ));
+        assert!(is_mpv_video_diagnostic_log(
+            "v",
+            "vd",
+            "Trying hardware decoding via vaapi"
+        ));
+        assert!(!is_mpv_video_diagnostic_log(
+            "info",
+            "cplayer",
+            "Playing: sample.mp4"
+        ));
+    }
+
+    #[test]
+    fn maps_x11_window_handles_to_mpv_wid_values() {
+        let xlib = RawWindowHandle::Xlib(raw_window_handle::XlibWindowHandle::new(42));
+        assert_eq!(mpv_wid_from_raw_window_handle(xlib).unwrap(), 42);
+
+        let xcb_window = std::num::NonZeroU32::new(84).expect("fixture window id is non-zero");
+        let xcb = RawWindowHandle::Xcb(raw_window_handle::XcbWindowHandle::new(xcb_window));
+        assert_eq!(mpv_wid_from_raw_window_handle(xcb).unwrap(), 84);
+    }
+
+    #[test]
+    fn rejects_wayland_until_native_host_exists() {
+        let surface = std::ptr::NonNull::dangling();
+        let handle = RawWindowHandle::Wayland(raw_window_handle::WaylandWindowHandle::new(surface));
+
+        assert_eq!(
+            mpv_wid_from_raw_window_handle(handle).expect_err("Wayland does not support mpv wid"),
+            "mpv embed playback currently supports Windows HWND and X11 window hosts; Wayland video host support is not implemented yet"
         );
     }
 

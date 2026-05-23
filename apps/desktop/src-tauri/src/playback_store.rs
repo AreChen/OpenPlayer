@@ -2,7 +2,8 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::Mutex,
-    time::{SystemTime, UNIX_EPOCH},
+    thread,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use redb::{Database, ReadableDatabase, ReadableTable, ReadableTableMetadata, TableDefinition};
@@ -37,7 +38,8 @@ pub struct PlaybackHistoryUpdate {
 }
 
 pub struct PlaybackStoreState {
-    store: Mutex<Option<PlaybackStore>>,
+    path: PathBuf,
+    access: Mutex<()>,
 }
 
 struct PlaybackStore {
@@ -46,27 +48,39 @@ struct PlaybackStore {
 
 impl PlaybackStoreState {
     pub fn open(app: &AppHandle) -> Self {
-        let store = match Self::open_store(app) {
-            Ok(store) => Some(store),
+        let path = match Self::store_path(app) {
+            Ok(path) => path,
             Err(error) => {
                 eprintln!("{error}");
-                None
+                PathBuf::from("playback-history.redb")
             }
         };
 
         Self {
-            store: Mutex::new(store),
+            path,
+            access: Mutex::new(()),
         }
     }
 
-    fn open_store(app: &AppHandle) -> Result<PlaybackStore, String> {
+    fn store_path(app: &AppHandle) -> Result<PathBuf, String> {
         let mut directory = app
             .path()
             .app_data_dir()
             .map_err(|error| format!("failed to resolve app data directory: {error}"))?;
         directory.push("storage");
-        let path = directory.join("playback-history.redb");
-        PlaybackStore::open(path)
+        Ok(directory.join("playback-history.redb"))
+    }
+
+    fn with_store<T>(
+        &self,
+        action: impl FnOnce(&mut PlaybackStore) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let _guard = self
+            .access
+            .lock()
+            .map_err(|_| "playback history store lock failed".to_string())?;
+        let mut store = PlaybackStore::open(self.path.clone())?;
+        action(&mut store)
     }
 }
 
@@ -77,8 +91,7 @@ impl PlaybackStore {
                 .map_err(|error| format!("failed to create playback history directory: {error}"))?;
         }
 
-        let database = Database::create(&path)
-            .map_err(|error| format!("failed to open playback history database: {error}"))?;
+        let database = create_database_with_retry(&path, "playback history")?;
         let store = Self { database };
         store.initialize()?;
         Ok(store)
@@ -197,19 +210,47 @@ impl PlaybackStore {
         let entry = decode_entry(stored.value())?;
         Ok(resume_position_for_entry(entry.position, entry.duration))
     }
+
+    fn clear(&mut self) -> Result<Vec<PlaybackHistoryEntry>, String> {
+        let transaction = self
+            .database
+            .begin_write()
+            .map_err(|error| format!("failed to clear playback history: {error}"))?;
+        {
+            let mut by_path = transaction
+                .open_table(HISTORY_BY_PATH)
+                .map_err(|error| format!("failed to open playback history table: {error}"))?;
+            let mut by_updated = transaction
+                .open_table(HISTORY_BY_UPDATED)
+                .map_err(|error| format!("failed to open playback history index: {error}"))?;
+
+            let path_keys = table_keys(&by_path, "playback history entries")?;
+            for key in path_keys {
+                by_path
+                    .remove(key.as_str())
+                    .map_err(|error| format!("failed to remove playback history entry: {error}"))?;
+            }
+
+            let updated_keys = table_keys(&by_updated, "playback history index")?;
+            for key in updated_keys {
+                by_updated
+                    .remove(key.as_str())
+                    .map_err(|error| format!("failed to remove playback history index: {error}"))?;
+            }
+        }
+        transaction
+            .commit()
+            .map_err(|error| format!("failed to commit playback history clear: {error}"))?;
+
+        Ok(Vec::new())
+    }
 }
 
 #[tauri::command]
 pub fn history_list(
     state: State<'_, PlaybackStoreState>,
 ) -> Result<Vec<PlaybackHistoryEntry>, String> {
-    let store = state
-        .store
-        .lock()
-        .map_err(|_| "playback history store lock failed".to_string())?;
-    store
-        .as_ref()
-        .map_or_else(|| Ok(Vec::new()), PlaybackStore::list)
+    state.with_store(|store| store.list())
 }
 
 #[tauri::command]
@@ -217,13 +258,7 @@ pub fn history_remember(
     state: State<'_, PlaybackStoreState>,
     entry: PlaybackHistoryUpdate,
 ) -> Result<Vec<PlaybackHistoryEntry>, String> {
-    let mut store = state
-        .store
-        .lock()
-        .map_err(|_| "playback history store lock failed".to_string())?;
-    store
-        .as_mut()
-        .map_or_else(|| Ok(Vec::new()), |store| store.remember(entry))
+    state.with_store(|store| store.remember(entry))
 }
 
 #[tauri::command]
@@ -231,13 +266,46 @@ pub fn history_resume_position(
     state: State<'_, PlaybackStoreState>,
     path: String,
 ) -> Result<f64, String> {
-    let store = state
-        .store
-        .lock()
-        .map_err(|_| "playback history store lock failed".to_string())?;
-    store
-        .as_ref()
-        .map_or_else(|| Ok(0.0), |store| store.resume_position(&path))
+    state.with_store(|store| store.resume_position(&path))
+}
+
+#[tauri::command]
+pub fn history_clear(
+    state: State<'_, PlaybackStoreState>,
+) -> Result<Vec<PlaybackHistoryEntry>, String> {
+    state.with_store(|store| store.clear())
+}
+
+fn create_database_with_retry(path: &Path, label: &str) -> Result<Database, String> {
+    let mut last_error = None;
+    for _ in 0..16 {
+        match Database::create(path) {
+            Ok(database) => return Ok(database),
+            Err(error) => {
+                last_error = Some(error.to_string());
+                thread::sleep(Duration::from_millis(20));
+            }
+        }
+    }
+
+    Err(format!(
+        "failed to open {label} database: {}",
+        last_error.unwrap_or_else(|| "unknown redb error".to_string())
+    ))
+}
+
+fn table_keys<T>(table: &T, label: &str) -> Result<Vec<String>, String>
+where
+    T: ReadableTable<&'static str, &'static str>,
+{
+    table
+        .iter()
+        .map_err(|error| format!("failed to scan {label}: {error}"))?
+        .map(|item| {
+            item.map(|(key, _)| key.value().to_string())
+                .map_err(|error| format!("failed to read {label}: {error}"))
+        })
+        .collect()
 }
 
 fn prune_history(
@@ -393,5 +461,36 @@ mod tests {
         assert_eq!(entries[0].path, "E:\\Media\\first.mp4");
         assert_eq!(entries[0].position, 50.0);
         assert_eq!(entries[1].path, "E:\\Media\\second.mp4");
+    }
+
+    #[test]
+    fn redb_store_clears_history_and_resume_positions() {
+        let directory = std::env::temp_dir().join(format!(
+            "openplayer-history-clear-{}-{}",
+            std::process::id(),
+            now_millis()
+        ));
+        fs::create_dir_all(&directory).expect("temp history directory should be created");
+        let database_path = directory.join("history.redb");
+        let mut store = PlaybackStore::open(database_path).expect("redb store should open");
+
+        store
+            .remember(PlaybackHistoryUpdate {
+                path: "E:\\Media\\first.mp4".to_string(),
+                name: Some("first.mp4".to_string()),
+                position: 40.0,
+                duration: 100.0,
+                updated_at: Some(10),
+            })
+            .expect("entry should be written");
+
+        let entries = store.clear().expect("history should clear");
+        let resume = store
+            .resume_position("E:\\Media\\first.mp4")
+            .expect("resume lookup should still work");
+        let _ = fs::remove_dir_all(&directory);
+
+        assert!(entries.is_empty());
+        assert_eq!(resume, 0.0);
     }
 }

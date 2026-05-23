@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import { languageModeOptions, resolveLocale, translations, type AppStrings, type LanguageMode } from "./i18n";
 
 type MediaItem = {
   id: string;
@@ -36,14 +37,89 @@ type MpvSnapshot = {
   duration: number;
   fps: number;
   speed: number;
+  hwdec: string;
   subtitleDelay: number;
   volume: number;
   tracks: MpvTrack[];
 };
 
+type PlatformSupport = {
+  os: string;
+  displayServer: string;
+  mpvEmbedVideo: boolean;
+  nativeShortcutBridge: boolean;
+};
+
+type ThemeTokens = {
+  surface: string;
+  panel: string;
+  panelStrong: string;
+  text: string;
+  muted: string;
+  faint: string;
+  accent: string;
+  danger: string;
+  line: string;
+  control: string;
+  scrollbarThumb: string;
+  scrollbarThumbHover: string;
+};
+
+type ThemeCatalogItem = {
+  id: string;
+  name: string;
+  version: string;
+  source: "builtIn" | "plugin";
+  pluginId: string | null;
+  enabled: boolean;
+  tokens: ThemeTokens;
+};
+
+type ThemePluginSummary = {
+  id: string;
+  name: string;
+  version: string;
+  description: string | null;
+  enabled: boolean;
+  themeCount: number;
+};
+
+type AppearanceState = {
+  activeThemeId: string;
+  accentOverride: string | null;
+  themes: ThemeCatalogItem[];
+  plugins: ThemePluginSummary[];
+};
+
+type PlayerPreferences = {
+  incognitoMode: boolean;
+  quietKeyboardControls: boolean;
+  languageMode: LanguageMode;
+};
+
+type ShellPreviewRegistrationSummary = {
+  registeredCount: number;
+  videoCount: number;
+  audioCount: number;
+  extensions: string[];
+};
+
+type ShellPreviewFormatInfo = {
+  extension: string;
+  mime: string;
+  kind: "video" | "audio";
+  common: boolean;
+};
+
 type PendingSeek = {
   target: number;
   startedAt: number;
+};
+
+type PendingWindowDrag = {
+  pointerId: number;
+  startX: number;
+  startY: number;
 };
 
 type PlaybackClockAnchor = {
@@ -53,8 +129,16 @@ type PlaybackClockAnchor = {
   speed: number;
 };
 
+type ThemeStyleProperties = CSSProperties & Record<`--${string}`, string>;
+type SettingsSection = "appearance" | "plugins" | "playback" | "shortcuts";
+type MediaPanelMode = "speed" | "tracks" | "loop";
+type LoopMode = "off" | "one" | "all";
+type HardwareDecodingMode = "hardware" | "software";
 type TimeDisplayMode = "timecode" | "frames";
 type SelectableTrackKind = "audio" | "video" | "subtitle";
+type VolumeFeedback = {
+  level: number;
+};
 
 type ResizeDirection = "East" | "North" | "NorthEast" | "NorthWest" | "South" | "SouthEast" | "SouthWest" | "West";
 
@@ -82,11 +166,176 @@ type ContextMenuPosition = {
   x: number;
   y: number;
 };
-type IconName = "close" | "folder" | "fullscreen" | "list" | "maximize" | "minimize" | "pause" | "play" | "restart" | "settings" | "volume";
+type IconName =
+  | "close"
+  | "cpu"
+  | "folder"
+  | "folderAdd"
+  | "fullscreen"
+  | "list"
+  | "maximize"
+  | "minimize"
+  | "next"
+  | "palette"
+  | "pause"
+  | "play"
+  | "plugin"
+  | "preview"
+  | "previous"
+  | "restart"
+  | "settings"
+  | "stop"
+  | "tracks"
+  | "volume";
 
-const playableExtensions = ["3gp", "aac", "avi", "flac", "m4a", "m4v", "mkv", "mov", "mp3", "mp4", "mpeg", "mpg", "oga", "ogg", "ogv", "opus", "wav", "webm"];
+const playableExtensions = [
+  "3g2",
+  "3gp",
+  "3gp2",
+  "3gpp",
+  "aac",
+  "ac3",
+  "adts",
+  "aif",
+  "aifc",
+  "aiff",
+  "alac",
+  "amr",
+  "ape",
+  "asf",
+  "au",
+  "avi",
+  "awb",
+  "caf",
+  "dff",
+  "divx",
+  "dsf",
+  "dts",
+  "dtshd",
+  "dv",
+  "dvr-ms",
+  "eac3",
+  "f4v",
+  "flac",
+  "flv",
+  "gsm",
+  "h264",
+  "h265",
+  "hevc",
+  "m1v",
+  "m2t",
+  "m2ts",
+  "m2v",
+  "m4a",
+  "m4b",
+  "m4r",
+  "m4v",
+  "mk3d",
+  "mka",
+  "mkv",
+  "mlp",
+  "mov",
+  "mp1",
+  "mp2",
+  "mp3",
+  "mp4",
+  "mp4v",
+  "mpa",
+  "mpc",
+  "mpe",
+  "mpeg",
+  "mpg",
+  "mpv",
+  "mts",
+  "mxf",
+  "nsv",
+  "nut",
+  "oga",
+  "ogg",
+  "ogm",
+  "ogv",
+  "opus",
+  "qt",
+  "ra",
+  "rm",
+  "rmvb",
+  "roq",
+  "snd",
+  "spx",
+  "tak",
+  "tod",
+  "trp",
+  "ts",
+  "tta",
+  "vob",
+  "voc",
+  "wav",
+  "weba",
+  "webm",
+  "wm",
+  "wma",
+  "wmv",
+  "wv",
+  "y4m",
+];
+const audioOnlyExtensions = [
+  "aac",
+  "ac3",
+  "adts",
+  "aif",
+  "aifc",
+  "aiff",
+  "alac",
+  "amr",
+  "ape",
+  "au",
+  "awb",
+  "caf",
+  "dff",
+  "dsf",
+  "dts",
+  "dtshd",
+  "eac3",
+  "flac",
+  "gsm",
+  "m4a",
+  "m4b",
+  "m4r",
+  "mka",
+  "mlp",
+  "mp1",
+  "mp2",
+  "mp3",
+  "mpa",
+  "mpc",
+  "oga",
+  "ogg",
+  "opus",
+  "ra",
+  "snd",
+  "spx",
+  "tak",
+  "tta",
+  "voc",
+  "wav",
+  "weba",
+  "wma",
+  "wv",
+];
 const subtitleExtensions = ["ass", "srt", "ssa", "sub", "vtt"];
+const themePluginExtensions = ["json"];
 const playbackSpeedOptions = [0.5, 0.75, 1, 1.25, 1.5, 2];
+const mediaPathCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+const accentSwatches = ["#caa05d", "#78d5b3", "#93b4ff", "#d78372", "#b48cf2", "#e4b95f"];
+const audioVisualizerBarLevels = [
+  0.34, 0.56, 0.42, 0.72, 0.5, 0.82, 0.46, 0.66, 0.38, 0.92, 0.58, 0.76, 0.44, 0.68, 0.52, 0.86,
+  0.48, 0.62, 0.36, 0.74, 0.54, 0.88, 0.4, 0.7,
+];
+const DEFAULT_PLAYER_PREFERENCES: PlayerPreferences = {
+  incognitoMode: false,
+  quietKeyboardControls: false,
+  languageMode: "system",
+};
 const OPENPLAYER_SHORTCUTS_STORAGE_KEY = "openplayer.shortcuts.v3";
 const HISTORY_WRITE_INTERVAL_MS = 1500;
 const MIN_RESUME_PROGRESS_RATIO = 0.01;
@@ -94,11 +343,14 @@ const RESUME_END_PROGRESS_RATIO = 0.95;
 const SEEK_CONFIRM_TOLERANCE_SECONDS = 0.75;
 const SEEK_SNAPSHOT_SUPPRESS_MS = 1600;
 const AUTO_HIDE_CONTROLS_MS = 5000;
+const VOLUME_FEEDBACK_MS = 1100;
+const STORE_SYNC_INTERVAL_MS = 1600;
 const END_OF_MEDIA_SNAP_TOLERANCE_SECONDS = 0.5;
 const CONTEXT_MENU_WIDTH = 236;
-const CONTEXT_MENU_HEIGHT = 336;
+const CONTEXT_MENU_HEIGHT = 404;
 const DEFAULT_SEEK_STEP_SECONDS = 5;
 const DEFAULT_VOLUME_STEP = 0.05;
+const WINDOW_DRAG_START_DISTANCE_PX = 4;
 const SUBTITLE_DELAY_STEP_SECONDS = 0.1;
 const TEXT_ENTRY_INPUT_TYPES = new Set(["", "date", "datetime-local", "email", "month", "number", "password", "search", "tel", "text", "time", "url", "week"]);
 const resizeRegions: Array<{ className: string; direction: ResizeDirection }> = [
@@ -111,19 +363,19 @@ const resizeRegions: Array<{ className: string; direction: ResizeDirection }> = 
   { className: "resize-region--south-east", direction: "SouthEast" },
   { className: "resize-region--south-west", direction: "SouthWest" },
 ];
-const shortcutDefinitions: ShortcutDefinition[] = [
-  { action: "openMedia", label: "打开媒体", group: "文件" },
-  { action: "togglePlayback", label: "播放 / 暂停", group: "播放" },
-  { action: "restart", label: "从头播放", group: "播放" },
-  { action: "togglePlaylist", label: "播放列表", group: "播放" },
-  { action: "seekBackward", label: "后退 5 秒", group: "定位" },
-  { action: "seekForward", label: "前进 5 秒", group: "定位" },
-  { action: "frameBackward", label: "上一帧", group: "逐帧" },
-  { action: "frameForward", label: "下一帧", group: "逐帧" },
-  { action: "volumeDown", label: "降低音量", group: "音量" },
-  { action: "volumeUp", label: "提高音量", group: "音量" },
-  { action: "toggleFullscreen", label: "全屏", group: "窗口" },
-  { action: "openSettings", label: "设置", group: "窗口" },
+const shortcutActions: ShortcutAction[] = [
+  "openMedia",
+  "togglePlayback",
+  "restart",
+  "togglePlaylist",
+  "seekBackward",
+  "seekForward",
+  "frameBackward",
+  "frameForward",
+  "volumeDown",
+  "volumeUp",
+  "toggleFullscreen",
+  "openSettings",
 ];
 const defaultShortcutBindings: ShortcutBindings = {
   openMedia: "Ctrl+O",
@@ -191,9 +443,9 @@ function keyboardEventToChord(event: KeyboardEvent) {
   return parts.join("+");
 }
 
-function formatShortcutChord(chord: string | null) {
+function formatShortcutChord(chord: string | null, t: AppStrings) {
   if (!chord) {
-    return "未设置";
+    return t.common.unset;
   }
 
   return chord
@@ -213,6 +465,88 @@ function formatShortcutChord(chord: string | null) {
     .join(" + ");
 }
 
+function colorWithAlpha(color: string, alpha: number) {
+  const hex = color.trim().replace(/^#/, "");
+  if (![3, 6].includes(hex.length) || !/^[\da-f]+$/i.test(hex)) {
+    return color;
+  }
+
+  const expanded = hex.length === 3 ? hex.split("").map((part) => part + part).join("") : hex;
+  const red = Number.parseInt(expanded.slice(0, 2), 16);
+  const green = Number.parseInt(expanded.slice(2, 4), 16);
+  const blue = Number.parseInt(expanded.slice(4, 6), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+function hexColorForPicker(color: string | null | undefined) {
+  const value = color?.trim() ?? "";
+  return /^#[\da-f]{6}$/i.test(value) ? value : "#caa05d";
+}
+
+function browserLanguages() {
+  return navigator.languages?.length ? navigator.languages : [navigator.language || "en-US"];
+}
+
+function loopModeOptionsFor(t: AppStrings): Array<{ mode: LoopMode; label: string; description: string }> {
+  return [
+    { mode: "off", ...t.loop.off },
+    { mode: "one", ...t.loop.one },
+    { mode: "all", ...t.loop.all },
+  ];
+}
+
+function shortcutDefinitionsFor(t: AppStrings): ShortcutDefinition[] {
+  return [
+    { action: "openMedia", label: t.shortcuts.actions.openMedia, group: t.shortcuts.groups.file },
+    { action: "togglePlayback", label: t.shortcuts.actions.togglePlayback, group: t.shortcuts.groups.playback },
+    { action: "restart", label: t.shortcuts.actions.restart, group: t.shortcuts.groups.playback },
+    { action: "togglePlaylist", label: t.shortcuts.actions.togglePlaylist, group: t.shortcuts.groups.playback },
+    { action: "seekBackward", label: t.shortcuts.actions.seekBackward, group: t.shortcuts.groups.seek },
+    { action: "seekForward", label: t.shortcuts.actions.seekForward, group: t.shortcuts.groups.seek },
+    { action: "frameBackward", label: t.shortcuts.actions.frameBackward, group: t.shortcuts.groups.frame },
+    { action: "frameForward", label: t.shortcuts.actions.frameForward, group: t.shortcuts.groups.frame },
+    { action: "volumeDown", label: t.shortcuts.actions.volumeDown, group: t.shortcuts.groups.volume },
+    { action: "volumeUp", label: t.shortcuts.actions.volumeUp, group: t.shortcuts.groups.volume },
+    { action: "toggleFullscreen", label: t.shortcuts.actions.toggleFullscreen, group: t.shortcuts.groups.window },
+    { action: "openSettings", label: t.shortcuts.actions.openSettings, group: t.shortcuts.groups.window },
+  ];
+}
+
+function activeThemeFromAppearance(appearance: AppearanceState | null) {
+  if (!appearance) {
+    return null;
+  }
+
+  return appearance.themes.find((theme) => theme.id === appearance.activeThemeId && theme.enabled) ?? appearance.themes.find((theme) => theme.enabled) ?? null;
+}
+
+function themeStyleVariables(appearance: AppearanceState | null): ThemeStyleProperties | undefined {
+  const theme = activeThemeFromAppearance(appearance);
+  if (!theme) {
+    return undefined;
+  }
+
+  const accent = appearance?.accentOverride ?? theme.tokens.accent;
+  return {
+    "--surface": theme.tokens.surface,
+    "--panel": theme.tokens.panel,
+    "--panel-strong": theme.tokens.panelStrong,
+    "--text": theme.tokens.text,
+    "--muted": theme.tokens.muted,
+    "--faint": theme.tokens.faint,
+    "--accent": accent,
+    "--danger": theme.tokens.danger,
+    "--line": theme.tokens.line,
+    "--control": theme.tokens.control,
+    "--scrollbar-thumb": theme.tokens.scrollbarThumb,
+    "--scrollbar-thumb-hover": colorWithAlpha(accent, 0.46),
+    "--accent-soft": colorWithAlpha(accent, 0.16),
+    "--accent-muted": colorWithAlpha(accent, 0.22),
+    "--accent-border": colorWithAlpha(accent, 0.42),
+    "--accent-ring": colorWithAlpha(accent, 0.82),
+  };
+}
+
 function readShortcutBindings() {
   try {
     const stored = window.localStorage.getItem(OPENPLAYER_SHORTCUTS_STORAGE_KEY);
@@ -222,10 +556,10 @@ function readShortcutBindings() {
 
     const parsed = JSON.parse(stored) as Partial<Record<ShortcutAction, unknown>>;
     const merged: ShortcutBindings = { ...defaultShortcutBindings };
-    for (const definition of shortcutDefinitions) {
-      const value = parsed[definition.action];
+    for (const action of shortcutActions) {
+      const value = parsed[action];
       if (typeof value === "string" || value === null) {
-        merged[definition.action] = value;
+        merged[action] = value;
       }
     }
 
@@ -236,7 +570,7 @@ function readShortcutBindings() {
 }
 
 function isShortcutAction(value: unknown): value is ShortcutAction {
-  return typeof value === "string" && shortcutDefinitions.some((definition) => definition.action === value);
+  return typeof value === "string" && shortcutActions.includes(value as ShortcutAction);
 }
 
 function isTextEntryShortcutTarget(target: EventTarget | null) {
@@ -334,25 +668,25 @@ async function resumePositionForPath(path: string) {
   }
 }
 
-function formatHistoryProgress(entry: PlaybackHistoryEntry) {
+function formatHistoryProgress(entry: PlaybackHistoryEntry, t: AppStrings) {
   if (!Number.isFinite(entry.duration) || entry.duration <= 0) {
-    return "未记录进度";
+    return t.status.noRecordedProgress;
   }
 
   const resumePosition = resumePositionWithinDuration(entry.position, entry.duration);
   if (resumePosition <= 0) {
-    return "从头播放";
+    return t.status.playFromStart;
   }
 
   return `${formatTimecode(resumePosition, entry.duration)} / ${formatTimecode(entry.duration, entry.duration)}`;
 }
 
-function formatFrameCount(value: number) {
+function formatFrameCount(value: number, locale: string) {
   if (!Number.isFinite(value) || value <= 0) {
     return "0";
   }
 
-  return Math.floor(value).toLocaleString("en-US");
+  return Math.floor(value).toLocaleString(locale);
 }
 
 function canDisplayFrames(fps: number, duration: number) {
@@ -372,6 +706,10 @@ function formatPlaybackSpeed(value: number) {
   return `${Number.isInteger(speed) ? speed.toFixed(0) : speed.toFixed(2).replace(/0$/, "")}x`;
 }
 
+function loopModeLabel(mode: LoopMode, t: AppStrings) {
+  return loopModeOptionsFor(t).find((option) => option.mode === mode)?.label ?? t.loop.off.label;
+}
+
 function clampSubtitleDelay(value: number) {
   if (!Number.isFinite(value)) {
     return 0;
@@ -389,9 +727,14 @@ function formatSubtitleDelay(value: number) {
   return `${delay > 0 ? "+" : ""}${delay.toFixed(1)}s`;
 }
 
-function trackDisplayLabel(track: MpvTrack) {
+function platformUnsupportedPlaybackMessage(support: PlatformSupport | null, t: AppStrings) {
+  const session = [support?.os, support?.displayServer].filter(Boolean).join(" / ") || t.common.currentPlatform;
+  return t.status.unsupportedPlayback(session);
+}
+
+function trackDisplayLabel(track: MpvTrack, t: AppStrings) {
   const title = track.title || `${track.kind.toUpperCase()} ${track.id}`;
-  const details = [track.language?.toUpperCase(), track.codec, track.external ? "外部" : null].filter(Boolean);
+  const details = [track.language?.toUpperCase(), track.codec, track.external ? t.common.external : null].filter(Boolean);
   return details.length ? `${title} · ${details.join(" · ")}` : title;
 }
 
@@ -413,12 +756,49 @@ function mediaNameFromPath(path: string) {
   return normalized.split("/").pop() || path;
 }
 
+function defaultShellPreviewExtensions(formats: ShellPreviewFormatInfo[]) {
+  return formats.filter((format) => format.common).map((format) => format.extension);
+}
+
+function isPlayableMediaPath(path: string) {
+  const extension = path.split(".").pop()?.toLowerCase();
+  return Boolean(extension && playableExtensions.includes(extension));
+}
+
+function isAudioMediaPath(path: string) {
+  const extension = path.split(".").pop()?.toLowerCase();
+  return Boolean(extension && audioOnlyExtensions.includes(extension));
+}
+
+function sortMediaPaths(paths: string[]) {
+  return [...paths]
+    .filter(isPlayableMediaPath)
+    .sort((left, right) => mediaPathCollator.compare(mediaNameFromPath(left), mediaNameFromPath(right)) || mediaPathCollator.compare(left, right));
+}
+
+function uniqueMediaPaths(paths: string[], existingPaths: Set<string> = new Set()) {
+  const seen = new Set(existingPaths);
+  const unique: string[] = [];
+  for (const path of sortMediaPaths(paths)) {
+    if (seen.has(path)) {
+      continue;
+    }
+    seen.add(path);
+    unique.push(path);
+  }
+  return unique;
+}
+
 function mediaItemFromPath(path: string): MediaItem {
   return {
     id: nextMediaItemId(),
     name: mediaNameFromPath(path),
     path,
   };
+}
+
+function hwdecModeFromSnapshot(hwdec: string | null | undefined): HardwareDecodingMode {
+  return hwdec?.trim().toLowerCase() === "no" ? "software" : "hardware";
 }
 
 function mediaItemFromHistory(entry: PlaybackHistoryEntry): MediaItem {
@@ -432,15 +812,24 @@ function mediaItemFromHistory(entry: PlaybackHistoryEntry): MediaItem {
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, string> = {
     close: "M6 6l12 12M18 6 6 18",
+    cpu: "M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3M8 6h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2ZM10 10h4v4h-4z",
     folder: "M3 7.5h6l2 2h10v8.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7.5Z",
+    folderAdd: "M3 7.5h6l2 2h10v8.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7.5ZM12 13v5M9.5 15.5h5",
     fullscreen: "M8 4H4v4M16 4h4v4M20 16v4h-4M8 20H4v-4",
     list: "M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01",
     maximize: "M7 7h10v10H7z",
     minimize: "M6 12h12",
+    next: "M7 6l7 6-7 6V6ZM16 6v12",
+    palette: "M12 3a9 9 0 0 0 0 18h1.2a1.8 1.8 0 0 0 1.3-3.05 1.8 1.8 0 0 1 1.27-3.07H18a3 3 0 0 0 3-3A9 9 0 0 0 12 3ZM7.5 11.5h.01M9 7.5h.01M14 7.5h.01M16.5 11h.01",
     pause: "M8 6h3v12H8zM13 6h3v12h-3z",
     play: "M8 5v14l11-7z",
+    plugin: "M9 3v4M15 3v4M8 7h8a2 2 0 0 1 2 2v3a6 6 0 0 1-12 0V9a2 2 0 0 1 2-2ZM12 18v3",
+    preview: "M4 5h16v11H4zM8 20h8M10 16l-1.5 4M14 16l1.5 4M7 13l3-3 2 2 2.5-3 3.5 4",
+    previous: "M17 6l-7 6 7 6V6ZM8 6v12",
     restart: "M5 12a7 7 0 1 0 2-4.9M5 5v5h5",
     settings: "M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7ZM19 12a7.2 7.2 0 0 0-.08-1l2-1.55-2-3.45-2.36.95a7.4 7.4 0 0 0-1.72-1L14.5 3h-4l-.34 2.95a7.4 7.4 0 0 0-1.72 1L6.08 6l-2 3.45L6.08 11A7.2 7.2 0 0 0 6 12c0 .34.03.67.08 1l-2 1.55 2 3.45 2.36-.95c.53.42 1.1.75 1.72 1l.34 2.95h4l.34-2.95c.62-.25 1.19-.58 1.72-1l2.36.95 2-3.45-2-1.55c.05-.33.08-.66.08-1Z",
+    stop: "M7 7h10v10H7z",
+    tracks: "M4 7h7M15 7h5M11 5v4M4 12h12M20 12h0M16 10v4M4 17h4M12 17h8M8 15v4",
     volume: "M4 10v4h4l5 4V6l-5 4H4Z M16 9a4 4 0 0 1 0 6",
   };
 
@@ -465,32 +854,65 @@ function App() {
   const [displayPosition, setDisplayPosition] = useState(0);
   const [volumeLevel, setVolumeLevel] = useState(0.82);
   const [playbackSpeed, setPlaybackSpeedValue] = useState(1);
+  const [hardwareDecodingMode, setHardwareDecodingModeValue] = useState<HardwareDecodingMode>("hardware");
   const [subtitleDelay, setSubtitleDelayValue] = useState(0);
   const [tracks, setTracks] = useState<MpvTrack[]>([]);
+  const [loadedMediaPath, setLoadedMediaPath] = useState<string | null>(null);
   const [framesPerSecond, setFramesPerSecond] = useState(0);
   const [timeDisplayMode, setTimeDisplayMode] = useState<TimeDisplayMode>("timecode");
+  const [loopMode, setLoopMode] = useState<LoopMode>("off");
   const [isPlaying, setIsPlaying] = useState(false);
   const [isChromeVisible, setIsChromeVisible] = useState(true);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [platformSupport, setPlatformSupport] = useState<PlatformSupport | null>(null);
+  const [appearanceState, setAppearanceState] = useState<AppearanceState | null>(null);
+  const [playerPreferences, setPlayerPreferences] = useState<PlayerPreferences>(DEFAULT_PLAYER_PREFERENCES);
+  const [volumeFeedback, setVolumeFeedback] = useState<VolumeFeedback | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuPosition | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isMediaPanelOpen, setIsMediaPanelOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>("appearance");
+  const [mediaPanelMode, setMediaPanelMode] = useState<MediaPanelMode | null>(null);
+  const [shellPreviewFormats, setShellPreviewFormats] = useState<ShellPreviewFormatInfo[]>([]);
+  const [selectedShellPreviewFormats, setSelectedShellPreviewFormats] = useState<string[]>([]);
+  const [shellPreviewRegistrationStatus, setShellPreviewRegistrationStatus] = useState<string | null>(null);
+  const [isRegisteringShellPreview, setIsRegisteringShellPreview] = useState(false);
   const [shortcutBindings, setShortcutBindings] = useState<ShortcutBindings>(readShortcutBindings);
   const [recordingShortcutAction, setRecordingShortcutAction] = useState<ShortcutAction | null>(null);
   const pendingSeekRef = useRef<PendingSeek | null>(null);
   const playbackClockAnchorRef = useRef<PlaybackClockAnchor>({ position: 0, startedAt: performance.now(), playing: false, speed: 1 });
   const snapshotRequestIdRef = useRef(0);
   const chromeHideTimerRef = useRef<number | null>(null);
+  const volumeFeedbackTimerRef = useRef<number | null>(null);
+  const pendingWindowDragRef = useRef<PendingWindowDrag | null>(null);
+  const handledEndedPathRef = useRef<string | null>(null);
   const lastHistoryWriteRef = useRef(0);
+  const hardwareDecodingModeRef = useRef<HardwareDecodingMode>("hardware");
   const shortcutKeyDownRef = useRef<(event: KeyboardEvent) => void>(() => undefined);
   const nativeShortcutActionRef = useRef<(action: ShortcutAction) => void>(() => undefined);
   const settingsDialogRef = useRef<HTMLElement | null>(null);
   const media = currentIndex === null ? null : (queue[currentIndex] ?? null);
+  const locale = resolveLocale(playerPreferences.languageMode, browserLanguages());
+  const t = translations[locale];
+  const loopModeOptions = loopModeOptionsFor(t);
+  const shortcutDefinitions = shortcutDefinitionsFor(t);
+  const activeTheme = activeThemeFromAppearance(appearanceState);
+  const appearanceStyle = themeStyleVariables(appearanceState);
+  const isMediaPanelOpen = mediaPanelMode !== null;
   const isChromePinned = !media || isPlaylistOpen || isMediaPanelOpen || isPickerOpen || playbackError !== null || contextMenu !== null || isSettingsOpen;
 
   useEffect(() => {
     let disposed = false;
+    invoke<PlatformSupport>("platform_support")
+      .then((support) => {
+        if (!disposed) {
+          setPlatformSupport(support);
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn("Failed to load platform support metadata", error);
+      });
+
     invoke<PlaybackHistoryEntry[]>("history_list")
       .then((entries) => {
         if (!disposed) {
@@ -499,6 +921,47 @@ function App() {
       })
       .catch((error: unknown) => {
         console.warn("Failed to load playback history", error);
+      });
+
+    invoke<AppearanceState>("appearance_state")
+      .then((state) => {
+        if (!disposed) {
+          setAppearanceState(state);
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn("Failed to load appearance settings", error);
+      });
+
+    invoke<PlayerPreferences>("preferences_state")
+      .then((preferences) => {
+        if (!disposed) {
+          setPlayerPreferences(preferences);
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn("Failed to load player preferences", error);
+      });
+
+    invoke<ShellPreviewFormatInfo[]>("shell_preview_formats")
+      .then((formats) => {
+        if (!disposed && Array.isArray(formats)) {
+          setShellPreviewFormats(formats);
+          setSelectedShellPreviewFormats(defaultShellPreviewExtensions(formats));
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn("Failed to load Explorer preview formats", error);
+      });
+
+    invoke<string[]>("startup_media_paths")
+      .then((paths) => {
+        if (!disposed && Array.isArray(paths) && paths.length > 0) {
+          replaceQueueWithMediaPaths(paths).catch(reportPlaybackError);
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn("Failed to load startup media paths", error);
       });
 
     return () => {
@@ -552,9 +1015,26 @@ function App() {
   }, [framesPerSecond, duration]);
 
   useEffect(() => {
+    if (!media || loadedMediaPath !== media.path) {
+      return;
+    }
+
+    invoke<MpvSnapshot>("mpv_embed_set_loop_file", { enabled: loopMode === "one" })
+      .then((snapshot) => {
+        if (loopMode === "one") {
+          applySnapshot(snapshot);
+        }
+      })
+      .catch(reportPlaybackError);
+  }, [media?.id, media?.path, loadedMediaPath, loopMode]);
+
+  useEffect(() => {
     setIsChromeVisible(true);
     scheduleChromeHide();
-    return clearChromeHideTimer;
+    return () => {
+      clearChromeHideTimer();
+      clearPendingWindowDrag();
+    };
   }, [media?.id, isChromePinned]);
 
   useEffect(() => {
@@ -573,10 +1053,25 @@ function App() {
     }
   }, [isSettingsOpen]);
 
-  shortcutKeyDownRef.current = (event: KeyboardEvent) => {
-    recordUserActivity();
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      invoke<AppearanceState>("appearance_state")
+        .then(setAppearanceState)
+        .catch((error: unknown) => console.warn("Failed to sync appearance settings", error));
+      invoke<PlayerPreferences>("preferences_state")
+        .then(setPlayerPreferences)
+        .catch((error: unknown) => console.warn("Failed to sync player preferences", error));
+      invoke<PlaybackHistoryEntry[]>("history_list")
+        .then((entries) => setPlaybackHistory(Array.isArray(entries) ? entries : []))
+        .catch((error: unknown) => console.warn("Failed to sync playback history", error));
+    }, STORE_SYNC_INTERVAL_MS);
 
+    return () => window.clearInterval(timer);
+  }, []);
+
+  shortcutKeyDownRef.current = (event: KeyboardEvent) => {
     if (recordingShortcutAction) {
+      recordUserActivity();
       event.preventDefault();
       event.stopPropagation();
       if (event.key === "Escape") {
@@ -599,6 +1094,7 @@ function App() {
     }
 
     if (event.key === "Escape") {
+      recordUserActivity();
       if (contextMenu) {
         event.preventDefault();
         setContextMenu(null);
@@ -625,15 +1121,16 @@ function App() {
     event.preventDefault();
     event.stopPropagation();
     releaseShortcutFocusTarget(event.target);
+    recordShortcutActivity(shortcut.action);
     performShortcutAction(shortcut.action);
   };
 
   nativeShortcutActionRef.current = (action: ShortcutAction) => {
-    recordUserActivity();
     if (contextMenu || isSettingsOpen || recordingShortcutAction) {
       return;
     }
 
+    recordShortcutActivity(action);
     performShortcutAction(action);
   };
 
@@ -685,11 +1182,23 @@ function App() {
     });
   }, [contextMenu, isSettingsOpen, recordingShortcutAction]);
 
+  useEffect(() => {
+    return () => {
+      if (volumeFeedbackTimerRef.current !== null) {
+        window.clearTimeout(volumeFeedbackTimerRef.current);
+      }
+    };
+  }, []);
+
   function clearChromeHideTimer() {
     if (chromeHideTimerRef.current !== null) {
       window.clearTimeout(chromeHideTimerRef.current);
       chromeHideTimerRef.current = null;
     }
+  }
+
+  function clearPendingWindowDrag() {
+    pendingWindowDragRef.current = null;
   }
 
   function scheduleChromeHide() {
@@ -707,6 +1216,26 @@ function App() {
   function recordUserActivity() {
     setIsChromeVisible(true);
     scheduleChromeHide();
+  }
+
+  function recordShortcutActivity(action: ShortcutAction) {
+    if (playerPreferences.quietKeyboardControls && ["seekBackward", "seekForward", "volumeDown", "volumeUp"].includes(action)) {
+      return;
+    }
+
+    recordUserActivity();
+  }
+
+  function showVolumeFeedback(level: number) {
+    const nextLevel = Math.min(1, Math.max(0, level));
+    setVolumeFeedback({ level: nextLevel });
+    if (volumeFeedbackTimerRef.current !== null) {
+      window.clearTimeout(volumeFeedbackTimerRef.current);
+    }
+    volumeFeedbackTimerRef.current = window.setTimeout(() => {
+      setVolumeFeedback(null);
+      volumeFeedbackTimerRef.current = null;
+    }, VOLUME_FEEDBACK_MS);
   }
 
   function invalidatePendingSnapshots() {
@@ -729,8 +1258,11 @@ function App() {
     setIsPlaying(nextIsPlaying);
     setFramesPerSecond(Number.isFinite(snapshot.fps) && snapshot.fps > 0 ? snapshot.fps : 0);
     setPlaybackSpeedValue(snapshotSpeed);
+    setHardwareDecodingModeValue(hwdecModeFromSnapshot(snapshot.hwdec));
+    hardwareDecodingModeRef.current = hwdecModeFromSnapshot(snapshot.hwdec);
     setSubtitleDelayValue(clampSubtitleDelay(snapshot.subtitleDelay));
     setTracks(Array.isArray(snapshot.tracks) ? snapshot.tracks : []);
+    setLoadedMediaPath(snapshot.path);
     setVolumeLevel(Math.min(1, Math.max(0, snapshot.volume / 100)));
 
     if (pendingSeek) {
@@ -746,10 +1278,16 @@ function App() {
     rememberPlaybackProgress(snapshot.path, snapshotPosition, snapshotDuration, forceHistoryWrite);
     setCurrentTime(snapshotPosition);
     anchorDisplayClock(snapshotPosition, nextIsPlaying, snapshotDuration, snapshotSpeed);
+
+    if (snapshot.ended || snapshot.status === "ended") {
+      handlePlaybackEnd(snapshot.path);
+    } else if (handledEndedPathRef.current === snapshot.path) {
+      handledEndedPathRef.current = null;
+    }
   }
 
   function rememberPlaybackProgress(path: string, position: number, snapshotDuration: number, force = false) {
-    if (!path) {
+    if (!path || playerPreferences.incognitoMode) {
       return;
     }
 
@@ -775,25 +1313,45 @@ function App() {
   }
 
   function reportPlaybackError(error: unknown) {
-    setPlaybackError(error instanceof Error ? error.message : String(error));
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("mpv has no loaded media")) {
+      return;
+    }
+
+    if (
+      message.includes("mpv embed playback currently supports Windows HWND hosts only") ||
+      message.includes("video host support is not implemented yet")
+    ) {
+      setPlaybackError(platformUnsupportedPlaybackMessage(platformSupport, t));
+      return;
+    }
+
+    setPlaybackError(message);
   }
 
   async function openMpvPath(path: string) {
     invalidatePendingSnapshots();
+    handledEndedPathRef.current = null;
+    setLoadedMediaPath(null);
     const rememberedPosition = await resumePositionForPath(path);
     const snapshot = await invoke<MpvSnapshot>("mpv_overlay_open_path", { path });
     pendingSeekRef.current = null;
     setPlaybackError(null);
     applyCommandSnapshot(snapshot);
+    let activeSnapshot = snapshot;
+    if (hardwareDecodingModeRef.current === "software") {
+      activeSnapshot = await invoke<MpvSnapshot>("mpv_embed_set_hwdec", { mode: "software" });
+      applyCommandSnapshot(activeSnapshot);
+    }
 
-    const resumeTarget = resumePositionWithinDuration(rememberedPosition, snapshot.duration);
+    const resumeTarget = resumePositionWithinDuration(rememberedPosition, activeSnapshot.duration);
     if (resumeTarget <= 0) {
       return;
     }
 
     pendingSeekRef.current = { target: resumeTarget, startedAt: performance.now() };
     setCurrentTime(resumeTarget);
-    anchorDisplayClock(resumeTarget, false, snapshot.duration, snapshot.speed);
+    anchorDisplayClock(resumeTarget, false, activeSnapshot.duration, activeSnapshot.speed);
     invalidatePendingSnapshots();
     const resumedSnapshot = await invoke<MpvSnapshot>("mpv_embed_seek", { position: resumeTarget });
     applyCommandSnapshot(resumedSnapshot);
@@ -857,8 +1415,142 @@ function App() {
     setRecordingShortcutAction(null);
   }
 
+  async function updateAppearance(request: Promise<AppearanceState>) {
+    try {
+      setAppearanceState(await request);
+    } catch (error) {
+      reportPlaybackError(error);
+    } finally {
+      focusOverlayWindow();
+    }
+  }
+
+  function selectTheme(themeId: string) {
+    void updateAppearance(invoke<AppearanceState>("appearance_set_theme", { themeId }));
+  }
+
+  function setAccentOverride(accent: string | null) {
+    void updateAppearance(invoke<AppearanceState>("appearance_set_accent_override", { accent }));
+  }
+
+  function resetAppearance() {
+    void updateAppearance(invoke<AppearanceState>("appearance_reset"));
+  }
+
+  function setThemePluginEnabled(pluginId: string, enabled: boolean) {
+    void updateAppearance(invoke<AppearanceState>("appearance_set_plugin_enabled", { pluginId, enabled }));
+  }
+
+  async function updatePlayerPreferences(request: Promise<PlayerPreferences>) {
+    try {
+      setPlayerPreferences(await request);
+    } catch (error) {
+      reportPlaybackError(error);
+    } finally {
+      focusOverlayWindow();
+    }
+  }
+
+  function setIncognitoMode(enabled: boolean) {
+    void updatePlayerPreferences(invoke<PlayerPreferences>("preferences_set_incognito_mode", { enabled }));
+  }
+
+  function setQuietKeyboardControls(enabled: boolean) {
+    void updatePlayerPreferences(invoke<PlayerPreferences>("preferences_set_quiet_keyboard_controls", { enabled }));
+  }
+
+  function setLanguageMode(mode: LanguageMode) {
+    void updatePlayerPreferences(invoke<PlayerPreferences>("preferences_set_language_mode", { mode }));
+  }
+
+  function toggleShellPreviewFormat(extension: string) {
+    setShellPreviewRegistrationStatus(null);
+    setSelectedShellPreviewFormats((selected) => {
+      if (selected.includes(extension)) {
+        return selected.filter((item) => item !== extension);
+      }
+
+      return [...selected, extension];
+    });
+  }
+
+  function toggleAllShellPreviewFormats() {
+    setShellPreviewRegistrationStatus(null);
+    setSelectedShellPreviewFormats((selected) => {
+      if (shellPreviewFormats.length > 0 && selected.length === shellPreviewFormats.length) {
+        return [];
+      }
+
+      return shellPreviewFormats.map((format) => format.extension);
+    });
+  }
+
+  function resetShellPreviewFormatsToDefault() {
+    setShellPreviewRegistrationStatus(null);
+    setSelectedShellPreviewFormats(defaultShellPreviewExtensions(shellPreviewFormats));
+  }
+
+  async function registerShellPreviews() {
+    if (isRegisteringShellPreview) {
+      return;
+    }
+
+    if (!selectedShellPreviewFormats.length) {
+      setShellPreviewRegistrationStatus(t.settings.shellPreview.noSelection);
+      return;
+    }
+
+    setIsRegisteringShellPreview(true);
+    setShellPreviewRegistrationStatus(null);
+    try {
+      const summary = await invoke<ShellPreviewRegistrationSummary>("shell_preview_register_formats", { selectedExtensions: selectedShellPreviewFormats });
+      setShellPreviewRegistrationStatus(t.settings.shellPreview.registered(summary.registeredCount));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setShellPreviewRegistrationStatus(t.settings.shellPreview.failed(message));
+    } finally {
+      setIsRegisteringShellPreview(false);
+      focusOverlayWindow();
+    }
+  }
+
+  async function openDefaultAppsSettings() {
+    try {
+      await invoke("shell_preview_open_default_apps_settings");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setShellPreviewRegistrationStatus(t.settings.shellPreview.openDefaultAppsFailed(message));
+    }
+  }
+
+  async function importThemePlugin() {
+    if (isPickerOpen) {
+      return;
+    }
+
+    setIsPickerOpen(true);
+    try {
+      const selection = await open({
+        multiple: false,
+        filters: [{ name: t.dialog.themePlugin, extensions: themePluginExtensions }],
+      });
+      if (typeof selection !== "string") {
+        return;
+      }
+
+      await updateAppearance(invoke<AppearanceState>("appearance_import_theme_plugin", { path: selection }));
+    } catch (error) {
+      reportPlaybackError(error);
+    } finally {
+      setIsPickerOpen(false);
+      focusOverlayWindow();
+    }
+  }
+
   function openSettingsDialog() {
     setContextMenu(null);
+    setMediaPanelMode(null);
+    setSettingsSection("appearance");
     setIsSettingsOpen(true);
   }
 
@@ -886,6 +1578,17 @@ function App() {
     if (media && !isChromePinned) {
       setIsChromeVisible(false);
     }
+  }
+
+  function handleShellWheel(event: ReactWheelEvent<HTMLElement>) {
+    if (!media || contextMenu || isSettingsOpen || recordingShortcutAction) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    const direction = event.deltaY > 0 ? -1 : 1;
+    setVolume(volumeLevel + direction * DEFAULT_VOLUME_STEP, { feedback: true });
   }
 
   function seekBy(deltaSeconds: number) {
@@ -916,7 +1619,7 @@ function App() {
         break;
       case "restart":
         if (media) {
-          commitSeekTo(0);
+          restartPlayback();
         }
         break;
       case "togglePlaylist":
@@ -937,10 +1640,10 @@ function App() {
         stepFrame("mpv_embed_frame_back_step");
         break;
       case "volumeDown":
-        setVolume(volumeLevel - DEFAULT_VOLUME_STEP);
+        setVolume(volumeLevel - DEFAULT_VOLUME_STEP, { feedback: true });
         break;
       case "volumeUp":
-        setVolume(volumeLevel + DEFAULT_VOLUME_STEP);
+        setVolume(volumeLevel + DEFAULT_VOLUME_STEP, { feedback: true });
         break;
       case "toggleFullscreen":
         toggleFullscreen();
@@ -956,23 +1659,20 @@ function App() {
       return;
     }
 
+    if (platformSupport && !platformSupport.mpvEmbedVideo) {
+      setPlaybackError(platformUnsupportedPlaybackMessage(platformSupport, t));
+      return;
+    }
+
     setIsPickerOpen(true);
     setPlaybackError(null);
     try {
       const selection = await open({
         multiple: true,
-        filters: [{ name: "Media", extensions: playableExtensions }],
+        filters: [{ name: t.dialog.mediaFiles, extensions: playableExtensions }],
       });
       const paths = typeof selection === "string" ? [selection] : Array.isArray(selection) ? selection : [];
-      const nextQueue = paths.map(mediaItemFromPath);
-      if (!nextQueue.length) {
-        return;
-      }
-
-      setQueue(nextQueue);
-      setCurrentIndex(0);
-      setIsPlaylistOpen(nextQueue.length > 1);
-      await openMpvPath(nextQueue[0].path);
+      await replaceQueueWithMediaPaths(paths);
     } catch (error) {
       reportPlaybackError(error);
     } finally {
@@ -981,14 +1681,145 @@ function App() {
     }
   }
 
-  function chooseQueueItem(index: number) {
-    const item = queue[index];
-    if (!item || index === currentIndex) {
+  async function appendNativeMediaFiles() {
+    if (isPickerOpen) {
       return;
     }
 
+    setIsPickerOpen(true);
+    setPlaybackError(null);
+    try {
+      const selection = await open({
+        multiple: true,
+        filters: [{ name: t.dialog.mediaFiles, extensions: playableExtensions }],
+      });
+      const paths = typeof selection === "string" ? [selection] : Array.isArray(selection) ? selection : [];
+      await appendMediaPaths(paths);
+    } catch (error) {
+      reportPlaybackError(error);
+    } finally {
+      setIsPickerOpen(false);
+      focusOverlayWindow();
+    }
+  }
+
+  async function appendNativeMediaFolder() {
+    if (isPickerOpen) {
+      return;
+    }
+
+    setIsPickerOpen(true);
+    setPlaybackError(null);
+    try {
+      const selection = await open({
+        directory: true,
+        multiple: false,
+      });
+      const folderPath = typeof selection === "string" ? selection : null;
+      if (!folderPath) {
+        return;
+      }
+
+      const paths = await invoke<string[]>("media_files_in_directory", { path: folderPath });
+      await appendMediaPaths(paths);
+    } catch (error) {
+      reportPlaybackError(error);
+    } finally {
+      setIsPickerOpen(false);
+      focusOverlayWindow();
+    }
+  }
+
+  async function replaceQueueWithMediaPaths(paths: string[]) {
+    if (platformSupport && !platformSupport.mpvEmbedVideo) {
+      setPlaybackError(platformUnsupportedPlaybackMessage(platformSupport, t));
+      return;
+    }
+
+    const nextQueue = uniqueMediaPaths(paths).map(mediaItemFromPath);
+    if (!nextQueue.length) {
+      return;
+    }
+
+    setQueue(nextQueue);
+    setCurrentIndex(0);
+    setIsPlaylistOpen(nextQueue.length > 1);
+    await openMpvPath(nextQueue[0].path);
+  }
+
+  async function appendMediaPaths(paths: string[]) {
+    if (platformSupport && !platformSupport.mpvEmbedVideo) {
+      setPlaybackError(platformUnsupportedPlaybackMessage(platformSupport, t));
+      return;
+    }
+
+    const baseQueue = queue.length ? queue : media ? [media] : [];
+    const appendedPaths = uniqueMediaPaths(paths, new Set(baseQueue.map((item) => item.path)));
+    if (!appendedPaths.length) {
+      return;
+    }
+
+    const nextQueue = [...baseQueue, ...appendedPaths.map(mediaItemFromPath)];
+    const shouldStartPlayback = !media;
+    setQueue(nextQueue);
+    setCurrentIndex(shouldStartPlayback ? 0 : currentIndex ?? 0);
+    setIsPlaylistOpen(nextQueue.length > 1);
+    if (shouldStartPlayback) {
+      await openMpvPath(nextQueue[0].path);
+    }
+  }
+
+  function playQueueIndex(index: number) {
+    const item = queue[index];
+    if (!item) {
+      return;
+    }
+
+    handledEndedPathRef.current = null;
     setCurrentIndex(index);
     openMpvPath(item.path).catch(reportPlaybackError);
+  }
+
+  function chooseQueueItem(index: number) {
+    if (index === currentIndex) {
+      return;
+    }
+
+    playQueueIndex(index);
+  }
+
+  function previousQueueIndex() {
+    if (currentIndex === null || !queue.length) {
+      return null;
+    }
+    if (currentIndex > 0) {
+      return currentIndex - 1;
+    }
+    return loopMode === "all" && queue.length > 1 ? queue.length - 1 : null;
+  }
+
+  function nextQueueIndex() {
+    if (currentIndex === null || !queue.length) {
+      return null;
+    }
+    if (currentIndex < queue.length - 1) {
+      return currentIndex + 1;
+    }
+    return loopMode === "all" && queue.length > 1 ? 0 : null;
+  }
+
+  function playPreviousQueueItem() {
+    const index = previousQueueIndex();
+    if (index !== null) {
+      playQueueIndex(index);
+    }
+  }
+
+  function playNextQueueItem() {
+    const index = nextQueueIndex();
+    if (index !== null) {
+      playQueueIndex(index);
+    }
   }
 
   function openHistoryEntry(entry: PlaybackHistoryEntry) {
@@ -997,6 +1828,84 @@ function App() {
     setCurrentIndex(0);
     setIsPlaylistOpen(false);
     openMpvPath(entry.path).catch(reportPlaybackError);
+  }
+
+  function clearPlaybackHistory() {
+    invoke<PlaybackHistoryEntry[]>("history_clear")
+      .then((entries) => setPlaybackHistory(Array.isArray(entries) ? entries : []))
+      .catch(reportPlaybackError);
+  }
+
+  function stopPlayback() {
+    if (!media) {
+      return;
+    }
+
+    invalidatePendingSnapshots();
+    invoke<void>("mpv_embed_stop")
+      .then(() => {
+        handledEndedPathRef.current = null;
+        pendingSeekRef.current = null;
+        setCurrentIndex(null);
+        setIsPlaying(false);
+        setDuration(0);
+        setCurrentTime(0);
+        setDisplayPosition(0);
+        setFramesPerSecond(0);
+        setTracks([]);
+        setLoadedMediaPath(null);
+        setMediaPanelMode(null);
+      })
+      .catch(reportPlaybackError);
+  }
+
+  function restartPlayback(autoplay = false) {
+    if (!media) {
+      return;
+    }
+
+    pendingSeekRef.current = { target: 0, startedAt: performance.now() };
+    setCurrentTime(0);
+    anchorDisplayClock(0, false, duration, playbackSpeed);
+    invalidatePendingSnapshots();
+    invoke<MpvSnapshot>("mpv_embed_seek", { position: 0 })
+      .then((snapshot) => {
+        applyCommandSnapshot(snapshot);
+        if (autoplay) {
+          return invoke<MpvSnapshot>("mpv_embed_play").then((playingSnapshot) => {
+            handledEndedPathRef.current = null;
+            applyCommandSnapshot(playingSnapshot);
+          });
+        }
+        return undefined;
+      })
+      .catch((error: unknown) => {
+        pendingSeekRef.current = null;
+        reportPlaybackError(error);
+      });
+  }
+
+  function handlePlaybackEnd(path: string) {
+    if (!media || media.path !== path || handledEndedPathRef.current === path) {
+      return;
+    }
+
+    if (loopMode === "off") {
+      return;
+    }
+
+    handledEndedPathRef.current = path;
+    if (loopMode === "one") {
+      restartPlayback(true);
+      return;
+    }
+
+    const index = nextQueueIndex();
+    if (index !== null) {
+      playQueueIndex(index);
+    } else {
+      restartPlayback(true);
+    }
   }
 
   function toggleFullscreen() {
@@ -1011,8 +1920,53 @@ function App() {
     }
 
     if (event.button === 0) {
-      startMainWindowDrag();
+      if (event.detail > 1) {
+        event.preventDefault();
+        clearPendingWindowDrag();
+        return;
+      }
+      pendingWindowDragRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+      };
     }
+  }
+
+  function handleDragRegionPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const pendingDrag = pendingWindowDragRef.current;
+    if (!pendingDrag || pendingDrag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - pendingDrag.startX;
+    const deltaY = event.clientY - pendingDrag.startY;
+    if (deltaX * deltaX + deltaY * deltaY < WINDOW_DRAG_START_DISTANCE_PX * WINDOW_DRAG_START_DISTANCE_PX) {
+      return;
+    }
+
+    event.preventDefault();
+    clearPendingWindowDrag();
+    startMainWindowDrag();
+  }
+
+  function handleDragRegionPointerEnd(event: ReactPointerEvent<HTMLDivElement>) {
+    if (pendingWindowDragRef.current?.pointerId !== event.pointerId) {
+      return;
+    }
+
+    clearPendingWindowDrag();
+  }
+
+  function handleDragRegionDoubleClick(event: ReactMouseEvent<HTMLDivElement>) {
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    clearPendingWindowDrag();
+    togglePlayback();
   }
 
   function handleResizePointerDown(event: ReactPointerEvent<HTMLDivElement>, direction: ResizeDirection) {
@@ -1039,11 +1993,23 @@ function App() {
   }
 
   function togglePlaylist() {
+    setMediaPanelMode(null);
     setIsPlaylistOpen((isOpen) => !isOpen);
   }
 
-  function toggleMediaPanel() {
-    setIsMediaPanelOpen((isOpen) => !isOpen);
+  function toggleSpeedPanel() {
+    setIsPlaylistOpen(false);
+    setMediaPanelMode((mode) => (mode === "speed" ? null : "speed"));
+  }
+
+  function toggleTrackPanel() {
+    setIsPlaylistOpen(false);
+    setMediaPanelMode((mode) => (mode === "tracks" ? null : "tracks"));
+  }
+
+  function toggleLoopPanel() {
+    setIsPlaylistOpen(false);
+    setMediaPanelMode((mode) => (mode === "loop" ? null : "loop"));
   }
 
   function seekTo(value: number) {
@@ -1067,9 +2033,12 @@ function App() {
       });
   }
 
-  function setVolume(value: number) {
+  function setVolume(value: number, options: { feedback?: boolean } = {}) {
     const nextVolume = Math.min(1, Math.max(0, value));
     setVolumeLevel(nextVolume);
+    if (options.feedback) {
+      showVolumeFeedback(nextVolume);
+    }
     invalidatePendingSnapshots();
     invoke<MpvSnapshot>("mpv_embed_set_volume", { volume: nextVolume * 100 })
       .then(applyCommandSnapshot)
@@ -1088,6 +2057,24 @@ function App() {
     invoke<MpvSnapshot>("mpv_embed_set_speed", { speed: nextSpeed })
       .then(applyCommandSnapshot)
       .catch(reportPlaybackError);
+  }
+
+  function toggleHardwareDecoding() {
+    const nextMode: HardwareDecodingMode = hardwareDecodingMode === "hardware" ? "software" : "hardware";
+    setHardwareDecodingModeValue(nextMode);
+    hardwareDecodingModeRef.current = nextMode;
+    if (!media) {
+      return;
+    }
+
+    invalidatePendingSnapshots();
+    invoke<MpvSnapshot>("mpv_embed_set_hwdec", { mode: nextMode })
+      .then(applyCommandSnapshot)
+      .catch((error: unknown) => {
+        setHardwareDecodingModeValue(hardwareDecodingMode);
+        hardwareDecodingModeRef.current = hardwareDecodingMode;
+        reportPlaybackError(error);
+      });
   }
 
   function setSubtitleDelay(delay: number) {
@@ -1123,7 +2110,7 @@ function App() {
     try {
       const selection = await open({
         multiple: false,
-        filters: [{ name: "Subtitles", extensions: subtitleExtensions }],
+        filters: [{ name: t.dialog.subtitle, extensions: subtitleExtensions }],
       });
       if (typeof selection !== "string") {
         return;
@@ -1144,40 +2131,54 @@ function App() {
   const progress = duration > 0 ? Math.min(100, Math.max(0, (displayTime / duration) * 100)) : 0;
   const progressRatio = progress / 100;
   const queueItems = queue.length ? queue : media ? [media] : [];
+  const previousIndex = previousQueueIndex();
+  const nextIndex = nextQueueIndex();
   const audioTracks = tracks.filter((track) => track.kind === "audio");
   const videoTracks = tracks.filter((track) => track.kind === "video");
   const subtitleTracks = tracks.filter((track) => track.kind === "sub");
+  const isAudioOnlyMedia = Boolean(media && loadedMediaPath === media.path && isAudioMediaPath(media.path));
+  const primaryAudioTrack = audioTracks.find((track) => track.selected) ?? audioTracks[0] ?? null;
+  const selectedShellPreviewFormatSet = new Set(selectedShellPreviewFormats);
+  const allShellPreviewFormatsSelected = shellPreviewFormats.length > 0 && selectedShellPreviewFormats.length === shellPreviewFormats.length;
+  const shellPreviewVideoFormats = shellPreviewFormats.filter((format) => format.kind === "video");
+  const shellPreviewAudioFormats = shellPreviewFormats.filter((format) => format.kind === "audio");
   const canShowFrames = canDisplayFrames(framesPerSecond, duration);
   const effectiveTimeDisplayMode: TimeDisplayMode = timeDisplayMode === "frames" && canShowFrames ? "frames" : "timecode";
   const totalFrames = canShowFrames ? Math.max(0, Math.floor(duration * framesPerSecond)) : 0;
   const currentFrame = canShowFrames ? Math.min(totalFrames, Math.max(0, Math.floor(displayTime * framesPerSecond))) : 0;
-  const currentTransportLabel = effectiveTimeDisplayMode === "frames" ? formatFrameCount(currentFrame) : formatTimecode(displayTime, duration);
-  const durationTransportLabel = effectiveTimeDisplayMode === "frames" ? formatFrameCount(totalFrames) : formatTimecode(duration, duration);
-  const currentTimeToggleLabel = canShowFrames ? "Toggle current playback time and frame display" : "Current playback time; frame display unavailable for this media";
-  const durationTimeToggleLabel = canShowFrames ? "Toggle total duration and frame display" : "Total duration; frame display unavailable for this media";
+  const currentTransportLabel = effectiveTimeDisplayMode === "frames" ? formatFrameCount(currentFrame, locale) : formatTimecode(displayTime, duration);
+  const durationTransportLabel = effectiveTimeDisplayMode === "frames" ? formatFrameCount(totalFrames, locale) : formatTimecode(duration, duration);
+  const currentTimeToggleLabel = t.controls.currentTime;
+  const durationTimeToggleLabel = t.controls.duration;
   const isChromeHidden = Boolean(media) && !isChromeVisible && !isChromePinned;
+  const hardwareDecodingLabel = hardwareDecodingMode === "hardware" ? t.hardware.hardware : t.hardware.software;
+  const hardwareDecodingToggleLabel = hardwareDecodingMode === "hardware" ? t.hardware.switchToSoftware : t.hardware.switchToHardware;
   const contextMenuItems: Array<
     | { type: "item"; id: string; label: string; icon: IconName; shortcut?: string | null; disabled?: boolean; onSelect: () => void }
     | { type: "separator"; id: string }
   > = [
-    { type: "item", id: "open", label: "打开媒体", icon: "folder", shortcut: shortcutBindings.openMedia, disabled: isPickerOpen, onSelect: openNativeMediaFiles },
+    { type: "item", id: "open", label: t.contextMenu.openMedia, icon: "folder", shortcut: shortcutBindings.openMedia, disabled: isPickerOpen, onSelect: openNativeMediaFiles },
+    { type: "item", id: "append-files", label: t.contextMenu.appendFiles, icon: "folderAdd", disabled: isPickerOpen, onSelect: appendNativeMediaFiles },
+    { type: "item", id: "append-folder", label: t.contextMenu.appendFolder, icon: "folderAdd", disabled: isPickerOpen, onSelect: appendNativeMediaFolder },
     {
       type: "item",
       id: "play",
-      label: isPlaying ? "暂停" : media ? "播放" : "打开媒体",
+      label: isPlaying ? t.contextMenu.pause : media ? t.contextMenu.play : t.contextMenu.openMedia,
       icon: isPlaying ? "pause" : "play",
       shortcut: shortcutBindings.togglePlayback,
       disabled: !media && isPickerOpen,
       onSelect: togglePlayback,
     },
-    { type: "item", id: "restart", label: "从头播放", icon: "restart", shortcut: shortcutBindings.restart, disabled: !media, onSelect: () => commitSeekTo(0) },
+    { type: "item", id: "stop", label: t.contextMenu.stop, icon: "stop", disabled: !media, onSelect: stopPlayback },
+    { type: "item", id: "restart", label: t.contextMenu.restart, icon: "restart", shortcut: shortcutBindings.restart, disabled: !media, onSelect: () => restartPlayback() },
     { type: "separator", id: "playback-separator" },
-    { type: "item", id: "media-options", label: "播放选项", icon: "settings", disabled: !media, onSelect: toggleMediaPanel },
-    { type: "item", id: "playlist", label: "播放列表", icon: "list", shortcut: shortcutBindings.togglePlaylist, disabled: !media && queue.length === 0 && playbackHistory.length === 0, onSelect: togglePlaylist },
-    { type: "item", id: "fullscreen", label: "全屏", icon: "fullscreen", shortcut: shortcutBindings.toggleFullscreen, onSelect: toggleFullscreen },
-    { type: "item", id: "settings", label: "设置", icon: "settings", shortcut: shortcutBindings.openSettings, onSelect: openSettingsDialog },
+    { type: "item", id: "loop-mode", label: loopModeLabel(loopMode, t), icon: "restart", disabled: !media, onSelect: toggleLoopPanel },
+    { type: "item", id: "media-options", label: t.contextMenu.tracksSubtitles, icon: "tracks", disabled: !media, onSelect: toggleTrackPanel },
+    { type: "item", id: "playlist", label: t.contextMenu.playlist, icon: "list", shortcut: shortcutBindings.togglePlaylist, disabled: !media && queue.length === 0 && playbackHistory.length === 0, onSelect: togglePlaylist },
+    { type: "item", id: "fullscreen", label: t.contextMenu.fullscreen, icon: "fullscreen", shortcut: shortcutBindings.toggleFullscreen, onSelect: toggleFullscreen },
+    { type: "item", id: "settings", label: t.contextMenu.settings, icon: "settings", shortcut: shortcutBindings.openSettings, onSelect: openSettingsDialog },
     { type: "separator", id: "window-separator" },
-    { type: "item", id: "close", label: "关闭窗口", icon: "close", onSelect: () => runWindowCommand("window_close") },
+    { type: "item", id: "close", label: t.contextMenu.closeWindow, icon: "close", onSelect: () => runWindowCommand("window_close") },
   ];
 
   function renderTrackList(kind: SelectableTrackKind, label: string, items: MpvTrack[]) {
@@ -1187,13 +2188,13 @@ function App() {
       <section className="media-panel-section">
         <header>
           <h3>{label}</h3>
-          <span>{items.length ? `${items.length} 条` : "无"}</span>
+          <span>{t.media.trackCount(items.length)}</span>
         </header>
         <div className="track-list">
           {kind === "subtitle" && (
             <button className={`track-item ${hasSelected ? "" : "track-item--active"}`} type="button" onClick={() => selectTrack(kind, null)}>
-              <span>关闭字幕</span>
-              <small>Off</small>
+              <span>{t.media.closeSubtitles}</span>
+              <small>{t.common.off}</small>
             </button>
           )}
           {items.map((track) => (
@@ -1203,28 +2204,362 @@ function App() {
               type="button"
               onClick={() => selectTrack(kind, track.id)}
             >
-              <span>{trackDisplayLabel(track)}</span>
+              <span>{trackDisplayLabel(track, t)}</span>
               <small>ID {track.id}</small>
             </button>
           ))}
-          {!items.length && kind !== "subtitle" && <div className="track-empty">当前媒体未报告可切换轨道</div>}
+          {!items.length && kind !== "subtitle" && <div className="track-empty">{t.media.noSwitchableTracks}</div>}
+        </div>
+      </section>
+    );
+  }
+
+  function renderAppearanceSettings() {
+    return (
+      <section className="settings-panel" aria-labelledby="appearance-settings-title">
+        <div className="settings-panel-heading">
+          <div>
+            <h3 id="appearance-settings-title">{t.settings.appearance.title}</h3>
+            <span>{activeTheme ? activeTheme.name : t.common.loading}</span>
+          </div>
+          <button className="settings-reset" type="button" onClick={resetAppearance}>
+            {t.common.restoreDefaults}
+          </button>
+        </div>
+
+        <div className="theme-grid" aria-label="Theme selection">
+          {(appearanceState?.themes ?? []).map((theme) => {
+            const selected = appearanceState?.activeThemeId === theme.id;
+            const previewStyle = {
+              "--theme-surface": theme.tokens.surface,
+              "--theme-panel": theme.tokens.panelStrong,
+              "--theme-text": theme.tokens.text,
+              "--theme-muted": theme.tokens.muted,
+              "--theme-accent": appearanceState?.accentOverride ?? theme.tokens.accent,
+            } as ThemeStyleProperties;
+
+            return (
+              <button
+                key={theme.id}
+                className={`theme-card ${selected ? "theme-card--active" : ""}`}
+                type="button"
+                aria-pressed={selected}
+                disabled={!theme.enabled}
+                onClick={() => selectTheme(theme.id)}
+              >
+                <span className="theme-preview" style={previewStyle}>
+                  <span />
+                  <span />
+                  <span />
+                </span>
+                <span className="theme-card-meta">
+                  <strong>{theme.name}</strong>
+                  <small>{theme.source === "plugin" ? t.settings.appearance.pluginTheme : t.settings.appearance.builtInTheme}</small>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <section className="appearance-section" aria-labelledby="accent-settings-title">
+          <header>
+            <h4 id="accent-settings-title">{t.settings.appearance.accent}</h4>
+            <span>{appearanceState?.accentOverride ? t.settings.appearance.custom : t.settings.appearance.followTheme}</span>
+          </header>
+          <label className="accent-picker">
+            <span>
+              <strong>{t.settings.appearance.freePick}</strong>
+              <small>{hexColorForPicker(appearanceState?.accentOverride ?? activeTheme?.tokens.accent).toUpperCase()}</small>
+            </span>
+            <span
+              className="accent-picker-preview"
+              aria-hidden="true"
+              style={{ "--picked-accent": hexColorForPicker(appearanceState?.accentOverride ?? activeTheme?.tokens.accent) } as ThemeStyleProperties}
+            />
+            <input
+              type="color"
+              aria-label={t.settings.appearance.freePick}
+              value={hexColorForPicker(appearanceState?.accentOverride ?? activeTheme?.tokens.accent)}
+              onChange={(event) => setAccentOverride(event.currentTarget.value)}
+            />
+          </label>
+          <div className="accent-swatches" role="group" aria-label={t.settings.appearance.accent}>
+            <button className={!appearanceState?.accentOverride ? "accent-default accent-swatch--active" : "accent-default"} type="button" onClick={() => setAccentOverride(null)}>
+              {t.settings.appearance.themeDefault}
+            </button>
+            {accentSwatches.map((accent) => (
+              <button
+                key={accent}
+                className={appearanceState?.accentOverride === accent ? "accent-swatch accent-swatch--active" : "accent-swatch"}
+                type="button"
+                aria-label={`${t.settings.appearance.accent} ${accent}`}
+                style={{ "--swatch": accent } as ThemeStyleProperties}
+                onClick={() => setAccentOverride(accent)}
+              />
+            ))}
+          </div>
+        </section>
+
+        <section className="appearance-section" aria-labelledby="language-settings-title">
+          <header>
+            <h4 id="language-settings-title">{t.settings.appearance.language}</h4>
+            <span>{t.settings.appearance.languageDescription}</span>
+          </header>
+          <div className="language-options" role="group" aria-label={t.settings.appearance.language}>
+            {languageModeOptions.map((option) => (
+              <button
+                key={option.mode}
+                className={playerPreferences.languageMode === option.mode ? "language-option language-option--active" : "language-option"}
+                type="button"
+                aria-pressed={playerPreferences.languageMode === option.mode}
+                onClick={() => setLanguageMode(option.mode)}
+              >
+                {option.label[locale]}
+              </button>
+            ))}
+          </div>
+        </section>
+      </section>
+    );
+  }
+
+  function renderPluginSettings() {
+    return (
+      <section className="settings-panel" aria-labelledby="plugin-settings-title">
+        <div className="settings-panel-heading">
+          <div>
+            <h3 id="plugin-settings-title">{t.settings.plugins.title}</h3>
+            <span>{t.settings.plugins.subtitle}</span>
+          </div>
+          <button className="settings-reset" type="button" onClick={importThemePlugin} disabled={isPickerOpen}>
+            {t.settings.plugins.importJson}
+          </button>
+        </div>
+
+        <div className="plugin-list">
+          {(appearanceState?.plugins ?? []).map((plugin) => (
+            <div className="plugin-row" key={plugin.id}>
+              <div className="plugin-meta">
+                <span>{plugin.name}</span>
+                <small>
+                  {plugin.id} · {t.settings.plugins.themeCount(plugin.themeCount)} · v{plugin.version}
+                </small>
+                {plugin.description && <p>{plugin.description}</p>}
+              </div>
+              <label className="plugin-toggle">
+                <input type="checkbox" checked={plugin.enabled} onChange={(event) => setThemePluginEnabled(plugin.id, event.currentTarget.checked)} />
+                <span>{plugin.enabled ? t.settings.plugins.enabled : t.settings.plugins.disabled}</span>
+              </label>
+            </div>
+          ))}
+          {!appearanceState?.plugins.length && <div className="plugin-empty">{t.settings.plugins.empty}</div>}
+        </div>
+      </section>
+    );
+  }
+
+  function renderPlaybackSettings() {
+    return (
+      <section className="settings-panel" aria-labelledby="playback-settings-title">
+        <div className="settings-panel-heading">
+          <div>
+            <h3 id="playback-settings-title">{t.settings.playback.title}</h3>
+            <span>{t.settings.playback.subtitle}</span>
+          </div>
+          <button className="settings-reset" type="button" onClick={clearPlaybackHistory} disabled={!playbackHistory.length}>
+            {t.settings.playback.clearHistory}
+          </button>
+        </div>
+
+        <div className="preference-list">
+          <label className="preference-row">
+            <span>
+              <strong>{t.settings.playback.incognito}</strong>
+              <small>{t.settings.playback.incognitoDescription}</small>
+            </span>
+            <input type="checkbox" checked={playerPreferences.incognitoMode} onChange={(event) => setIncognitoMode(event.currentTarget.checked)} />
+            <span className="preference-switch" aria-hidden="true">
+              <span />
+            </span>
+          </label>
+
+          <label className="preference-row">
+            <span>
+              <strong>{t.settings.playback.quietKeyboard}</strong>
+              <small>{t.settings.playback.quietKeyboardDescription}</small>
+            </span>
+            <input type="checkbox" checked={playerPreferences.quietKeyboardControls} onChange={(event) => setQuietKeyboardControls(event.currentTarget.checked)} />
+            <span className="preference-switch" aria-hidden="true">
+              <span />
+            </span>
+          </label>
+        </div>
+
+        <section className="shell-preview-card" aria-label={t.settings.shellPreview.title}>
+          <header className="shell-preview-card-header">
+            <span className="shell-preview-card-icon" aria-hidden="true">
+              <Icon name="preview" />
+            </span>
+            <span className="shell-preview-card-copy">
+              <strong>{t.settings.shellPreview.title}</strong>
+              <small>{t.settings.shellPreview.description}</small>
+              {shellPreviewRegistrationStatus && <small className="shell-preview-status">{shellPreviewRegistrationStatus}</small>}
+            </span>
+            <span className="shell-preview-actions">
+              <button className="shell-preview-action" type="button" onClick={toggleAllShellPreviewFormats} disabled={!shellPreviewFormats.length}>
+                {allShellPreviewFormatsSelected ? t.settings.shellPreview.clearAll : t.settings.shellPreview.selectAll}
+              </button>
+              <button className="shell-preview-action" type="button" onClick={resetShellPreviewFormatsToDefault} disabled={!shellPreviewFormats.length}>
+                {t.settings.shellPreview.defaults}
+              </button>
+              <button className="shell-preview-action" type="button" onClick={openDefaultAppsSettings}>
+                {t.settings.shellPreview.defaultApps}
+              </button>
+              <button className="shell-preview-action" type="button" onClick={registerShellPreviews} disabled={isRegisteringShellPreview || selectedShellPreviewFormats.length === 0}>
+                {isRegisteringShellPreview ? t.settings.shellPreview.registering : t.settings.shellPreview.register(selectedShellPreviewFormats.length)}
+              </button>
+            </span>
+          </header>
+
+          <div className="shell-preview-format-groups">
+            {[
+              { kind: "video", label: t.settings.shellPreview.video, formats: shellPreviewVideoFormats },
+              { kind: "audio", label: t.settings.shellPreview.audio, formats: shellPreviewAudioFormats },
+            ].map((group) => (
+              <section className="shell-preview-format-group" key={group.kind} aria-label={`${group.label} preview formats`}>
+                <header>
+                  <strong>{group.label}</strong>
+                  <small>{group.formats.filter((format) => selectedShellPreviewFormatSet.has(format.extension)).length}/{group.formats.length}</small>
+                </header>
+                <div className="shell-preview-format-grid">
+                  {group.formats.map((format) => (
+                    <button
+                      key={format.extension}
+                      className={
+                        selectedShellPreviewFormatSet.has(format.extension)
+                          ? "shell-preview-format shell-preview-format--selected"
+                          : "shell-preview-format shell-preview-format--unselected"
+                      }
+                      type="button"
+                      aria-pressed={selectedShellPreviewFormatSet.has(format.extension)}
+                      title={format.mime}
+                      onClick={() => toggleShellPreviewFormat(format.extension)}
+                    >
+                      <span>{format.extension}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        </section>
+      </section>
+    );
+  }
+
+  function renderShortcutSettings() {
+    return (
+      <section className="settings-panel" aria-labelledby="shortcut-settings-title">
+        <div className="settings-panel-heading">
+          <div>
+            <h3 id="shortcut-settings-title">{t.settings.shortcuts.title}</h3>
+            <span>{recordingShortcutAction ? t.common.inputting : t.settings.shortcuts.subtitle}</span>
+          </div>
+          <button className="settings-reset" type="button" onClick={resetShortcutBindings}>
+            {t.common.restoreDefaults}
+          </button>
+        </div>
+
+        <div className="shortcut-list">
+          {shortcutDefinitions.map((definition) => {
+            const isRecording = recordingShortcutAction === definition.action;
+            const binding = shortcutBindings[definition.action];
+
+            return (
+              <div className="shortcut-row" key={definition.action}>
+                <div className="shortcut-meta">
+                  <span>{definition.label}</span>
+                  <small>{definition.group}</small>
+                </div>
+                <div className="shortcut-editor">
+                  <button
+                    className={`shortcut-capture ${isRecording ? "shortcut-capture--recording" : ""}`}
+                    type="button"
+                    aria-pressed={isRecording}
+                    onClick={() => setRecordingShortcutAction(definition.action)}
+                  >
+                    <kbd>{isRecording ? t.common.inputting : formatShortcutChord(binding, t)}</kbd>
+                  </button>
+                  <button
+                    className="shortcut-clear"
+                    type="button"
+                    aria-label={`Clear shortcut for ${definition.label}`}
+                    disabled={!binding}
+                    onClick={() => assignShortcut(definition.action, null)}
+                  >
+                    <Icon name="close" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </section>
     );
   }
 
   return (
-    <main className="app-shell" onContextMenu={openContextMenu} onKeyDown={recordUserActivity} onPointerDown={handleShellPointerDown} onPointerLeave={handleShellPointerLeave} onPointerMove={recordUserActivity}>
+    <main
+      className="app-shell"
+      style={appearanceStyle}
+      onContextMenu={openContextMenu}
+      onKeyDown={recordUserActivity}
+      onPointerDown={handleShellPointerDown}
+      onPointerLeave={handleShellPointerLeave}
+      onPointerMove={recordUserActivity}
+      onWheel={handleShellWheel}
+    >
       <section className={`window-shell ${media ? "window-shell--loaded" : ""}`} aria-label="OpenPlayer">
         <section className={`stage ${media ? "stage--loaded" : ""} ${isChromeHidden ? "stage--chrome-hidden" : ""}`} aria-label="Player surface">
           {!media && (
             <div className="empty-open">
               <img className="empty-open-logo" src={openPlayerLogoUrl} alt="" draggable={false} />
-              <span>Open media</span>
+              <span>{t.contextMenu.openMedia}</span>
+              {platformSupport && !platformSupport.mpvEmbedVideo && <small className="platform-support-note">{platformUnsupportedPlaybackMessage(platformSupport, t)}</small>}
             </div>
           )}
 
-          <div className="drag-region" data-tauri-drag-region aria-hidden="true" onAuxClick={(event) => event.preventDefault()} onPointerDown={handleDragRegionPointerDown} />
+          {isAudioOnlyMedia && media && (
+            <div className={isPlaying ? "audio-visualizer" : "audio-visualizer audio-visualizer--paused"} aria-hidden="true">
+              <div className="audio-visualizer-bars">
+                {audioVisualizerBarLevels.map((level, index) => (
+                  <span
+                    key={index}
+                    style={{ "--bar-level": String(level), "--bar-delay": `${index * -86}ms` } as ThemeStyleProperties}
+                  />
+                ))}
+              </div>
+              <div className="audio-visualizer-grid">
+                <div className="audio-visualizer-copy">
+                  <span>{media.name}</span>
+                  <small>
+                    {(primaryAudioTrack?.codec ?? "audio").toUpperCase()} · {formatTimecode(displayTime, duration)}
+                  </small>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div
+            className="drag-region"
+            aria-hidden="true"
+            onAuxClick={(event) => event.preventDefault()}
+            onDoubleClick={handleDragRegionDoubleClick}
+            onPointerDown={handleDragRegionPointerDown}
+            onPointerMove={handleDragRegionPointerMove}
+            onPointerUp={handleDragRegionPointerEnd}
+            onPointerCancel={handleDragRegionPointerEnd}
+          />
 
           {resizeRegions.map((region) => (
             <div
@@ -1235,21 +2570,27 @@ function App() {
             />
           ))}
 
-          <div className="window-controls" aria-label="Window controls">
-            <button type="button" aria-label="Minimize window" onClick={() => runWindowCommand("window_minimize")}>
+          <div className="window-controls" aria-label={t.contextMenu.closeWindow}>
+            <button type="button" aria-label={t.controls.minimize} onClick={() => runWindowCommand("window_minimize")}>
               <Icon name="minimize" />
             </button>
-            <button type="button" aria-label="Maximize or restore window" onClick={() => runWindowCommand("window_toggle_maximize")}>
+            <button type="button" aria-label={t.controls.maximize} onClick={() => runWindowCommand("window_toggle_maximize")}>
               <Icon name="maximize" />
             </button>
-            <button className="window-control-close" type="button" aria-label="Close window" onClick={() => runWindowCommand("window_close")}>
+            <button className="window-control-close" type="button" aria-label={t.controls.close} onClick={() => runWindowCommand("window_close")}>
               <Icon name="close" />
             </button>
           </div>
 
           {playbackError && <div className="playback-error" role="alert">{playbackError}</div>}
+          {volumeFeedback && (
+            <div className="volume-feedback" role="status" aria-live="polite">
+              <Icon name="volume" />
+              <span>{Math.round(volumeFeedback.level * 100)}%</span>
+            </div>
+          )}
 
-          <div className="transport" aria-label="Playback controls">
+          <div className="transport" aria-label={t.contextMenu.play}>
             <div className="transport-row">
               <button
                 className="transport-time transport-time--toggle"
@@ -1260,6 +2601,9 @@ function App() {
                 disabled={!canShowFrames}
               >
                 {currentTransportLabel}
+              </button>
+              <button className="timeline-step-button" type="button" aria-label={t.controls.previousVideo} onClick={playPreviousQueueItem} disabled={previousIndex === null}>
+                <Icon name="previous" />
               </button>
               <div className="seek-control" style={{ "--progress": `${progress}%`, "--progress-ratio": progressRatio } as CSSProperties}>
                 <div className="seek-rail" aria-hidden="true">
@@ -1273,7 +2617,7 @@ function App() {
                   max={duration || 0}
                   step="any"
                   value={displayTime}
-                  aria-label="Seek playback position"
+                  aria-label={t.controls.seek}
                   onChange={(event) => seekTo(Number(event.currentTarget.value))}
                   onPointerUp={(event) => commitSeekTo(Number(event.currentTarget.value))}
                   onKeyUp={(event) => commitSeekTo(Number(event.currentTarget.value))}
@@ -1281,6 +2625,9 @@ function App() {
                   disabled={!media || duration <= 0}
                 />
               </div>
+              <button className="timeline-step-button" type="button" aria-label={t.controls.nextVideo} onClick={playNextQueueItem} disabled={nextIndex === null}>
+                <Icon name="next" />
+              </button>
               <button
                 className="transport-time transport-time--toggle"
                 type="button"
@@ -1294,16 +2641,19 @@ function App() {
             </div>
 
             <div className="control-strip">
-              <button type="button" aria-label="Open media" onClick={openNativeMediaFiles} disabled={isPickerOpen}>
+              <button className="open-media-button" type="button" aria-label={t.controls.openMedia} onClick={openNativeMediaFiles} disabled={isPickerOpen}>
                 <Icon name="folder" />
               </button>
-              <button className="control-primary" type="button" aria-label={isPlaying ? "Pause" : media ? "Play" : "Open media"} onClick={togglePlayback} disabled={!media && isPickerOpen}>
+              <button type="button" aria-label={t.controls.stop} onClick={stopPlayback} disabled={!media}>
+                <Icon name="stop" />
+              </button>
+              <button className="control-primary" type="button" aria-label={isPlaying ? t.controls.pause : media ? t.controls.play : t.controls.openMedia} onClick={togglePlayback} disabled={!media && isPickerOpen}>
                 <Icon name={isPlaying ? "pause" : "play"} />
               </button>
-              <button type="button" aria-label="Restart" onClick={() => commitSeekTo(0)} disabled={!media}>
+              <button className={mediaPanelMode === "loop" ? "loop-toggle loop-toggle--open" : "loop-toggle"} type="button" aria-label={t.controls.openLoopMode} aria-expanded={mediaPanelMode === "loop"} onClick={toggleLoopPanel} disabled={!media}>
                 <Icon name="restart" />
               </button>
-              <label className="volume-control" aria-label="Volume">
+              <label className="volume-control" aria-label={t.controls.volume}>
                 <Icon name="volume" />
                 <input
                   type="range"
@@ -1311,41 +2661,59 @@ function App() {
                   max="1"
                   step="0.01"
                   value={volumeLevel}
-                  aria-label="Volume"
+                  aria-label={t.controls.volume}
                   onChange={(event) => setVolume(Number(event.currentTarget.value))}
                 />
               </label>
-              <button className="speed-toggle" type="button" aria-label="Open playback speed and track options" aria-expanded={isMediaPanelOpen} onClick={toggleMediaPanel} disabled={!media}>
+              <button className="speed-toggle" type="button" aria-label={t.controls.openPlaybackSpeed} aria-expanded={mediaPanelMode === "speed"} onClick={toggleSpeedPanel} disabled={!media}>
                 {formatPlaybackSpeed(playbackSpeed)}
+              </button>
+              <button
+                className={`tracks-toggle ${mediaPanelMode === "tracks" ? "tracks-toggle--open" : ""}`}
+                type="button"
+                aria-label={t.controls.openTracks}
+                aria-expanded={mediaPanelMode === "tracks"}
+                onClick={toggleTrackPanel}
+                disabled={!media}
+              >
+                <Icon name="tracks" />
               </button>
               <button
                 className={`playlist-toggle ${isPlaylistOpen ? "playlist-toggle--open" : ""}`}
                 type="button"
-                aria-label="Toggle playlist"
+                aria-label={t.controls.togglePlaylist}
                 aria-expanded={isPlaylistOpen}
                 onClick={togglePlaylist}
               >
                 <Icon name="list" />
               </button>
-              <button type="button" aria-label="Open settings" onClick={openSettingsDialog}>
-                <Icon name="settings" />
+              <button
+                className={`decode-toggle decode-toggle--${hardwareDecodingMode}`}
+                type="button"
+                aria-label={hardwareDecodingToggleLabel}
+                aria-pressed={hardwareDecodingMode === "hardware"}
+                title={hardwareDecodingToggleLabel}
+                onClick={toggleHardwareDecoding}
+              >
+                <Icon name="cpu" />
+                <span>{hardwareDecodingLabel}</span>
               </button>
             </div>
           </div>
 
-          {isMediaPanelOpen && media && (
+          {mediaPanelMode === "speed" && media && (
             <aside
-              className="media-panel"
-              aria-label="Playback speed and track options"
+              className="media-panel media-panel--speed"
+              aria-label={t.media.speed}
               onContextMenu={(event) => event.stopPropagation()}
               onPointerDown={(event) => event.stopPropagation()}
             >
               <section className="media-panel-section">
                 <header>
-                  <h3>播放速度</h3>
+                  <h3>{t.media.speed}</h3>
                   <span>{formatPlaybackSpeed(playbackSpeed)}</span>
                 </header>
-                <div className="speed-options" role="group" aria-label="Playback speed">
+                <div className="speed-options" role="group" aria-label={t.media.speed}>
                   {playbackSpeedOptions.map((speed) => (
                     <button
                       key={speed}
@@ -1359,14 +2727,53 @@ function App() {
                   ))}
                 </div>
               </section>
+            </aside>
+          )}
 
-              {renderTrackList("audio", "音轨", audioTracks)}
-              {renderTrackList("video", "视频轨", videoTracks)}
-              {renderTrackList("subtitle", "字幕", subtitleTracks)}
+          {mediaPanelMode === "loop" && media && (
+            <aside
+              className="media-panel media-panel--loop"
+              aria-label={t.media.loopMode}
+              onContextMenu={(event) => event.stopPropagation()}
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              <section className="media-panel-section">
+                <header>
+                  <h3>{t.media.loopMode}</h3>
+                  <span>{loopModeLabel(loopMode, t)}</span>
+                </header>
+                <div className="loop-options" role="group" aria-label={t.media.loopMode}>
+                  {loopModeOptions.map((option) => (
+                    <button
+                      key={option.mode}
+                      className={loopMode === option.mode ? "loop-option loop-option--active" : "loop-option"}
+                      type="button"
+                      aria-pressed={loopMode === option.mode}
+                      onClick={() => setLoopMode(option.mode)}
+                    >
+                      <span>{option.label}</span>
+                      <small>{option.description}</small>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            </aside>
+          )}
+
+          {mediaPanelMode === "tracks" && media && (
+            <aside
+              className="media-panel media-panel--tracks"
+              aria-label={t.contextMenu.tracksSubtitles}
+              onContextMenu={(event) => event.stopPropagation()}
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              {renderTrackList("audio", t.media.audioTracks, audioTracks)}
+              {renderTrackList("video", t.media.videoTracks, videoTracks)}
+              {renderTrackList("subtitle", t.media.subtitles, subtitleTracks)}
 
               <section className="media-panel-section subtitle-delay">
                 <header>
-                  <h3>字幕同步</h3>
+                  <h3>{t.media.subtitleSync}</h3>
                   <span>{formatSubtitleDelay(subtitleDelay)}</span>
                 </header>
                 <div className="subtitle-delay-controls">
@@ -1378,19 +2785,33 @@ function App() {
                     +0.1s
                   </button>
                   <button type="button" onClick={() => setSubtitleDelay(0)} disabled={Math.abs(subtitleDelay) < 0.005}>
-                    重置
+                    {t.common.reset}
                   </button>
                 </div>
               </section>
 
               <button className="subtitle-load" type="button" onClick={addExternalSubtitle} disabled={isPickerOpen}>
-                加载外部字幕
+                {t.media.loadExternalSubtitle}
               </button>
             </aside>
           )}
 
           {isPlaylistOpen && (
-            <aside className="playlist-drawer playlist-drawer--open" aria-label="Playlist">
+            <aside className="playlist-drawer playlist-drawer--open" aria-label={t.media.playlist}>
+              <header className="playlist-drawer-header">
+                <h3>{t.media.playlist}</h3>
+                <div className="playlist-actions">
+                  <button type="button" onClick={appendNativeMediaFiles} disabled={isPickerOpen}>
+                    <Icon name="folderAdd" />
+                    <span>{t.media.addFiles}</span>
+                  </button>
+                  <button type="button" onClick={appendNativeMediaFolder} disabled={isPickerOpen}>
+                    <Icon name="folder" />
+                    <span>{t.media.addFolder}</span>
+                  </button>
+                </div>
+              </header>
+
               {queueItems.length > 0 && (
                 <ol>
                   {queueItems.map((item, index) => (
@@ -1409,10 +2830,12 @@ function App() {
               )}
 
               {playbackHistory.length > 0 && (
-                <section className="history-section" aria-label="Playback history">
+                <section className="history-section" aria-label={t.media.recent}>
                   <header>
-                    <h3>最近播放</h3>
-                    <span>{playbackHistory.length} 条</span>
+                    <h3>{t.media.recent}</h3>
+                    <button className="history-clear" type="button" onClick={clearPlaybackHistory}>
+                      {t.common.clear}
+                    </button>
                   </header>
                   <div className="history-list">
                     {playbackHistory.map((entry) => (
@@ -1424,14 +2847,14 @@ function App() {
                         onClick={() => openHistoryEntry(entry)}
                       >
                         <span>{entry.name}</span>
-                        <small>{formatHistoryProgress(entry)}</small>
+                        <small>{formatHistoryProgress(entry, t)}</small>
                       </button>
                     ))}
                   </div>
                 </section>
               )}
 
-              {queueItems.length === 0 && playbackHistory.length === 0 && <div className="playlist-empty">暂无播放记录</div>}
+              {queueItems.length === 0 && playbackHistory.length === 0 && <div className="playlist-empty">{t.media.emptyPlaylist}</div>}
             </aside>
           )}
 
@@ -1439,7 +2862,7 @@ function App() {
             <div
               className="context-menu"
               role="menu"
-              aria-label="Player context menu"
+              aria-label={t.contextMenu.settings}
               style={{ left: contextMenu.x, top: contextMenu.y }}
               onContextMenu={(event) => {
                 event.preventDefault();
@@ -1464,7 +2887,7 @@ function App() {
                   >
                     <Icon name={item.icon} />
                     <span>{item.label}</span>
-                    {item.shortcut && <kbd>{formatShortcutChord(item.shortcut)}</kbd>}
+                    {item.shortcut && <kbd>{formatShortcutChord(item.shortcut, t)}</kbd>}
                   </button>
                 ),
               )}
@@ -1493,67 +2916,57 @@ function App() {
                 <header className="settings-header">
                   <div>
                     <span className="settings-kicker">OpenPlayer</span>
-                    <h2 id="settings-title">设置</h2>
+                    <h2 id="settings-title">{t.settings.title}</h2>
                   </div>
-                  <button className="settings-close" type="button" aria-label="Close settings" onClick={closeSettingsDialog}>
+                  <button className="settings-close" type="button" aria-label={t.controls.close} onClick={closeSettingsDialog}>
                     <Icon name="close" />
                   </button>
                 </header>
 
                 <div className="settings-layout">
-                  <nav className="settings-nav" aria-label="Settings sections">
-                    <button className="settings-nav-item settings-nav-item--active" type="button" aria-current="page">
+                  <nav className="settings-nav" aria-label={t.settings.title}>
+                    <button
+                      className={`settings-nav-item ${settingsSection === "appearance" ? "settings-nav-item--active" : ""}`}
+                      type="button"
+                      aria-current={settingsSection === "appearance" ? "page" : undefined}
+                      onClick={() => setSettingsSection("appearance")}
+                    >
+                      <Icon name="palette" />
+                      <span>{t.settings.nav.appearance}</span>
+                    </button>
+                    <button
+                      className={`settings-nav-item ${settingsSection === "plugins" ? "settings-nav-item--active" : ""}`}
+                      type="button"
+                      aria-current={settingsSection === "plugins" ? "page" : undefined}
+                      onClick={() => setSettingsSection("plugins")}
+                    >
+                      <Icon name="plugin" />
+                      <span>{t.settings.nav.plugins}</span>
+                    </button>
+                    <button
+                      className={`settings-nav-item ${settingsSection === "playback" ? "settings-nav-item--active" : ""}`}
+                      type="button"
+                      aria-current={settingsSection === "playback" ? "page" : undefined}
+                      onClick={() => setSettingsSection("playback")}
+                    >
+                      <Icon name="play" />
+                      <span>{t.settings.nav.playback}</span>
+                    </button>
+                    <button
+                      className={`settings-nav-item ${settingsSection === "shortcuts" ? "settings-nav-item--active" : ""}`}
+                      type="button"
+                      aria-current={settingsSection === "shortcuts" ? "page" : undefined}
+                      onClick={() => setSettingsSection("shortcuts")}
+                    >
                       <Icon name="settings" />
-                      <span>快捷键</span>
+                      <span>{t.settings.nav.shortcuts}</span>
                     </button>
                   </nav>
 
-                  <section className="settings-panel" aria-labelledby="shortcut-settings-title">
-                    <div className="settings-panel-heading">
-                      <div>
-                        <h3 id="shortcut-settings-title">快捷键</h3>
-                        <span>{recordingShortcutAction ? "输入中" : "自定义控制"}</span>
-                      </div>
-                      <button className="settings-reset" type="button" onClick={resetShortcutBindings}>
-                        恢复默认
-                      </button>
-                    </div>
-
-                    <div className="shortcut-list">
-                      {shortcutDefinitions.map((definition) => {
-                        const isRecording = recordingShortcutAction === definition.action;
-                        const binding = shortcutBindings[definition.action];
-
-                        return (
-                          <div className="shortcut-row" key={definition.action}>
-                            <div className="shortcut-meta">
-                              <span>{definition.label}</span>
-                              <small>{definition.group}</small>
-                            </div>
-                            <div className="shortcut-editor">
-                              <button
-                                className={`shortcut-capture ${isRecording ? "shortcut-capture--recording" : ""}`}
-                                type="button"
-                                aria-pressed={isRecording}
-                                onClick={() => setRecordingShortcutAction(definition.action)}
-                              >
-                                <kbd>{isRecording ? "按键中" : formatShortcutChord(binding)}</kbd>
-                              </button>
-                              <button
-                                className="shortcut-clear"
-                                type="button"
-                                aria-label={`Clear shortcut for ${definition.label}`}
-                                disabled={!binding}
-                                onClick={() => assignShortcut(definition.action, null)}
-                              >
-                                <Icon name="close" />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </section>
+                  {settingsSection === "appearance" && renderAppearanceSettings()}
+                  {settingsSection === "plugins" && renderPluginSettings()}
+                  {settingsSection === "playback" && renderPlaybackSettings()}
+                  {settingsSection === "shortcuts" && renderShortcutSettings()}
                 </div>
               </section>
             </div>

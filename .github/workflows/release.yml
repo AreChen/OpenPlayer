@@ -121,3 +121,81 @@ jobs:
           }
 
           gh release upload $env:RELEASE_TAG $env:OPENPLAYER_INSTALLER $env:OPENPLAYER_CHECKSUM --clobber
+
+  linux-packages:
+    name: Linux packages
+    runs-on: ubuntu-latest
+    needs: windows-installer
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libdbus-1-dev \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            libmpv-dev \
+            librsvg2-dev \
+            patchelf
+          sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2
+
+      - name: Install Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Verify release metadata
+        working-directory: apps/desktop
+        run: npm run verify:release -- --tag=$RELEASE_TAG
+
+      - name: Verify shell architecture
+        working-directory: apps/desktop
+        run: npm run verify:shell
+
+      - name: Build Linux packages
+        working-directory: apps/desktop
+        run: npm run tauri:build -- --config src-tauri/tauri.linux.conf.json
+
+      - name: Prepare package checksums
+        run: |
+          deb="$(realpath target/release/bundle/deb/*.deb)"
+          appimage="$(realpath target/release/bundle/appimage/*.AppImage)"
+
+          sha256sum "$deb" > "$deb.sha256"
+          sha256sum "$appimage" > "$appimage.sha256"
+
+          {
+            echo "OPENPLAYER_LINUX_DEB=$deb"
+            echo "OPENPLAYER_LINUX_DEB_CHECKSUM=$deb.sha256"
+            echo "OPENPLAYER_LINUX_APPIMAGE=$appimage"
+            echo "OPENPLAYER_LINUX_APPIMAGE_CHECKSUM=$appimage.sha256"
+          } >> "$GITHUB_ENV"
+
+      - name: Publish GitHub release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$RELEASE_TAG" \
+            "$OPENPLAYER_LINUX_DEB" \
+            "$OPENPLAYER_LINUX_DEB_CHECKSUM" \
+            "$OPENPLAYER_LINUX_APPIMAGE" \
+            "$OPENPLAYER_LINUX_APPIMAGE_CHECKSUM" \
+            --clobber

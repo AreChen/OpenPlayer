@@ -1,23 +1,24 @@
 <div align="center">
 
-<img src="docs/assets/openplayer.jpg" alt="OpenPlayer desktop media player" width="920" />
+<img src="docs/assets/openplayer-readme-hero.png" alt="OpenPlayer desktop media player" width="820" />
 
 # 🎬 OpenPlayer
 
-**A high-performance cross-platform desktop media player**
+**A high-performance desktop media player powered by Tauri v2, Rust, React, and libmpv**
 
 <p>
   <a href="README.md"><img alt="English" src="https://img.shields.io/badge/English-Default-111111?style=for-the-badge" /></a>
-  <a href="README.zh-CN.md"><img alt="Chinese" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-%E5%88%87%E6%8D%A2-0078D4?style=for-the-badge" /></a>
+  <a href="README.zh-CN.md"><img alt="Chinese" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-Switch-F6C15B?style=for-the-badge" /></a>
 </p>
 
 [![Release](https://img.shields.io/github/v/release/AreChen/OpenPlayer?style=for-the-badge&logo=github&label=Release)](https://github.com/AreChen/OpenPlayer/releases)
 [![Windows](https://img.shields.io/badge/Windows-x64-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/AreChen/OpenPlayer/releases/latest)
+[![Linux](https://img.shields.io/badge/Linux-DEB%20%7C%20AppImage-FCC624?style=for-the-badge&logo=linux&logoColor=111111)](https://github.com/AreChen/OpenPlayer/releases/latest)
 [![Tauri](https://img.shields.io/badge/Tauri-v2-24C8DB?style=for-the-badge&logo=tauri&logoColor=white)](https://tauri.app/)
 [![Rust](https://img.shields.io/badge/Rust-native-CE412B?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/github/license/AreChen/OpenPlayer?style=for-the-badge)](LICENSE)
 
-[Download](https://github.com/AreChen/OpenPlayer/releases/latest) · [Release Notes](docs/releases/v1.0.0.md) · [License](LICENSE)
+[Download](https://github.com/AreChen/OpenPlayer/releases/latest) · [Release Notes](docs/releases/v1.1.0.md) · [License](LICENSE)
 
 </div>
 
@@ -25,34 +26,41 @@
 
 ## ✨ Overview
 
-OpenPlayer is a desktop media player built with **Tauri v2, Rust, React, and libmpv**. It is designed to deliver native-level playback performance, smooth window behavior, and a polished desktop control surface while keeping the application lightweight.
+OpenPlayer is a lightweight desktop media player built with **Tauri v2, Rust, React, and libmpv**. It keeps playback close to the native mpv surface while using a transparent React overlay for polished controls, menus, shortcuts, and settings.
 
-The default playback path is `mpv-embed`: the main Tauri window hosts the native libmpv video surface, while a transparent overlay window hosts the React controls. This split keeps playback close to native performance while preserving a flexible modern UI layer.
+The default playback path is `mpv-embed`: the main Tauri window hosts the native libmpv video surface, while the overlay window hosts the interactive UI. This split gives OpenPlayer native-level playback behavior without giving up a modern, customizable desktop experience.
+
+<img src="docs/assets/openplayer-feature-banner.png" alt="OpenPlayer playback controls" width="100%" />
 
 ## 🚀 Highlights
 
-- ⚡ **High-performance playback core**: Embedded libmpv backend with mpv-powered media compatibility and playback behavior.
-- 🪟 **Native video + transparent overlay**: Video rendering and React controls are separated for performance, stability, and UI flexibility.
-- ⌨️ **Reliable shortcuts**: Configurable shortcuts with a native Windows shortcut bridge for cases where the video surface owns focus.
-- 🖥️ **Fullscreen restore**: Press `Enter` to enter fullscreen, then press it again to restore the previous window size and position.
-- 🎞️ **Frame stepping**: Press `D` to step backward one frame and `F` to step forward one frame.
-- 🎚️ **Smooth progress feedback**: Playback progress and frame labels update smoothly without abrupt jumps.
-- 🧭 **Smart chrome hiding**: Controls and the title bar auto-hide after 5 seconds of inactivity while playing, and also hide when the mouse leaves the window.
-- 🧩 **Practical player workflows**: Context menu, settings panel, customizable shortcuts, time/frame display switching, volume control, and playlist entry point.
+- ⚡ **Native mpv playback**: Embedded libmpv backend with broad media compatibility and high-performance decoding.
+- 🪟 **Video host + transparent overlay**: Native rendering and React controls are separated for stability, responsiveness, and UI flexibility.
+- 🌐 **Bilingual interface**: English and Simplified Chinese are supported, with automatic language matching based on the operating system.
+- 🎨 **Studio Dark theme**: Built-in dark visual system with configurable accent colors and synchronized appearance across windows.
+- ⌨️ **Reliable shortcuts**: Configurable shortcuts plus a native Windows shortcut bridge for cases where the video surface owns focus.
+- 🎞️ **Precise playback control**: Fullscreen restore, smooth progress, frame stepping, loop modes, playback speed, track selection, and subtitle controls.
+- 🧭 **Smart chrome hiding**: Controls and the title bar hide during playback inactivity and when the mouse leaves the window.
+- 🗂️ **Playback memory**: Recent media and resume progress are persisted with a lightweight redb store, with clear-history and private playback options.
+- 🧩 **Desktop integration**: Optional Windows media association and Explorer preview registration for selected formats.
+
+<img src="docs/assets/openplayer-feature-grid.png" alt="OpenPlayer playback, themes, shortcuts, and format settings" width="100%" />
 
 ## 📦 Download
 
-The latest Windows x64 installer is available from GitHub Releases:
+The latest release is available from GitHub Releases:
 
-[![Download OpenPlayer for Windows](https://img.shields.io/badge/Download-Windows%20Installer-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/AreChen/OpenPlayer/releases/latest)
+[![Download OpenPlayer](https://img.shields.io/badge/Download-Latest%20Release-F6C15B?style=for-the-badge&logo=github&logoColor=111111)](https://github.com/AreChen/OpenPlayer/releases/latest)
 
 Current release:
 
-- 🏷️ `v1.0.0`
-- 🪟 `OpenPlayer_1.0.0_x64-setup.exe`
-- 🔐 SHA256: `173071771C3322A444E514AA190DE9FA9C7C3ACDB237E5C5416E4D7CF8FA536A`
+- 🏷️ `v1.1.0`
+- 🪟 Windows: `OpenPlayer_1.1.0_x64-setup.exe`
+- 🐧 Linux: `OpenPlayer_1.1.0_amd64.deb` and `OpenPlayer_1.1.0_amd64.AppImage`
+- 🔐 Checksums: release assets include `.sha256` files
 
-> If the installer is not code-signed yet, Windows SmartScreen may show a warning on first install.
+> Windows packages are not code-signed yet, so SmartScreen may show a warning on first install.
+> Linux packages are an initial distribution target and still rely on the host desktop media stack, including system libmpv.
 
 ## ⌨️ Default Shortcuts
 
@@ -60,11 +68,12 @@ Current release:
 | --- | --- |
 | Open media | `Ctrl + O` |
 | Play / Pause | `Space` |
-| Seek backward 5 seconds | `←` |
-| Seek forward 5 seconds | `→` |
+| Seek backward 5 seconds | `Left` |
+| Seek forward 5 seconds | `Right` |
 | Previous frame | `D` |
 | Next frame | `F` |
 | Fullscreen / Restore | `Enter` |
+| Volume | Mouse wheel / `Up` / `Down` |
 
 ## 🛠️ Development
 

@@ -11,6 +11,8 @@ use std::{
 };
 #[cfg(windows)]
 use tauri::Emitter;
+#[cfg(feature = "mpv-embed")]
+use tauri::utils::config::Color;
 use tauri::{
     AppHandle, Manager, PhysicalPosition, PhysicalSize, Position, Size, State, WebviewWindow,
 };
@@ -45,16 +47,33 @@ mod mpv_smoke;
 #[cfg(feature = "mpv-embed")]
 mod mpv_embed;
 
+mod appearance_store;
+mod media_paths;
+mod platform_support;
 mod playback_store;
+mod shell_preview;
 
+use appearance_store::{
+    AppearanceStoreState, appearance_import_theme_plugin, appearance_reset,
+    appearance_set_accent_override, appearance_set_plugin_enabled, appearance_set_theme,
+    appearance_state, preferences_set_incognito_mode, preferences_set_language_mode,
+    preferences_set_quiet_keyboard_controls, preferences_state,
+};
+use media_paths::{StartupMediaState, media_files_in_directory, startup_media_paths};
 #[cfg(feature = "mpv-embed")]
 use mpv_embed::{
     MpvEmbedSnapshot, MpvEmbedState, mpv_embed_add_subtitle, mpv_embed_frame_back_step,
     mpv_embed_frame_step, mpv_embed_pause, mpv_embed_play, mpv_embed_seek, mpv_embed_select_track,
-    mpv_embed_set_speed, mpv_embed_set_subtitle_delay, mpv_embed_set_volume, mpv_embed_snapshot,
-    mpv_embed_stop,
+    mpv_embed_set_hwdec, mpv_embed_set_loop_file, mpv_embed_set_speed,
+    mpv_embed_set_subtitle_delay, mpv_embed_set_volume, mpv_embed_snapshot, mpv_embed_stop,
 };
-use playback_store::{PlaybackStoreState, history_list, history_remember, history_resume_position};
+use platform_support::{platform_support, prepare_platform_runtime};
+use playback_store::{
+    PlaybackStoreState, history_clear, history_list, history_remember, history_resume_position,
+};
+use shell_preview::{
+    shell_preview_formats, shell_preview_open_default_apps_settings, shell_preview_register_formats,
+};
 
 #[cfg(feature = "mpv-smoke")]
 pub use mpv_smoke::{MpvSmokeReport, create_headless_probe};
@@ -94,6 +113,9 @@ struct NativeShortcutState {
 
 #[cfg(windows)]
 static NATIVE_SHORTCUT_STATE: OnceLock<NativeShortcutState> = OnceLock::new();
+#[cfg(feature = "mpv-embed")]
+static MPV_VIDEO_HOST_SYNC_PENDING: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 #[tauri::command]
 fn window_update_shortcuts(bindings: HashMap<String, Option<String>>) -> Result<(), String> {
@@ -450,6 +472,33 @@ fn schedule_overlay_sync_to_main(app: &AppHandle) {
     });
 }
 
+#[cfg(feature = "mpv-embed")]
+fn sync_mpv_video_host(app: &AppHandle) {
+    let state = app.state::<MpvEmbedState>();
+    let _ = state.resize_video_host();
+}
+
+#[cfg(feature = "mpv-embed")]
+fn schedule_mpv_video_host_sync(app: &AppHandle) {
+    if MPV_VIDEO_HOST_SYNC_PENDING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+
+    let app = app.clone();
+    thread::spawn(move || {
+        for delay in [
+            Duration::from_millis(16),
+            Duration::from_millis(80),
+            Duration::from_millis(180),
+        ] {
+            thread::sleep(delay);
+            let app_for_sync = app.clone();
+            let _ = app.run_on_main_thread(move || sync_mpv_video_host(&app_for_sync));
+        }
+        MPV_VIDEO_HOST_SYNC_PENDING.store(false, std::sync::atomic::Ordering::SeqCst);
+    });
+}
+
 fn capture_window_placement(window: &WebviewWindow) -> Result<WindowPlacement, String> {
     Ok(WindowPlacement {
         position: window.outer_position().map_err(|error| error.to_string())?,
@@ -550,10 +599,13 @@ fn mpv_overlay_open_path(
 
 #[cfg(not(feature = "mpv-embed"))]
 pub fn run() {
+    prepare_platform_runtime();
     tauri::Builder::default()
         .manage(WindowState::default())
+        .manage(StartupMediaState::from_args(std::env::args_os()))
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            app.manage(AppearanceStoreState::open(app.handle()));
             app.manage(PlaybackStoreState::open(app.handle()));
             Ok(())
         })
@@ -566,9 +618,26 @@ pub fn run() {
             window_focus_overlay,
             window_start_resize,
             window_close,
+            media_files_in_directory,
+            startup_media_paths,
+            platform_support,
+            appearance_state,
+            appearance_set_theme,
+            appearance_set_accent_override,
+            appearance_import_theme_plugin,
+            appearance_set_plugin_enabled,
+            appearance_reset,
+            preferences_state,
+            preferences_set_incognito_mode,
+            preferences_set_quiet_keyboard_controls,
+            preferences_set_language_mode,
+            shell_preview_formats,
+            shell_preview_open_default_apps_settings,
+            shell_preview_register_formats,
             history_list,
             history_remember,
-            history_resume_position
+            history_resume_position,
+            history_clear
         ])
         .run(tauri::generate_context!())
         .expect("failed to run OpenPlayer desktop app");
@@ -576,11 +645,14 @@ pub fn run() {
 
 #[cfg(feature = "mpv-embed")]
 pub fn run() {
+    prepare_platform_runtime();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(WindowState::default())
         .manage(MpvEmbedState::default())
+        .manage(StartupMediaState::from_args(std::env::args_os()))
         .setup(|app| {
+            app.manage(AppearanceStoreState::open(app.handle()));
             app.manage(PlaybackStoreState::open(app.handle()));
             install_native_shortcut_hook(app.handle().clone());
             if let Some(window) = app.get_webview_window("main") {
@@ -595,9 +667,11 @@ pub fn run() {
                 .shadow(false)
                 .resizable(false)
                 .skip_taskbar(true)
+                .background_color(Color(0, 0, 0, 0))
                 .visible(false)
                 .build()
                 .map_err(|error| format!("failed to create overlay controls window: {error}"))?;
+                let _ = overlay.set_background_color(Some(Color(0, 0, 0, 0)));
                 set_overlay_owner(&window, &overlay);
 
                 let app_handle = app.handle().clone();
@@ -611,8 +685,8 @@ pub fn run() {
                             | WindowEvent::ScaleFactorChanged { .. }
                     ) {
                         sync_overlay_to_main(&app_handle);
-                        let state = app_handle.state::<MpvEmbedState>();
-                        let _ = state.resize_video_host();
+                        sync_mpv_video_host(&app_handle);
+                        schedule_mpv_video_host_sync(&app_handle);
                     }
                     if matches!(event, WindowEvent::Focused(true)) {
                         focus_overlay_window(&app_handle);
@@ -638,6 +712,8 @@ pub fn run() {
             mpv_embed_seek,
             mpv_embed_frame_step,
             mpv_embed_frame_back_step,
+            mpv_embed_set_hwdec,
+            mpv_embed_set_loop_file,
             mpv_embed_set_speed,
             mpv_embed_set_subtitle_delay,
             mpv_embed_select_track,
@@ -645,9 +721,26 @@ pub fn run() {
             mpv_embed_set_volume,
             mpv_embed_snapshot,
             mpv_embed_stop,
+            media_files_in_directory,
+            startup_media_paths,
+            platform_support,
+            appearance_state,
+            appearance_set_theme,
+            appearance_set_accent_override,
+            appearance_import_theme_plugin,
+            appearance_set_plugin_enabled,
+            appearance_reset,
+            preferences_state,
+            preferences_set_incognito_mode,
+            preferences_set_quiet_keyboard_controls,
+            preferences_set_language_mode,
+            shell_preview_formats,
+            shell_preview_open_default_apps_settings,
+            shell_preview_register_formats,
             history_list,
             history_remember,
-            history_resume_position
+            history_resume_position,
+            history_clear
         ])
         .run(tauri::generate_context!())
         .expect("failed to run OpenPlayer desktop app");
