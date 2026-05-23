@@ -134,6 +134,14 @@ const dragRegionSources = [
     return match ? extractFunctionAt(appSource, match.index) : "";
   })
   .join("\n");
+const handleShellWheelMatch = /function\s+handleShellWheel\s*\(/.exec(appSource);
+const handleShellWheelSource = handleShellWheelMatch
+  ? extractFunctionAt(appSource, handleShellWheelMatch.index)
+  : "";
+const handleShellPointerDownMatch = /function\s+handleShellPointerDown\s*\(/.exec(appSource);
+const handleShellPointerDownSource = handleShellPointerDownMatch
+  ? extractFunctionAt(appSource, handleShellPointerDownMatch.index)
+  : "";
 
 const [mainWindow] = config.app.windows;
 
@@ -255,7 +263,9 @@ assert.match(mpvEmbedRunSource, /pub\s+fn\s+run\s*\(\s*\)/, "desktop default run
 assert.match(mpvEmbedRunSource, /WebviewWindowBuilder[\s\S]*surface=overlay/, "desktop runtime must create a separate transparent overlay controls window");
 assert.match(mpvEmbedRunSource, /background_color\(Color\(0,\s*0,\s*0,\s*0\)\)/, "overlay window and webview must use an explicit transparent background to avoid compositor edge seams");
 assert.match(mpvEmbedRunSource, /mpv_overlay_open_path/, "default runtime must register overlay commands that target the main video window");
-assert.match(tauriLibSource, /mpv_overlay_open_path[\s\S]*main_window\(&app\)\?[\s\S]*mpv_embed::open_path_for_window\(&main, state\.inner\(\), path\)/, "overlay open command must target the main video window through mpv_embed");
+assert.match(tauriLibSource, /mpv_overlay_open_path[\s\S]*resume_position:\s*Option<f64>[\s\S]*initial_volume:\s*Option<f64>[\s\S]*main_window\(&app\)\?[\s\S]*mpv_embed::open_path_for_window\([^;]*&main,\s*state\.inner\(\),\s*path,\s*resume_position,\s*initial_volume[\s\S]*\)/, "overlay open command must target the main video window and pass resume positions and initial volume through mpv_embed");
+assert.match(mpvEmbedSource, /fn\s+apply_initial_resume_seek[\s\S]*wait_for_initial_resume_seek[\s\S]*command\("seek"/, "mpv backend must perform the initial resume seek after libmpv is ready");
+assert.match(mpvEmbedSource, /is_transient_initial_resume_seek_error[\s\S]*mpv_error::Command[\s\S]*apply_initial_resume_seek[\s\S]*is_transient_initial_resume_seek_error/, "mpv backend must retry early command rejections while restoring long-video positions");
 assert.doesNotMatch(mpvEmbedRunSource, /\.always_on_top\(true\)/, "overlay controls must not be globally topmost over other apps");
 assert.doesNotMatch(mpvEmbedRunSource, /\.position\(position\.x as f64, position\.y as f64\)|\.inner_size\(size\.width as f64, size\.height as f64\)/, "overlay startup must not pass physical main window pixels to logical builder sizing APIs");
 assert.match(mpvEmbedRunSource, /\.visible\(false\)[\s\S]*sync_overlay_to_main\(&app_handle\)[\s\S]*overlay\.show\(\)/, "overlay startup must stay hidden until physical-position sync prevents DPI-scale misalignment");
@@ -331,6 +341,9 @@ assert.match(appSource, /history_remember/, "player shell must write playback hi
 assert.match(appSource, /history_resume_position/, "player shell must resolve resume positions through a backend command");
 assert.match(appSource, /history_clear/, "player shell must clear persisted playback history through a backend command");
 assert.match(appSource, /resumePositionForPath/, "player shell must resume remembered playback positions when opening known paths");
+assert.match(appSource, /mpv_overlay_open_path",\s*\{\s*path,\s*resumePosition/, "opening media must pass remembered positions into the backend open command");
+assert.match(appSource, /mpv_overlay_open_path",\s*\{\s*path,\s*resumePosition[\s\S]*initialVolume:\s*savedSettings\.volume/, "opening media must pass saved volume into the backend before loadfile starts");
+assert.doesNotMatch(appSource, /resumeMpvToPosition|isTransientResumeSeekError|RESUME_SEEK_ATTEMPTS|RESUME_SEEK_RETRY_MS/, "resume seek readiness must live in the backend, not in frontend retry loops");
 assert.match(appSource, /rememberPlaybackProgress/, "player shell must remember progress from mpv snapshots");
 assert.match(appSource, /playerPreferences\.incognitoMode[\s\S]*history_remember/, "incognito mode must prevent playback history writes");
 assert.match(appSource, /RESUME_END_PROGRESS_RATIO/, "resume logic must use a duration-relative end threshold");
@@ -389,7 +402,10 @@ assert.match(appSource, /resize-feedback--/, "player shell must render a directi
 assert.match(appSource, /handleResizePointerEnd[\s\S]*setNativeResizeCursor\(null\)[\s\S]*setResizeBoundaryFeedback\(null\)/, "resize feedback must disappear immediately when resize dragging ends instead of falling back to hover state");
 assert.match(appSource, /videoLayout[\s\S]*video-layout-options[\s\S]*setVideoFillMode/, "video fill/crop must live with the track and subtitle media options");
 assert.match(appSource, /onWheel=\{handleShellWheel\}/, "player shell must support mouse wheel volume control");
+assert.doesNotMatch(handleShellWheelSource, /!media/, "mouse wheel volume control must also work before media is loaded");
+assert.match(handleShellPointerDownSource, /isPointerInsidePlaybackControl[\s\S]*closeFloatingPlaybackMenus/, "clicking the non-control playback surface must dismiss floating playback menus");
 assert.match(appSource, /volumeFeedback/, "volume changes from wheel and shortcuts must display a transient volume overlay");
+assert.match(appSource, /previousAudibleVolumeRef[\s\S]*function toggleMute[\s\S]*setVolume\(0/, "volume button must toggle mute and restore the previous audible level");
 assert.doesNotMatch(appSource, /volume-feedback-track/, "volume feedback overlay must stay compact and not render a progress track");
 assert.match(appSource, /accent-picker-preview/, "custom accent picker must render its own clean color preview swatch");
 assert.match(appSource, /preference-switch/, "playback preferences must use custom switch controls instead of raw checkboxes");
@@ -472,6 +488,8 @@ assert.match(styles, /\.empty-open\s*\{[\s\S]*justify-items:\s*center/, "empty p
 assert.match(styles, /\.stage--chrome-hidden[\s\S]*\.window-controls[\s\S]*opacity:\s*0/, "inactive player chrome must hide window controls");
 assert.match(styles, /\.stage--chrome-hidden[\s\S]*\.transport[\s\S]*pointer-events:\s*none/, "inactive player chrome must hide and disable transport controls");
 assert.match(styles, /\.context-menu/, "styles must include the custom context menu");
+assert.match(styles, /\.context-menu\s*\{[\s\S]*border:\s*1px solid var\(--accent-border\)[\s\S]*background:[\s\S]*var\(--panel-strong\)/, "context menu chrome must follow the selected theme and accent");
+assert.match(styles, /\.context-menu-item:hover:not\(:disabled\)[\s\S]*background:\s*var\(--accent-soft\)[\s\S]*color:\s*var\(--accent\)/, "context menu hover state must use the selected accent color");
 assert.match(styles, /\.settings-dialog/, "styles must include the settings dialog");
 assert.match(styles, /--accent-soft/, "styles must expose theme-driven accent softness variables");
 assert.match(styles, /\.theme-grid/, "styles must include theme selection grid styling");
@@ -557,6 +575,7 @@ assert.match(mpvEmbedSource, /mpv_embed_set_speed/, "mpv embed backend must expo
 assert.match(mpvEmbedSource, /mpv_embed_set_hwdec[\s\S]*set_property\("hwdec"/, "mpv embed backend must expose runtime hardware/software decoding control");
 assert.match(mpvEmbedSource, /normalize_hwdec_mode[\s\S]*"hardware"[\s\S]*"software"/, "mpv embed backend must normalize decode modes to safe mpv hwdec values");
 assert.match(mpvEmbedSource, /mpv_embed_set_loop_file[\s\S]*set_property\("loop-file"/, "mpv embed backend must expose native single-file loop control");
+assert.match(mpvEmbedSource, /initial_volume:\s*Option<f64>[\s\S]*set_property\("volume", initial_volume\)[\s\S]*command\("loadfile"/, "mpv embed backend must set the saved volume before loadfile to prevent startup audio spikes");
 assert.match(mpvEmbedSource, /mpv_embed_set_subtitle_delay/, "mpv embed backend must expose subtitle delay control");
 assert.match(mpvEmbedSource, /mpv_embed_select_track/, "mpv embed backend must expose track selection");
 assert.match(mpvEmbedSource, /mpv_embed_add_subtitle/, "mpv embed backend must expose external subtitle loading");

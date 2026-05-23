@@ -1,5 +1,6 @@
 use std::{
     cmp::Ordering,
+    collections::HashSet,
     ffi::OsString,
     path::{Path, PathBuf},
 };
@@ -78,9 +79,51 @@ pub fn collect_media_files_in_directory(_directory: &Path) -> Result<Vec<String>
         .collect())
 }
 
+pub fn collect_media_files_from_paths(paths: &[String]) -> Result<Vec<String>, String> {
+    let mut media_paths = Vec::new();
+    for raw_path in paths {
+        let trimmed = raw_path.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let path = PathBuf::from(trimmed);
+        if path.is_dir() {
+            media_paths.extend(
+                collect_media_files_in_directory(&path)?
+                    .into_iter()
+                    .map(PathBuf::from),
+            );
+        } else if path.is_file() && is_supported_media_path(&path) {
+            media_paths.push(path);
+        }
+    }
+
+    sort_media_paths(&mut media_paths);
+    let mut seen = HashSet::new();
+    let unique_paths = media_paths
+        .into_iter()
+        .filter_map(|path| {
+            let text = path.to_string_lossy().to_string();
+            if seen.insert(text.to_ascii_lowercase()) {
+                Some(text)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    Ok(unique_paths)
+}
+
 #[tauri::command]
 pub fn media_files_in_directory(path: String) -> Result<Vec<String>, String> {
     collect_media_files_in_directory(Path::new(&path))
+}
+
+#[tauri::command]
+pub fn media_files_from_paths(paths: Vec<String>) -> Result<Vec<String>, String> {
+    collect_media_files_from_paths(&paths)
 }
 
 #[tauri::command]
@@ -291,6 +334,28 @@ mod tests {
             .map(|path| media_file_name(path))
             .collect();
         let _ = std::fs::remove_dir_all(&directory);
+        assert_eq!(names, vec!["clip 2.mp4", "clip 10.mkv"]);
+    }
+
+    #[test]
+    fn collects_media_files_from_mixed_files_and_directories() {
+        let directory = create_temp_directory("mixed-paths");
+        let clip_10 = directory.join("clip 10.mkv");
+        let clip_2 = directory.join("clip 2.mp4");
+        let note = directory.join("notes.txt");
+        std::fs::write(&clip_10, b"media").expect("media fixture should be written");
+        std::fs::write(&clip_2, b"media").expect("media fixture should be written");
+        std::fs::write(&note, b"note").expect("note fixture should be written");
+
+        let files = collect_media_files_from_paths(&[
+            directory.to_string_lossy().to_string(),
+            clip_10.to_string_lossy().to_string(),
+            note.to_string_lossy().to_string(),
+        ])
+        .expect("mixed paths should be collected");
+        let names: Vec<String> = files.iter().map(|path| media_file_name(path)).collect();
+        let _ = std::fs::remove_dir_all(&directory);
+
         assert_eq!(names, vec!["clip 2.mp4", "clip 10.mkv"]);
     }
 

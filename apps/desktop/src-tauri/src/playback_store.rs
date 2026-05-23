@@ -12,10 +12,21 @@ use tauri::{AppHandle, Manager, State};
 
 const HISTORY_BY_PATH: TableDefinition<&str, &str> = TableDefinition::new("history_by_path");
 const HISTORY_BY_UPDATED: TableDefinition<&str, &str> = TableDefinition::new("history_by_updated");
+const PLAYBACK_SETTINGS: TableDefinition<&str, &str> = TableDefinition::new("playback_settings");
+const MEDIA_SETTINGS_BY_PATH: TableDefinition<&str, &str> =
+    TableDefinition::new("media_settings_by_path");
 const HISTORY_LIMIT: usize = 10_000;
 const HISTORY_LIST_LIMIT: usize = 100;
 const MIN_RESUME_PROGRESS_RATIO: f64 = 0.01;
 const RESUME_END_PROGRESS_RATIO: f64 = 0.95;
+const PLAYBACK_SETTINGS_KEY: &str = "global";
+const DEFAULT_VOLUME: f64 = 82.0;
+const DEFAULT_LOOP_MODE: &str = "off";
+const DEFAULT_HWDEC_MODE: &str = "hardware";
+const DEFAULT_PLAYBACK_SPEED: f64 = 1.0;
+const DEFAULT_TIME_DISPLAY_MODE: &str = "timecode";
+const MIN_PLAYBACK_SPEED: f64 = 0.25;
+const MAX_PLAYBACK_SPEED: f64 = 4.0;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -35,6 +46,56 @@ pub struct PlaybackHistoryUpdate {
     position: f64,
     duration: f64,
     updated_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaybackSettings {
+    volume: f64,
+    loop_mode: String,
+    hwdec_mode: String,
+    playback_speed: f64,
+    video_fill: bool,
+    time_display_mode: String,
+}
+
+impl Default for PlaybackSettings {
+    fn default() -> Self {
+        Self {
+            volume: DEFAULT_VOLUME,
+            loop_mode: DEFAULT_LOOP_MODE.to_string(),
+            hwdec_mode: DEFAULT_HWDEC_MODE.to_string(),
+            playback_speed: DEFAULT_PLAYBACK_SPEED,
+            video_fill: false,
+            time_display_mode: DEFAULT_TIME_DISPLAY_MODE.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaybackSettingsUpdate {
+    volume: Option<f64>,
+    loop_mode: Option<String>,
+    hwdec_mode: Option<String>,
+    playback_speed: Option<f64>,
+    video_fill: Option<bool>,
+    time_display_mode: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaPlaybackSettings {
+    path: String,
+    subtitle_track_id: Option<i64>,
+    has_subtitle_track_selection: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaPlaybackSettingsUpdate {
+    #[serde(default)]
+    subtitle_track_id: Option<Option<i64>>,
 }
 
 pub struct PlaybackStoreState {
@@ -109,6 +170,14 @@ impl PlaybackStore {
             transaction
                 .open_table(HISTORY_BY_UPDATED)
                 .map_err(|error| format!("failed to open playback history index: {error}"))?;
+            transaction
+                .open_table(PLAYBACK_SETTINGS)
+                .map_err(|error| format!("failed to open playback settings table: {error}"))?;
+            transaction
+                .open_table(MEDIA_SETTINGS_BY_PATH)
+                .map_err(|error| {
+                    format!("failed to open media playback settings table: {error}")
+                })?;
         }
         transaction
             .commit()
@@ -151,6 +220,7 @@ impl PlaybackStore {
         update: PlaybackHistoryUpdate,
     ) -> Result<Vec<PlaybackHistoryEntry>, String> {
         let entry = normalize_update(update)?;
+        let entry_key = store_key_for_path(&entry.path);
         let transaction = self
             .database
             .begin_write()
@@ -163,25 +233,29 @@ impl PlaybackStore {
                 .open_table(HISTORY_BY_UPDATED)
                 .map_err(|error| format!("failed to open playback history index: {error}"))?;
 
-            if let Some(previous) = by_path
-                .get(entry.path.as_str())
-                .map_err(|error| format!("failed to read old playback history entry: {error}"))?
-            {
-                let previous = decode_entry(previous.value())?;
-                let old_index_key = updated_index_key(previous.updated_at, &previous.path);
-                by_updated.remove(old_index_key.as_str()).map_err(|error| {
-                    format!("failed to replace playback history index: {error}")
+            for old_key in existing_history_keys(&by_path, &entry_key, &entry.path)? {
+                if let Some(previous) = by_path.get(old_key.as_str()).map_err(|error| {
+                    format!("failed to read old playback history entry: {error}")
+                })? {
+                    let previous = decode_entry(previous.value())?;
+                    let old_index_key = updated_index_key(previous.updated_at, &old_key);
+                    by_updated.remove(old_index_key.as_str()).map_err(|error| {
+                        format!("failed to replace playback history index: {error}")
+                    })?;
+                }
+                by_path.remove(old_key.as_str()).map_err(|error| {
+                    format!("failed to replace playback history entry: {error}")
                 })?;
             }
 
             let encoded = serde_json::to_string(&entry)
                 .map_err(|error| format!("failed to encode playback history entry: {error}"))?;
-            let index_key = updated_index_key(entry.updated_at, &entry.path);
+            let index_key = updated_index_key(entry.updated_at, &entry_key);
             by_path
-                .insert(entry.path.as_str(), encoded.as_str())
+                .insert(entry_key.as_str(), encoded.as_str())
                 .map_err(|error| format!("failed to store playback history entry: {error}"))?;
             by_updated
-                .insert(index_key.as_str(), entry.path.as_str())
+                .insert(index_key.as_str(), entry_key.as_str())
                 .map_err(|error| format!("failed to store playback history index: {error}"))?;
 
             prune_history(&mut by_path, &mut by_updated)?;
@@ -201,14 +275,126 @@ impl PlaybackStore {
         let by_path = transaction
             .open_table(HISTORY_BY_PATH)
             .map_err(|error| format!("failed to open playback history table: {error}"))?;
-        let Some(stored) = by_path
-            .get(path.trim())
-            .map_err(|error| format!("failed to read playback history entry: {error}"))?
-        else {
+        let Some(stored) = get_by_normalized_or_legacy_key(&by_path, path)? else {
             return Ok(0.0);
         };
         let entry = decode_entry(stored.value())?;
         Ok(resume_position_for_entry(entry.position, entry.duration))
+    }
+
+    fn settings(&self) -> Result<PlaybackSettings, String> {
+        let transaction = self
+            .database
+            .begin_read()
+            .map_err(|error| format!("failed to read playback settings: {error}"))?;
+        let table = transaction
+            .open_table(PLAYBACK_SETTINGS)
+            .map_err(|error| format!("failed to open playback settings table: {error}"))?;
+        let Some(stored) = table
+            .get(PLAYBACK_SETTINGS_KEY)
+            .map_err(|error| format!("failed to read playback settings entry: {error}"))?
+        else {
+            return Ok(PlaybackSettings::default());
+        };
+
+        decode_settings(stored.value())
+    }
+
+    fn update_settings(
+        &mut self,
+        update: PlaybackSettingsUpdate,
+    ) -> Result<PlaybackSettings, String> {
+        let mut settings = self.settings()?;
+        merge_settings_update(&mut settings, update);
+        let transaction = self
+            .database
+            .begin_write()
+            .map_err(|error| format!("failed to write playback settings: {error}"))?;
+        {
+            let mut table = transaction
+                .open_table(PLAYBACK_SETTINGS)
+                .map_err(|error| format!("failed to open playback settings table: {error}"))?;
+            let encoded = serde_json::to_string(&settings)
+                .map_err(|error| format!("failed to encode playback settings: {error}"))?;
+            table
+                .insert(PLAYBACK_SETTINGS_KEY, encoded.as_str())
+                .map_err(|error| format!("failed to store playback settings: {error}"))?;
+        }
+        transaction
+            .commit()
+            .map_err(|error| format!("failed to commit playback settings: {error}"))?;
+
+        Ok(settings)
+    }
+
+    fn media_settings(&self, path: &str) -> Result<MediaPlaybackSettings, String> {
+        let normalized_path = path.trim();
+        let key = store_key_for_path(normalized_path);
+        let transaction = self
+            .database
+            .begin_read()
+            .map_err(|error| format!("failed to read media playback settings: {error}"))?;
+        let table = transaction
+            .open_table(MEDIA_SETTINGS_BY_PATH)
+            .map_err(|error| format!("failed to open media playback settings table: {error}"))?;
+        let Some(stored) = get_by_normalized_or_legacy_key(&table, normalized_path)? else {
+            return Ok(MediaPlaybackSettings {
+                path: normalized_path.to_string(),
+                subtitle_track_id: None,
+                has_subtitle_track_selection: false,
+            });
+        };
+        let mut settings = decode_media_settings(stored.value())?;
+        settings.path = normalized_path.to_string();
+        if settings.path.is_empty() {
+            settings.path = key;
+        }
+        Ok(settings)
+    }
+
+    fn update_media_settings(
+        &mut self,
+        path: &str,
+        update: MediaPlaybackSettingsUpdate,
+    ) -> Result<MediaPlaybackSettings, String> {
+        let trimmed = path.trim();
+        if trimmed.is_empty() {
+            return Err("media playback settings path is empty".to_string());
+        }
+
+        let key = store_key_for_path(trimmed);
+        let mut settings = self.media_settings(trimmed)?;
+        settings.path = trimmed.to_string();
+        if let Some(subtitle_track_id) = update.subtitle_track_id {
+            settings.subtitle_track_id = normalize_track_id(subtitle_track_id)?;
+            settings.has_subtitle_track_selection = true;
+        }
+
+        let transaction = self
+            .database
+            .begin_write()
+            .map_err(|error| format!("failed to write media playback settings: {error}"))?;
+        {
+            let mut table = transaction
+                .open_table(MEDIA_SETTINGS_BY_PATH)
+                .map_err(|error| {
+                    format!("failed to open media playback settings table: {error}")
+                })?;
+            let legacy_key = trimmed.to_string();
+            if legacy_key != key {
+                let _ = table.remove(legacy_key.as_str());
+            }
+            let encoded = serde_json::to_string(&settings)
+                .map_err(|error| format!("failed to encode media playback settings: {error}"))?;
+            table
+                .insert(key.as_str(), encoded.as_str())
+                .map_err(|error| format!("failed to store media playback settings: {error}"))?;
+        }
+        transaction
+            .commit()
+            .map_err(|error| format!("failed to commit media playback settings: {error}"))?;
+
+        Ok(settings)
     }
 
     fn clear(&mut self) -> Result<Vec<PlaybackHistoryEntry>, String> {
@@ -276,6 +462,38 @@ pub fn history_clear(
     state.with_store(|store| store.clear())
 }
 
+#[tauri::command]
+pub fn playback_settings_state(
+    state: State<'_, PlaybackStoreState>,
+) -> Result<PlaybackSettings, String> {
+    state.with_store(|store| store.settings())
+}
+
+#[tauri::command]
+pub fn playback_settings_update(
+    state: State<'_, PlaybackStoreState>,
+    settings: PlaybackSettingsUpdate,
+) -> Result<PlaybackSettings, String> {
+    state.with_store(|store| store.update_settings(settings))
+}
+
+#[tauri::command]
+pub fn playback_media_settings(
+    state: State<'_, PlaybackStoreState>,
+    path: String,
+) -> Result<MediaPlaybackSettings, String> {
+    state.with_store(|store| store.media_settings(&path))
+}
+
+#[tauri::command]
+pub fn playback_media_settings_update(
+    state: State<'_, PlaybackStoreState>,
+    path: String,
+    settings: MediaPlaybackSettingsUpdate,
+) -> Result<MediaPlaybackSettings, String> {
+    state.with_store(|store| store.update_media_settings(&path, settings))
+}
+
 fn create_database_with_retry(path: &Path, label: &str) -> Result<Database, String> {
     let mut last_error = None;
     for _ in 0..16 {
@@ -335,6 +553,33 @@ fn prune_history(
     Ok(())
 }
 
+fn existing_history_keys(
+    by_path: &redb::Table<'_, &str, &str>,
+    normalized_key: &str,
+    display_path: &str,
+) -> Result<Vec<String>, String> {
+    let mut keys = Vec::new();
+    if by_path
+        .get(normalized_key)
+        .map_err(|error| format!("failed to read old playback history entry: {error}"))?
+        .is_some()
+    {
+        keys.push(normalized_key.to_string());
+    }
+
+    let legacy_key = display_path.trim();
+    if legacy_key != normalized_key
+        && by_path
+            .get(legacy_key)
+            .map_err(|error| format!("failed to read old playback history entry: {error}"))?
+            .is_some()
+    {
+        keys.push(legacy_key.to_string());
+    }
+
+    Ok(keys)
+}
+
 fn normalize_update(update: PlaybackHistoryUpdate) -> Result<PlaybackHistoryEntry, String> {
     let path = update.path.trim().to_string();
     if path.is_empty() {
@@ -361,6 +606,18 @@ fn decode_entry(value: &str) -> Result<PlaybackHistoryEntry, String> {
         .map_err(|error| format!("failed to decode playback history entry: {error}"))
 }
 
+fn decode_settings(value: &str) -> Result<PlaybackSettings, String> {
+    serde_json::from_str(value)
+        .map(sanitize_playback_settings)
+        .map_err(|error| format!("failed to decode playback settings: {error}"))
+}
+
+fn decode_media_settings(value: &str) -> Result<MediaPlaybackSettings, String> {
+    serde_json::from_str(value)
+        .map(sanitize_media_settings)
+        .map_err(|error| format!("failed to decode media playback settings: {error}"))
+}
+
 fn normalize_non_negative_number(value: f64) -> f64 {
     if value.is_finite() && value > 0.0 {
         value
@@ -383,9 +640,140 @@ fn resume_position_for_entry(position: f64, duration: f64) -> f64 {
     }
 }
 
+fn merge_settings_update(settings: &mut PlaybackSettings, update: PlaybackSettingsUpdate) {
+    if let Some(volume) = update.volume {
+        settings.volume = normalize_volume(volume);
+    }
+    if let Some(loop_mode) = update.loop_mode {
+        settings.loop_mode = normalize_loop_mode(&loop_mode);
+    }
+    if let Some(hwdec_mode) = update.hwdec_mode {
+        settings.hwdec_mode = normalize_hwdec_mode(&hwdec_mode);
+    }
+    if let Some(playback_speed) = update.playback_speed {
+        settings.playback_speed = normalize_playback_speed(playback_speed);
+    }
+    if let Some(video_fill) = update.video_fill {
+        settings.video_fill = video_fill;
+    }
+    if let Some(time_display_mode) = update.time_display_mode {
+        settings.time_display_mode = normalize_time_display_mode(&time_display_mode);
+    }
+}
+
+fn sanitize_playback_settings(mut settings: PlaybackSettings) -> PlaybackSettings {
+    settings.volume = normalize_volume(settings.volume);
+    settings.loop_mode = normalize_loop_mode(&settings.loop_mode);
+    settings.hwdec_mode = normalize_hwdec_mode(&settings.hwdec_mode);
+    settings.playback_speed = normalize_playback_speed(settings.playback_speed);
+    settings.time_display_mode = normalize_time_display_mode(&settings.time_display_mode);
+    settings
+}
+
+fn sanitize_media_settings(mut settings: MediaPlaybackSettings) -> MediaPlaybackSettings {
+    if let Some(id) = settings.subtitle_track_id
+        && id <= 0
+    {
+        settings.subtitle_track_id = None;
+    }
+    settings
+}
+
+fn normalize_volume(value: f64) -> f64 {
+    if value.is_finite() {
+        value.clamp(0.0, 100.0)
+    } else {
+        DEFAULT_VOLUME
+    }
+}
+
+fn normalize_loop_mode(value: &str) -> String {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "one" => "one".to_string(),
+        "all" => "all".to_string(),
+        _ => DEFAULT_LOOP_MODE.to_string(),
+    }
+}
+
+fn normalize_hwdec_mode(value: &str) -> String {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "software" => "software".to_string(),
+        _ => DEFAULT_HWDEC_MODE.to_string(),
+    }
+}
+
+fn normalize_playback_speed(value: f64) -> f64 {
+    if value.is_finite() {
+        value.clamp(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED)
+    } else {
+        DEFAULT_PLAYBACK_SPEED
+    }
+}
+
+fn normalize_time_display_mode(value: &str) -> String {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "frames" => "frames".to_string(),
+        _ => DEFAULT_TIME_DISPLAY_MODE.to_string(),
+    }
+}
+
+fn normalize_track_id(track_id: Option<i64>) -> Result<Option<i64>, String> {
+    match track_id {
+        Some(id) if id <= 0 => Err("invalid media playback track id".to_string()),
+        other => Ok(other),
+    }
+}
+
 fn updated_index_key(updated_at: i64, path: &str) -> String {
     let newest_first = u64::MAX - updated_at.max(0) as u64;
     format!("{newest_first:020}|{path}")
+}
+
+fn store_key_for_path(path: &str) -> String {
+    let trimmed = path.trim();
+    let mut normalized = trimmed.replace('/', "\\");
+    let lower = normalized.to_ascii_lowercase();
+    if lower.starts_with("\\\\?\\unc\\") {
+        normalized = format!("\\\\{}", &normalized[8..]);
+    } else if lower.starts_with("\\\\?\\") {
+        normalized = normalized[4..].to_string();
+    }
+
+    if is_windows_drive_path(&normalized) || normalized.starts_with("\\\\") {
+        normalized.to_lowercase()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn is_windows_drive_path(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.len() >= 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && bytes[2] == b'\\'
+}
+
+fn get_by_normalized_or_legacy_key<'a, T>(
+    table: &'a T,
+    path: &str,
+) -> Result<Option<redb::AccessGuard<'a, &'static str>>, String>
+where
+    T: ReadableTable<&'static str, &'static str>,
+{
+    let key = store_key_for_path(path);
+    if let Some(stored) = table
+        .get(key.as_str())
+        .map_err(|error| format!("failed to read playback store entry: {error}"))?
+    {
+        return Ok(Some(stored));
+    }
+
+    let legacy_key = path.trim();
+    if legacy_key == key {
+        return Ok(None);
+    }
+
+    table
+        .get(legacy_key)
+        .map_err(|error| format!("failed to read playback store entry: {error}"))
 }
 
 fn media_name_from_path(path: &str) -> String {
@@ -492,5 +880,82 @@ mod tests {
 
         assert!(entries.is_empty());
         assert_eq!(resume, 0.0);
+    }
+
+    #[test]
+    fn redb_store_matches_windows_history_paths_case_insensitively() {
+        let directory = std::env::temp_dir().join(format!(
+            "openplayer-history-windows-key-{}-{}",
+            std::process::id(),
+            now_millis()
+        ));
+        fs::create_dir_all(&directory).expect("temp history directory should be created");
+        let database_path = directory.join("history.redb");
+        let mut store = PlaybackStore::open(database_path).expect("redb store should open");
+
+        store
+            .remember(PlaybackHistoryUpdate {
+                path: "F:\\PP\\292MY-1051\\hhd800.com@292MY-1051.mp4".to_string(),
+                name: None,
+                position: 120.0,
+                duration: 600.0,
+                updated_at: Some(10),
+            })
+            .expect("entry should be written");
+
+        let resume = store
+            .resume_position("\\\\?\\f:\\pp\\292my-1051\\hhd800.com@292my-1051.mp4")
+            .expect("resume lookup should normalize Windows paths");
+        let _ = fs::remove_dir_all(&directory);
+
+        assert_eq!(resume, 120.0);
+    }
+
+    #[test]
+    fn redb_store_persists_global_and_media_playback_settings() {
+        let directory = std::env::temp_dir().join(format!(
+            "openplayer-playback-settings-{}-{}",
+            std::process::id(),
+            now_millis()
+        ));
+        fs::create_dir_all(&directory).expect("temp settings directory should be created");
+        let database_path = directory.join("history.redb");
+        let mut store = PlaybackStore::open(database_path).expect("redb store should open");
+
+        store
+            .update_settings(PlaybackSettingsUpdate {
+                volume: Some(64.0),
+                loop_mode: Some("all".to_string()),
+                hwdec_mode: Some("software".to_string()),
+                playback_speed: Some(1.25),
+                video_fill: Some(true),
+                time_display_mode: Some("frames".to_string()),
+            })
+            .expect("settings should be written");
+        store
+            .update_media_settings(
+                "F:\\PP\\292MY-1051\\hhd800.com@292MY-1051.mp4",
+                MediaPlaybackSettingsUpdate {
+                    subtitle_track_id: Some(Some(3)),
+                },
+            )
+            .expect("media settings should be written");
+
+        drop(store);
+        let store =
+            PlaybackStore::open(directory.join("history.redb")).expect("redb store should reopen");
+        let settings = store.settings().expect("settings should be readable");
+        let media_settings = store
+            .media_settings("\\\\?\\f:\\pp\\292my-1051\\hhd800.com@292my-1051.mp4")
+            .expect("media settings should be readable");
+        let _ = fs::remove_dir_all(&directory);
+
+        assert_eq!(settings.volume, 64.0);
+        assert_eq!(settings.loop_mode, "all");
+        assert_eq!(settings.hwdec_mode, "software");
+        assert_eq!(settings.playback_speed, 1.25);
+        assert!(settings.video_fill);
+        assert_eq!(settings.time_display_mode, "frames");
+        assert_eq!(media_settings.subtitle_track_id, Some(3));
     }
 }

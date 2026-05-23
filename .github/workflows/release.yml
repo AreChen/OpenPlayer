@@ -203,6 +203,7 @@ jobs:
   macos-packages:
     name: macOS unsigned packages (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
+    needs: windows-installer
     env:
       RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
     strategy:
@@ -294,3 +295,12 @@ jobs:
           path: |
             target/release/bundle/dmg/*.dmg
             target/release/bundle/dmg/*.sha256
+
+      - name: Publish GitHub release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$RELEASE_TAG" \
+            target/release/bundle/dmg/*.dmg \
+            target/release/bundle/dmg/*.sha256 \
+            --clobber

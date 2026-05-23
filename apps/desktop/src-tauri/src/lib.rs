@@ -2,7 +2,13 @@
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 #[cfg(all(feature = "mpv-embed", target_os = "macos"))]
 use std::ffi::c_void;
-use std::{collections::HashMap, sync::Mutex, thread, time::Duration};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::Mutex,
+    thread,
+    time::Duration,
+};
 #[cfg(windows)]
 use std::{
     collections::HashSet,
@@ -62,7 +68,9 @@ use appearance_store::{
     appearance_state, preferences_set_incognito_mode, preferences_set_language_mode,
     preferences_set_quiet_keyboard_controls, preferences_state,
 };
-use media_paths::{StartupMediaState, media_files_in_directory, startup_media_paths};
+use media_paths::{
+    StartupMediaState, media_files_from_paths, media_files_in_directory, startup_media_paths,
+};
 #[cfg(feature = "mpv-embed")]
 use mpv_embed::{
     MpvEmbedSnapshot, MpvEmbedState, mpv_embed_add_subtitle, mpv_embed_frame_back_step,
@@ -74,6 +82,8 @@ use mpv_embed::{
 use platform_support::{platform_support, prepare_platform_runtime};
 use playback_store::{
     PlaybackStoreState, history_clear, history_list, history_remember, history_resume_position,
+    playback_media_settings, playback_media_settings_update, playback_settings_state,
+    playback_settings_update,
 };
 use shell_preview::{
     shell_preview_formats, shell_preview_open_default_apps_settings, shell_preview_register_formats,
@@ -101,6 +111,7 @@ struct WindowPlacement {
 #[derive(Default)]
 struct WindowState {
     fullscreen_restore: Mutex<Option<WindowPlacement>>,
+    always_on_top: Mutex<bool>,
 }
 
 #[cfg(windows)]
@@ -414,6 +425,32 @@ fn window_toggle_fullscreen(
 }
 
 #[tauri::command]
+fn window_always_on_top_state(window_state: State<'_, WindowState>) -> Result<bool, String> {
+    window_state
+        .always_on_top
+        .lock()
+        .map(|state| *state)
+        .map_err(|_| "window state lock failed".to_string())
+}
+
+#[tauri::command]
+fn window_toggle_always_on_top(
+    app: AppHandle,
+    window_state: State<'_, WindowState>,
+) -> Result<bool, String> {
+    let mut always_on_top = window_state
+        .always_on_top
+        .lock()
+        .map_err(|_| "window state lock failed".to_string())?;
+    let enabled = !*always_on_top;
+    set_window_always_on_top(&app, enabled)?;
+    *always_on_top = enabled;
+    drop(always_on_top);
+    focus_overlay_window(&app);
+    Ok(enabled)
+}
+
+#[tauri::command]
 fn window_close(app: AppHandle) -> Result<(), String> {
     if let Some(overlay) = overlay_window(&app) {
         let _ = overlay.close();
@@ -421,6 +458,65 @@ fn window_close(app: AppHandle) -> Result<(), String> {
     main_window(&app)?
         .close()
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn window_reveal_path(path: String) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("file path is empty".to_string());
+    }
+
+    let path = PathBuf::from(trimmed);
+    if !path.exists() {
+        return Err(format!("file path does not exist: {}", path.display()));
+    }
+
+    reveal_path_in_file_manager(&path)
+}
+
+fn set_window_always_on_top(app: &AppHandle, enabled: bool) -> Result<(), String> {
+    main_window(app)?
+        .set_always_on_top(enabled)
+        .map_err(|error| error.to_string())?;
+    if let Some(overlay) = overlay_window(app) {
+        overlay
+            .set_always_on_top(enabled)
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn reveal_path_in_file_manager(path: &Path) -> Result<(), String> {
+    std::process::Command::new("explorer")
+        .arg(format!("/select,{}", path.display()))
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("failed to open file location: {error}"))
+}
+
+#[cfg(target_os = "macos")]
+fn reveal_path_in_file_manager(path: &Path) -> Result<(), String> {
+    std::process::Command::new("open")
+        .arg("-R")
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("failed to open file location: {error}"))
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn reveal_path_in_file_manager(path: &Path) -> Result<(), String> {
+    let target = path
+        .parent()
+        .filter(|parent| parent.exists())
+        .unwrap_or(path);
+    std::process::Command::new("xdg-open")
+        .arg(target)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("failed to open file location: {error}"))
 }
 
 fn sync_overlay_to_main(app: &AppHandle) {
@@ -789,18 +885,25 @@ fn mpv_overlay_open_path(
     app: AppHandle,
     state: tauri::State<'_, MpvEmbedState>,
     path: String,
+    resume_position: Option<f64>,
+    initial_volume: Option<f64>,
 ) -> Result<MpvEmbedSnapshot, String> {
     #[cfg(target_os = "macos")]
     {
         let _ = state;
-        return open_path_for_main_window_on_main_thread(app, path);
+        return open_path_for_main_window_on_main_thread(
+            app,
+            path,
+            resume_position,
+            initial_volume,
+        );
     }
 
     #[cfg(not(target_os = "macos"))]
     {
         let main = main_window(&app)?;
         sync_overlay_to_main(&app);
-        mpv_embed::open_path_for_window(&main, state.inner(), path)
+        mpv_embed::open_path_for_window(&main, state.inner(), path, resume_position, initial_volume)
     }
 }
 
@@ -808,15 +911,18 @@ fn mpv_overlay_open_path(
 fn open_path_for_main_window_on_main_thread(
     app: AppHandle,
     path: String,
+    resume_position: Option<f64>,
+    initial_volume: Option<f64>,
 ) -> Result<MpvEmbedSnapshot, String> {
     if objc2::MainThreadMarker::new().is_some() {
-        return open_path_for_main_window_now(&app, path);
+        return open_path_for_main_window_now(&app, path, resume_position, initial_volume);
     }
 
     let (sender, receiver) = std::sync::mpsc::sync_channel(1);
     let app_for_open = app.clone();
     app.run_on_main_thread(move || {
-        let result = open_path_for_main_window_now(&app_for_open, path);
+        let result =
+            open_path_for_main_window_now(&app_for_open, path, resume_position, initial_volume);
         let _ = sender.send(result);
     })
     .map_err(|error| format!("failed to schedule macOS mpv AppKit host setup: {error}"))?;
@@ -830,11 +936,13 @@ fn open_path_for_main_window_on_main_thread(
 fn open_path_for_main_window_now(
     app: &AppHandle,
     path: String,
+    resume_position: Option<f64>,
+    initial_volume: Option<f64>,
 ) -> Result<MpvEmbedSnapshot, String> {
     let main = main_window(app)?;
     sync_overlay_to_main(app);
     let state = app.state::<MpvEmbedState>();
-    mpv_embed::open_path_for_window(&main, state.inner(), path)
+    mpv_embed::open_path_for_window(&main, state.inner(), path, resume_position, initial_volume)
 }
 
 #[cfg(not(feature = "mpv-embed"))]
@@ -855,11 +963,15 @@ pub fn run() {
             window_minimize,
             window_toggle_maximize,
             window_toggle_fullscreen,
+            window_always_on_top_state,
+            window_toggle_always_on_top,
             window_focus_overlay,
             window_start_resize,
             window_set_resize_cursor,
             window_apply_resize_delta,
             window_close,
+            window_reveal_path,
+            media_files_from_paths,
             media_files_in_directory,
             startup_media_paths,
             platform_support,
@@ -879,7 +991,11 @@ pub fn run() {
             history_list,
             history_remember,
             history_resume_position,
-            history_clear
+            history_clear,
+            playback_settings_state,
+            playback_settings_update,
+            playback_media_settings,
+            playback_media_settings_update
         ])
         .run(tauri::generate_context!())
         .expect("failed to run OpenPlayer desktop app");
@@ -946,12 +1062,15 @@ pub fn run() {
             window_minimize,
             window_toggle_maximize,
             window_toggle_fullscreen,
+            window_always_on_top_state,
+            window_toggle_always_on_top,
             window_close,
             window_focus_overlay,
             window_start_drag,
             window_start_resize,
             window_set_resize_cursor,
             window_apply_resize_delta,
+            window_reveal_path,
             mpv_overlay_open_path,
             mpv_embed_play,
             mpv_embed_pause,
@@ -968,6 +1087,7 @@ pub fn run() {
             mpv_embed_set_volume,
             mpv_embed_snapshot,
             mpv_embed_stop,
+            media_files_from_paths,
             media_files_in_directory,
             startup_media_paths,
             platform_support,
@@ -987,7 +1107,11 @@ pub fn run() {
             history_list,
             history_remember,
             history_resume_position,
-            history_clear
+            history_clear,
+            playback_settings_state,
+            playback_settings_update,
+            playback_media_settings,
+            playback_media_settings_update
         ])
         .run(tauri::generate_context!())
         .expect("failed to run OpenPlayer desktop app");

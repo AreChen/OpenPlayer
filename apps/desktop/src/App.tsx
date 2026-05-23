@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebview, type DragDropEvent } from "@tauri-apps/api/webview";
 import { open } from "@tauri-apps/plugin-dialog";
 import { languageModeOptions, resolveLocale, translations, type AppStrings, type LanguageMode } from "./i18n";
 
@@ -96,6 +97,23 @@ type PlayerPreferences = {
   incognitoMode: boolean;
   quietKeyboardControls: boolean;
   languageMode: LanguageMode;
+};
+
+type PlaybackSettings = {
+  volume: number;
+  loopMode: LoopMode;
+  hwdecMode: HardwareDecodingMode;
+  playbackSpeed: number;
+  videoFill: boolean;
+  timeDisplayMode: TimeDisplayMode;
+};
+
+type PlaybackSettingsUpdate = Partial<PlaybackSettings>;
+
+type MediaPlaybackSettings = {
+  path: string;
+  subtitleTrackId: number | null;
+  hasSubtitleTrackSelection: boolean;
 };
 
 type ShellPreviewRegistrationSummary = {
@@ -195,6 +213,7 @@ type IconName =
   | "next"
   | "palette"
   | "pause"
+  | "pin"
   | "play"
   | "plugin"
   | "preview"
@@ -203,7 +222,8 @@ type IconName =
   | "settings"
   | "stop"
   | "tracks"
-  | "volume";
+  | "volume"
+  | "volumeMuted";
 
 const playableExtensions = [
   "3g2",
@@ -353,6 +373,14 @@ const DEFAULT_PLAYER_PREFERENCES: PlayerPreferences = {
   quietKeyboardControls: false,
   languageMode: "system",
 };
+const DEFAULT_PLAYBACK_SETTINGS: PlaybackSettings = {
+  volume: 82,
+  loopMode: "off",
+  hwdecMode: "hardware",
+  playbackSpeed: 1,
+  videoFill: false,
+  timeDisplayMode: "timecode",
+};
 const OPENPLAYER_SHORTCUTS_STORAGE_KEY = "openplayer.shortcuts.v3";
 const HISTORY_WRITE_INTERVAL_MS = 1500;
 const MIN_RESUME_PROGRESS_RATIO = 0.01;
@@ -364,7 +392,7 @@ const VOLUME_FEEDBACK_MS = 1100;
 const STORE_SYNC_INTERVAL_MS = 1600;
 const END_OF_MEDIA_SNAP_TOLERANCE_SECONDS = 0.5;
 const CONTEXT_MENU_WIDTH = 236;
-const CONTEXT_MENU_HEIGHT = 404;
+const CONTEXT_MENU_HEIGHT = 492;
 const DEFAULT_SEEK_STEP_SECONDS = 5;
 const DEFAULT_VOLUME_STEP = 0.05;
 const WINDOW_DRAG_START_DISTANCE_PX = 4;
@@ -604,6 +632,28 @@ function isTextEntryShortcutTarget(target: EventTarget | null) {
   return input instanceof HTMLInputElement && TEXT_ENTRY_INPUT_TYPES.has(input.type);
 }
 
+function isPointerInsideSelector(target: EventTarget | null, selector: string) {
+  return target instanceof Element && Boolean(target.closest(selector));
+}
+
+function isPointerInsidePlaybackControl(target: EventTarget | null) {
+  return isPointerInsideSelector(
+    target,
+    [
+      "[contenteditable='true']",
+      ".context-menu",
+      ".drop-overlay",
+      ".media-panel",
+      ".playback-error",
+      ".playlist-drawer",
+      ".resize-region",
+      ".settings-dialog",
+      ".transport",
+      ".window-controls",
+    ].join(", "),
+  );
+}
+
 function releaseShortcutFocusTarget(target: EventTarget | null) {
   if (isTextEntryShortcutTarget(target)) {
     return;
@@ -834,6 +884,34 @@ function hwdecModeFromSnapshot(hwdec: string | null | undefined): HardwareDecodi
   return hwdec?.trim().toLowerCase() === "no" ? "software" : "hardware";
 }
 
+function normalizeLoopMode(mode: unknown): LoopMode {
+  return mode === "one" || mode === "all" ? mode : "off";
+}
+
+function normalizeHardwareDecodingMode(mode: unknown): HardwareDecodingMode {
+  return mode === "software" ? "software" : "hardware";
+}
+
+function normalizeTimeDisplayMode(mode: unknown): TimeDisplayMode {
+  return mode === "frames" ? "frames" : "timecode";
+}
+
+function normalizePlaybackSettings(settings: Partial<PlaybackSettings> | null | undefined): PlaybackSettings {
+  const volume = settings?.volume;
+  return {
+    volume: Number.isFinite(volume) ? Math.min(100, Math.max(0, volume as number)) : DEFAULT_PLAYBACK_SETTINGS.volume,
+    loopMode: normalizeLoopMode(settings?.loopMode),
+    hwdecMode: normalizeHardwareDecodingMode(settings?.hwdecMode),
+    playbackSpeed: clampPlaybackSpeed(settings?.playbackSpeed ?? DEFAULT_PLAYBACK_SETTINGS.playbackSpeed),
+    videoFill: settings?.videoFill === true,
+    timeDisplayMode: normalizeTimeDisplayMode(settings?.timeDisplayMode),
+  };
+}
+
+function mergePlaybackSettings(current: PlaybackSettings, update: PlaybackSettingsUpdate): PlaybackSettings {
+  return normalizePlaybackSettings({ ...current, ...update });
+}
+
 function mediaItemFromHistory(entry: PlaybackHistoryEntry): MediaItem {
   return {
     id: nextMediaItemId(),
@@ -855,6 +933,7 @@ function Icon({ name }: { name: IconName }) {
     next: "M7 6l7 6-7 6V6ZM16 6v12",
     palette: "M12 3a9 9 0 0 0 0 18h1.2a1.8 1.8 0 0 0 1.3-3.05 1.8 1.8 0 0 1 1.27-3.07H18a3 3 0 0 0 3-3A9 9 0 0 0 12 3ZM7.5 11.5h.01M9 7.5h.01M14 7.5h.01M16.5 11h.01",
     pause: "M8 6h3v12H8zM13 6h3v12h-3z",
+    pin: "M14 4l6 6-3 1-4 4v4l-2 2-2-6-6-2 2-2h4l4-4 1-3Z",
     play: "M8 5v14l11-7z",
     plugin: "M9 3v4M15 3v4M8 7h8a2 2 0 0 1 2 2v3a6 6 0 0 1-12 0V9a2 2 0 0 1 2-2ZM12 18v3",
     preview: "M4 5h16v11H4zM8 20h8M10 16l-1.5 4M14 16l1.5 4M7 13l3-3 2 2 2.5-3 3.5 4",
@@ -864,6 +943,7 @@ function Icon({ name }: { name: IconName }) {
     stop: "M7 7h10v10H7z",
     tracks: "M4 7h7M15 7h5M11 5v4M4 12h12M20 12h0M16 10v4M4 17h4M12 17h8M8 15v4",
     volume: "M4 10v4h4l5 4V6l-5 4H4Z M16 9a4 4 0 0 1 0 6",
+    volumeMuted: "M4 10v4h4l5 4V6l-5 4H4Z M17 9l4 6M21 9l-4 6",
   };
 
   return (
@@ -893,15 +973,18 @@ function App() {
   const [tracks, setTracks] = useState<MpvTrack[]>([]);
   const [loadedMediaPath, setLoadedMediaPath] = useState<string | null>(null);
   const [framesPerSecond, setFramesPerSecond] = useState(0);
-  const [timeDisplayMode, setTimeDisplayMode] = useState<TimeDisplayMode>("timecode");
-  const [loopMode, setLoopMode] = useState<LoopMode>("off");
+  const [timeDisplayMode, setTimeDisplayModeValue] = useState<TimeDisplayMode>("timecode");
+  const [loopMode, setLoopModeValue] = useState<LoopMode>("off");
   const [isPlaying, setIsPlaying] = useState(false);
   const [isChromeVisible, setIsChromeVisible] = useState(true);
+  const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false);
+  const [isDropActive, setIsDropActive] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [platformSupport, setPlatformSupport] = useState<PlatformSupport | null>(null);
   const [appearanceState, setAppearanceState] = useState<AppearanceState | null>(null);
   const [playerPreferences, setPlayerPreferences] = useState<PlayerPreferences>(DEFAULT_PLAYER_PREFERENCES);
+  const [playbackSettings, setPlaybackSettings] = useState<PlaybackSettings>(DEFAULT_PLAYBACK_SETTINGS);
   const [volumeFeedback, setVolumeFeedback] = useState<VolumeFeedback | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuPosition | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -925,6 +1008,9 @@ function App() {
   const handledEndedPathRef = useRef<string | null>(null);
   const lastHistoryWriteRef = useRef(0);
   const hardwareDecodingModeRef = useRef<HardwareDecodingMode>("hardware");
+  const playbackSettingsRef = useRef<PlaybackSettings>(DEFAULT_PLAYBACK_SETTINGS);
+  const previousAudibleVolumeRef = useRef(DEFAULT_PLAYBACK_SETTINGS.volume / 100);
+  const droppedPathsHandlerRef = useRef<(paths: string[]) => void>(() => undefined);
   const shortcutKeyDownRef = useRef<(event: KeyboardEvent) => void>(() => undefined);
   const nativeShortcutActionRef = useRef<(action: ShortcutAction) => void>(() => undefined);
   const settingsDialogRef = useRef<HTMLElement | null>(null);
@@ -978,6 +1064,26 @@ function App() {
       })
       .catch((error: unknown) => {
         console.warn("Failed to load player preferences", error);
+      });
+
+    invoke<PlaybackSettings>("playback_settings_state")
+      .then((settings) => {
+        if (!disposed) {
+          applyPlaybackSettingsFromStore(settings);
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn("Failed to load playback settings", error);
+      });
+
+    invoke<boolean>("window_always_on_top_state")
+      .then((enabled) => {
+        if (!disposed) {
+          setIsAlwaysOnTop(Boolean(enabled));
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn("Failed to load always-on-top state", error);
       });
 
     invoke<ShellPreviewFormatInfo[]>("shell_preview_formats")
@@ -1046,12 +1152,6 @@ function App() {
   }, [media?.id, isPlaying, duration]);
 
   useEffect(() => {
-    if (!canDisplayFrames(framesPerSecond, duration)) {
-      setTimeDisplayMode("timecode");
-    }
-  }, [framesPerSecond, duration]);
-
-  useEffect(() => {
     if (!media || loadedMediaPath !== media.path) {
       return;
     }
@@ -1101,6 +1201,9 @@ function App() {
       invoke<PlayerPreferences>("preferences_state")
         .then(setPlayerPreferences)
         .catch((error: unknown) => console.warn("Failed to sync player preferences", error));
+      invoke<PlaybackSettings>("playback_settings_state")
+        .then(applyPlaybackSettingsFromStore)
+        .catch((error: unknown) => console.warn("Failed to sync playback settings", error));
       invoke<PlaybackHistoryEntry[]>("history_list")
         .then((entries) => setPlaybackHistory(Array.isArray(entries) ? entries : []))
         .catch((error: unknown) => console.warn("Failed to sync playback history", error));
@@ -1174,6 +1277,10 @@ function App() {
     performShortcutAction(action);
   };
 
+  droppedPathsHandlerRef.current = (paths: string[]) => {
+    playDroppedPaths(paths).catch(reportPlaybackError);
+  };
+
   useEffect(() => {
     function handleGlobalKeyDown(event: KeyboardEvent) {
       shortcutKeyDownRef.current(event);
@@ -1206,6 +1313,40 @@ function App() {
     return () => {
       disposed = true;
       unlistenShortcut?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlistenDrop: (() => void) | null = null;
+
+    getCurrentWebview()
+      .onDragDropEvent((event) => {
+        const payload: DragDropEvent = event.payload;
+        if (payload.type === "enter" || payload.type === "over") {
+          setIsDropActive(true);
+          return;
+        }
+
+        setIsDropActive(false);
+        if (payload.type === "drop" && payload.paths.length > 0) {
+          droppedPathsHandlerRef.current(payload.paths);
+        }
+      })
+      .then((unlisten) => {
+        if (disposed) {
+          unlisten();
+        } else {
+          unlistenDrop = unlisten;
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn("File drop listener failed", error);
+      });
+
+    return () => {
+      disposed = true;
+      unlistenDrop?.();
     };
   }, []);
 
@@ -1370,6 +1511,54 @@ function App() {
     }, VOLUME_FEEDBACK_MS);
   }
 
+  function applyPlaybackSettingsFromStore(settings: Partial<PlaybackSettings> | null | undefined) {
+    const normalized = normalizePlaybackSettings(settings);
+    playbackSettingsRef.current = normalized;
+    setPlaybackSettings(normalized);
+    setVolumeLevel(normalized.volume / 100);
+    if (normalized.volume > 0) {
+      previousAudibleVolumeRef.current = normalized.volume / 100;
+    }
+    setPlaybackSpeedValue(normalized.playbackSpeed);
+    setHardwareDecodingModeValue(normalized.hwdecMode);
+    hardwareDecodingModeRef.current = normalized.hwdecMode;
+    setIsVideoFillEnabled(normalized.videoFill);
+    setTimeDisplayModeValue(normalized.timeDisplayMode);
+    setLoopModeValue(normalized.loopMode);
+    return normalized;
+  }
+
+  function persistPlaybackSettings(update: PlaybackSettingsUpdate) {
+    const optimistic = mergePlaybackSettings(playbackSettingsRef.current, update);
+    playbackSettingsRef.current = optimistic;
+    setPlaybackSettings(optimistic);
+    invoke<PlaybackSettings>("playback_settings_update", { settings: update })
+      .then(applyPlaybackSettingsFromStore)
+      .catch((error: unknown) => {
+        console.warn("Failed to persist playback settings", error);
+      });
+  }
+
+  async function loadPlaybackSettings() {
+    try {
+      const settings = await invoke<PlaybackSettings>("playback_settings_state");
+      return applyPlaybackSettingsFromStore(settings);
+    } catch (error) {
+      console.warn("Failed to resolve playback settings", error);
+      return playbackSettingsRef.current;
+    }
+  }
+
+  function persistMediaPlaybackSettings(path: string, settings: { subtitleTrackId?: number | null }) {
+    if (!path) {
+      return;
+    }
+
+    invoke<MediaPlaybackSettings>("playback_media_settings_update", { path, settings }).catch((error: unknown) => {
+      console.warn("Failed to persist media playback settings", error);
+    });
+  }
+
   function invalidatePendingSnapshots() {
     snapshotRequestIdRef.current += 1;
   }
@@ -1396,7 +1585,11 @@ function App() {
     setSubtitleDelayValue(clampSubtitleDelay(snapshot.subtitleDelay));
     setTracks(Array.isArray(snapshot.tracks) ? snapshot.tracks : []);
     setLoadedMediaPath(snapshot.path);
-    setVolumeLevel(Math.min(1, Math.max(0, snapshot.volume / 100)));
+    const snapshotVolume = Math.min(1, Math.max(0, snapshot.volume / 100));
+    setVolumeLevel(snapshotVolume);
+    if (snapshotVolume > 0) {
+      previousAudibleVolumeRef.current = snapshotVolume;
+    }
 
     if (pendingSeek) {
       const isConfirmed = Math.abs(snapshotPosition - pendingSeek.target) <= SEEK_CONFIRM_TOLERANCE_SECONDS;
@@ -1466,28 +1659,49 @@ function App() {
     invalidatePendingSnapshots();
     handledEndedPathRef.current = null;
     setLoadedMediaPath(null);
+    const savedSettings = await loadPlaybackSettings();
     const rememberedPosition = await resumePositionForPath(path);
-    const snapshot = await invoke<MpvSnapshot>("mpv_overlay_open_path", { path });
+    let activeSnapshot = await invoke<MpvSnapshot>("mpv_overlay_open_path", {
+      path,
+      resumePosition: rememberedPosition > 0 ? rememberedPosition : null,
+      initialVolume: savedSettings.volume,
+    });
+    activeSnapshot = await applyStoredPlaybackSettings(activeSnapshot, savedSettings);
+    activeSnapshot = await applyStoredMediaPlaybackSettings(path, activeSnapshot);
     pendingSeekRef.current = null;
     setPlaybackError(null);
-    applyCommandSnapshot(snapshot);
+    applyCommandSnapshot(activeSnapshot);
+  }
+
+  async function applyStoredPlaybackSettings(snapshot: MpvSnapshot, settings: PlaybackSettings) {
     let activeSnapshot = snapshot;
-    if (hardwareDecodingModeRef.current === "software") {
-      activeSnapshot = await invoke<MpvSnapshot>("mpv_embed_set_hwdec", { mode: "software" });
-      applyCommandSnapshot(activeSnapshot);
+    if (Math.abs(activeSnapshot.volume - settings.volume) > 0.5) {
+      activeSnapshot = await invoke<MpvSnapshot>("mpv_embed_set_volume", { volume: settings.volume });
     }
-
-    const resumeTarget = resumePositionWithinDuration(rememberedPosition, activeSnapshot.duration);
-    if (resumeTarget <= 0) {
-      return;
+    if (Math.abs(clampPlaybackSpeed(activeSnapshot.speed) - settings.playbackSpeed) > 0.001) {
+      activeSnapshot = await invoke<MpvSnapshot>("mpv_embed_set_speed", { speed: settings.playbackSpeed });
     }
+    if (hwdecModeFromSnapshot(activeSnapshot.hwdec) !== settings.hwdecMode) {
+      activeSnapshot = await invoke<MpvSnapshot>("mpv_embed_set_hwdec", { mode: settings.hwdecMode });
+    }
+    if (activeSnapshot.videoFill !== settings.videoFill) {
+      activeSnapshot = await invoke<MpvSnapshot>("mpv_embed_set_video_fill", { enabled: settings.videoFill });
+    }
+    activeSnapshot = await invoke<MpvSnapshot>("mpv_embed_set_loop_file", { enabled: settings.loopMode === "one" });
+    return activeSnapshot;
+  }
 
-    pendingSeekRef.current = { target: resumeTarget, startedAt: performance.now() };
-    setCurrentTime(resumeTarget);
-    anchorDisplayClock(resumeTarget, false, activeSnapshot.duration, activeSnapshot.speed);
-    invalidatePendingSnapshots();
-    const resumedSnapshot = await invoke<MpvSnapshot>("mpv_embed_seek", { position: resumeTarget });
-    applyCommandSnapshot(resumedSnapshot);
+  async function applyStoredMediaPlaybackSettings(path: string, snapshot: MpvSnapshot) {
+    try {
+      const mediaSettings = await invoke<MediaPlaybackSettings>("playback_media_settings", { path });
+      if (!mediaSettings.hasSubtitleTrackSelection) {
+        return snapshot;
+      }
+      return await invoke<MpvSnapshot>("mpv_embed_select_track", { kind: "subtitle", trackId: mediaSettings.subtitleTrackId });
+    } catch (error) {
+      console.warn("Failed to apply media playback settings", error);
+      return snapshot;
+    }
   }
 
   function seekTarget(value: number) {
@@ -1521,11 +1735,14 @@ function App() {
 
   function toggleTimeDisplayMode() {
     if (!canDisplayFrames(framesPerSecond, duration)) {
-      setTimeDisplayMode("timecode");
+      setTimeDisplayModeValue("timecode");
+      persistPlaybackSettings({ timeDisplayMode: "timecode" });
       return;
     }
 
-    setTimeDisplayMode((mode) => (mode === "timecode" ? "frames" : "timecode"));
+    const nextMode = timeDisplayMode === "timecode" ? "frames" : "timecode";
+    setTimeDisplayModeValue(nextMode);
+    persistPlaybackSettings({ timeDisplayMode: nextMode });
   }
 
   function assignShortcut(action: ShortcutAction, chord: string | null) {
@@ -1699,10 +1916,18 @@ function App() {
     setContextMenu({ x, y });
   }
 
-  function handleShellPointerDown() {
+  function closeFloatingPlaybackMenus() {
+    setMediaPanelMode(null);
+    setIsPlaylistOpen(false);
+  }
+
+  function handleShellPointerDown(event: ReactPointerEvent<HTMLElement>) {
     recordUserActivity();
-    if (contextMenu) {
+    if (contextMenu && !isPointerInsideSelector(event.target, ".context-menu")) {
       setContextMenu(null);
+    }
+    if (!isPointerInsidePlaybackControl(event.target)) {
+      closeFloatingPlaybackMenus();
     }
   }
 
@@ -1718,7 +1943,7 @@ function App() {
   }
 
   function handleShellWheel(event: ReactWheelEvent<HTMLElement>) {
-    if (!media || contextMenu || isSettingsOpen || recordingShortcutAction) {
+    if (contextMenu || isSettingsOpen || recordingShortcutAction) {
       return;
     }
 
@@ -1865,6 +2090,22 @@ function App() {
       setIsPickerOpen(false);
       focusOverlayWindow();
     }
+  }
+
+  async function playDroppedPaths(paths: string[]) {
+    if (platformSupport && !platformSupport.mpvEmbedVideo) {
+      setPlaybackError(platformUnsupportedPlaybackMessage(platformSupport, t));
+      return;
+    }
+
+    if (!paths.length) {
+      return;
+    }
+
+    setPlaybackError(null);
+    const mediaPaths = await invoke<string[]>("media_files_from_paths", { paths });
+    await replaceQueueWithMediaPaths(mediaPaths);
+    focusOverlayWindow();
   }
 
   async function replaceQueueWithMediaPaths(paths: string[]) {
@@ -2047,6 +2288,25 @@ function App() {
 
   function toggleFullscreen() {
     runWindowCommand("window_toggle_fullscreen");
+  }
+
+  function toggleAlwaysOnTop() {
+    invoke<boolean>("window_toggle_always_on_top")
+      .then((enabled) => {
+        setIsAlwaysOnTop(enabled);
+        focusOverlayWindow();
+      })
+      .catch(reportPlaybackError);
+  }
+
+  function openCurrentFileLocation() {
+    if (!media) {
+      return;
+    }
+
+    invoke("window_reveal_path", { path: media.path })
+      .then(focusOverlayWindow)
+      .catch(reportPlaybackError);
   }
 
   function handleDragRegionPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
@@ -2251,8 +2511,15 @@ function App() {
   function setVolume(value: number, options: { feedback?: boolean } = {}) {
     const nextVolume = Math.min(1, Math.max(0, value));
     setVolumeLevel(nextVolume);
+    if (nextVolume > 0) {
+      previousAudibleVolumeRef.current = nextVolume;
+    }
+    persistPlaybackSettings({ volume: nextVolume * 100 });
     if (options.feedback) {
       showVolumeFeedback(nextVolume);
+    }
+    if (!media) {
+      return;
     }
     invalidatePendingSnapshots();
     invoke<MpvSnapshot>("mpv_embed_set_volume", { volume: nextVolume * 100 })
@@ -2260,13 +2527,28 @@ function App() {
       .catch(reportPlaybackError);
   }
 
+  function toggleMute() {
+    if (volumeLevel > 0) {
+      previousAudibleVolumeRef.current = volumeLevel;
+      setVolume(0, { feedback: true });
+      return;
+    }
+
+    const restoredVolume = Math.min(
+      1,
+      Math.max(DEFAULT_VOLUME_STEP, previousAudibleVolumeRef.current || DEFAULT_PLAYBACK_SETTINGS.volume / 100),
+    );
+    setVolume(restoredVolume, { feedback: true });
+  }
+
   function setPlaybackSpeed(speed: number) {
+    const nextSpeed = clampPlaybackSpeed(speed);
+    setPlaybackSpeedValue(nextSpeed);
+    persistPlaybackSettings({ playbackSpeed: nextSpeed });
     if (!media) {
       return;
     }
 
-    const nextSpeed = clampPlaybackSpeed(speed);
-    setPlaybackSpeedValue(nextSpeed);
     anchorDisplayClock(displayTime, isPlaying, duration, nextSpeed);
     invalidatePendingSnapshots();
     invoke<MpvSnapshot>("mpv_embed_set_speed", { speed: nextSpeed })
@@ -2278,6 +2560,7 @@ function App() {
     const nextMode: HardwareDecodingMode = hardwareDecodingMode === "hardware" ? "software" : "hardware";
     setHardwareDecodingModeValue(nextMode);
     hardwareDecodingModeRef.current = nextMode;
+    persistPlaybackSettings({ hwdecMode: nextMode });
     if (!media) {
       return;
     }
@@ -2293,12 +2576,13 @@ function App() {
   }
 
   function setVideoFillMode(enabled: boolean) {
+    const previousValue = isVideoFillEnabled;
+    setIsVideoFillEnabled(enabled);
+    persistPlaybackSettings({ videoFill: enabled });
     if (!media) {
       return;
     }
 
-    const previousValue = isVideoFillEnabled;
-    setIsVideoFillEnabled(enabled);
     invalidatePendingSnapshots();
     invoke<MpvSnapshot>("mpv_embed_set_video_fill", { enabled })
       .then(applyCommandSnapshot)
@@ -2306,6 +2590,11 @@ function App() {
         setIsVideoFillEnabled(previousValue);
         reportPlaybackError(error);
       });
+  }
+
+  function setLoopMode(mode: LoopMode) {
+    setLoopModeValue(mode);
+    persistPlaybackSettings({ loopMode: mode });
   }
 
   function setSubtitleDelay(delay: number) {
@@ -2328,7 +2617,12 @@ function App() {
 
     invalidatePendingSnapshots();
     invoke<MpvSnapshot>("mpv_embed_select_track", { kind, trackId })
-      .then(applyCommandSnapshot)
+      .then((snapshot) => {
+        applyCommandSnapshot(snapshot);
+        if (kind === "subtitle" && media) {
+          persistMediaPlaybackSettings(media.path, { subtitleTrackId: trackId });
+        }
+      })
       .catch(reportPlaybackError);
   }
 
@@ -2350,6 +2644,8 @@ function App() {
       invalidatePendingSnapshots();
       const snapshot = await invoke<MpvSnapshot>("mpv_embed_add_subtitle", { path: selection });
       applyCommandSnapshot(snapshot);
+      const selectedSubtitle = snapshot.tracks.find((track) => track.kind === "sub" && track.selected);
+      persistMediaPlaybackSettings(media.path, { subtitleTrackId: selectedSubtitle?.id ?? null });
     } catch (error) {
       reportPlaybackError(error);
     } finally {
@@ -2379,6 +2675,8 @@ function App() {
   const currentFrame = canShowFrames ? Math.min(totalFrames, Math.max(0, Math.floor(displayTime * framesPerSecond))) : 0;
   const currentTransportLabel = effectiveTimeDisplayMode === "frames" ? formatFrameCount(currentFrame, locale) : formatTimecode(displayTime, duration);
   const durationTransportLabel = effectiveTimeDisplayMode === "frames" ? formatFrameCount(totalFrames, locale) : formatTimecode(duration, duration);
+  const isMuted = volumeLevel <= 0;
+  const volumeMuteLabel = isMuted ? t.controls.unmute : t.controls.mute;
   const currentTimeToggleLabel = t.controls.currentTime;
   const durationTimeToggleLabel = t.controls.duration;
   const isChromeHidden = Boolean(media) && !isChromeVisible && !isChromePinned;
@@ -2406,7 +2704,9 @@ function App() {
     { type: "item", id: "loop-mode", label: loopModeLabel(loopMode, t), icon: "restart", disabled: !media, onSelect: toggleLoopPanel },
     { type: "item", id: "media-options", label: t.contextMenu.tracksSubtitles, icon: "tracks", disabled: !media, onSelect: toggleTrackPanel },
     { type: "item", id: "playlist", label: t.contextMenu.playlist, icon: "list", shortcut: shortcutBindings.togglePlaylist, disabled: !media && queue.length === 0 && playbackHistory.length === 0, onSelect: togglePlaylist },
+    { type: "item", id: "open-location", label: t.contextMenu.openFileLocation, icon: "folder", disabled: !media, onSelect: openCurrentFileLocation },
     { type: "item", id: "fullscreen", label: t.contextMenu.fullscreen, icon: "fullscreen", shortcut: shortcutBindings.toggleFullscreen, onSelect: toggleFullscreen },
+    { type: "item", id: "always-on-top", label: isAlwaysOnTop ? t.contextMenu.disableAlwaysOnTop : t.contextMenu.alwaysOnTop, icon: "pin", onSelect: toggleAlwaysOnTop },
     { type: "item", id: "settings", label: t.contextMenu.settings, icon: "settings", shortcut: shortcutBindings.openSettings, onSelect: openSettingsDialog },
     { type: "separator", id: "window-separator" },
     { type: "item", id: "close", label: t.contextMenu.closeWindow, icon: "close", onSelect: () => runWindowCommand("window_close") },
@@ -2777,6 +3077,8 @@ function App() {
       className="app-shell"
       style={appearanceStyle}
       onContextMenu={openContextMenu}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => event.preventDefault()}
       onKeyDown={recordUserActivity}
       onPointerDown={handleShellPointerDown}
       onPointerLeave={handleShellPointerLeave}
@@ -2867,6 +3169,13 @@ function App() {
             </button>
           </div>
 
+          {isDropActive && (
+            <div className="drop-overlay" aria-live="polite">
+              <Icon name="folderAdd" />
+              <span>{t.media.dropToPlay}</span>
+            </div>
+          )}
+
           {playbackError && <div className="playback-error" role="alert">{playbackError}</div>}
           {volumeFeedback && (
             <div className="volume-feedback" role="status" aria-live="polite">
@@ -2938,8 +3247,16 @@ function App() {
               <button className={mediaPanelMode === "loop" ? "loop-toggle loop-toggle--open" : "loop-toggle"} type="button" aria-label={t.controls.openLoopMode} aria-expanded={mediaPanelMode === "loop"} onClick={toggleLoopPanel} disabled={!media}>
                 <Icon name="restart" />
               </button>
-              <label className="volume-control" aria-label={t.controls.volume}>
-                <Icon name="volume" />
+              <div className={isMuted ? "volume-control volume-control--muted" : "volume-control"} aria-label={t.controls.volume}>
+                <button
+                  className="volume-mute-button"
+                  type="button"
+                  aria-label={volumeMuteLabel}
+                  aria-pressed={isMuted}
+                  onClick={toggleMute}
+                >
+                  <Icon name={isMuted ? "volumeMuted" : "volume"} />
+                </button>
                 <input
                   type="range"
                   min="0"
@@ -2949,7 +3266,7 @@ function App() {
                   aria-label={t.controls.volume}
                   onChange={(event) => setVolume(Number(event.currentTarget.value))}
                 />
-              </label>
+              </div>
               <button className="speed-toggle" type="button" aria-label={t.controls.openPlaybackSpeed} aria-expanded={mediaPanelMode === "speed"} onClick={toggleSpeedPanel} disabled={!media}>
                 {formatPlaybackSpeed(playbackSpeed)}
               </button>

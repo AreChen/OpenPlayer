@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/openplayer-readme-hero.png" alt="OpenPlayer desktop media player" width="820" />
+<img src="docs/assets/openplayer-social-preview.png" alt="OpenPlayer desktop media player" width="820" />
 
 # 🎬 OpenPlayer
 
@@ -14,11 +14,12 @@
 [![Release](https://img.shields.io/github/v/release/AreChen/OpenPlayer?style=for-the-badge&logo=github&label=Release)](https://github.com/AreChen/OpenPlayer/releases)
 [![Windows](https://img.shields.io/badge/Windows-x64-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/AreChen/OpenPlayer/releases/latest)
 [![Linux](https://img.shields.io/badge/Linux-DEB%20%7C%20AppImage-FCC624?style=for-the-badge&logo=linux&logoColor=111111)](https://github.com/AreChen/OpenPlayer/releases/latest)
+[![macOS](https://img.shields.io/badge/macOS-DMG-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/AreChen/OpenPlayer/releases/latest)
 [![Tauri](https://img.shields.io/badge/Tauri-v2-24C8DB?style=for-the-badge&logo=tauri&logoColor=white)](https://tauri.app/)
 [![Rust](https://img.shields.io/badge/Rust-native-CE412B?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/github/license/AreChen/OpenPlayer?style=for-the-badge)](LICENSE)
 
-[Download](https://github.com/AreChen/OpenPlayer/releases/latest) · [Release Notes](docs/releases/v1.1.0.md) · [License](LICENSE)
+[Download](https://github.com/AreChen/OpenPlayer/releases/latest) · [Release Notes](docs/releases/v1.2.0.md) · [License](LICENSE)
 
 </div>
 
@@ -54,9 +55,10 @@ The latest release is available from GitHub Releases:
 
 Current release:
 
-- 🏷️ `v1.1.0`
-- 🪟 Windows: `OpenPlayer_1.1.0_x64-setup.exe`
-- 🐧 Linux: `OpenPlayer_1.1.0_amd64.deb` and `OpenPlayer_1.1.0_amd64.AppImage`
+- 🏷️ `v1.2.0`
+- 🪟 Windows: `OpenPlayer_1.2.0_x64-setup.exe`
+- 🐧 Linux: `OpenPlayer_1.2.0_amd64.deb` and `OpenPlayer_1.2.0_amd64.AppImage`
+- 🍎 macOS: `OpenPlayer_1.2.0_arm64.dmg` and `OpenPlayer_1.2.0_x64.dmg`
 - 🔐 Checksums: release assets include `.sha256` files
 
 > Windows packages are not code-signed yet, so SmartScreen may show a warning on first install.

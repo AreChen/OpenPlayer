@@ -36,6 +36,11 @@ const END_OF_MEDIA_SNAP_TOLERANCE_SECONDS: f64 = 0.5;
 const FRAME_STEP_SETTLE_INTERVAL: Duration = Duration::from_millis(6);
 const FRAME_STEP_SETTLE_TIMEOUT: Duration = Duration::from_millis(180);
 const FRAME_STEP_PAUSE_GUARD: Duration = Duration::from_millis(350);
+const INITIAL_RESUME_SEEK_TIMEOUT: Duration = Duration::from_millis(8000);
+const INITIAL_RESUME_SEEK_EVENT_WAIT: Duration = Duration::from_millis(80);
+const INITIAL_RESUME_SEEK_SETTLE_TIMEOUT: Duration = Duration::from_millis(750);
+const INITIAL_RESUME_SEEK_TOLERANCE_SECONDS: f64 = 1.0;
+const DEFAULT_VOLUME: f64 = 82.0;
 const MIN_PLAYBACK_SPEED: f64 = 0.25;
 const MAX_PLAYBACK_SPEED: f64 = 4.0;
 const MIN_SUBTITLE_DELAY: f64 = -10.0;
@@ -79,6 +84,20 @@ struct MpvEmbedPlayer {
     video_fill: bool,
     ended: bool,
     force_paused_until: Option<Instant>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InitialResumeSeekReadiness {
+    Ready,
+    Wait,
+    Skip,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MpvEventEffect {
+    None,
+    Active,
+    Ended,
 }
 
 #[cfg(windows)]
@@ -168,14 +187,24 @@ pub fn mpv_embed_open_path(
     window: Window,
     state: State<'_, MpvEmbedState>,
     path: String,
+    resume_position: Option<f64>,
+    initial_volume: Option<f64>,
 ) -> Result<MpvEmbedSnapshot, String> {
-    open_path_for_window(&window, state.inner(), path)
+    open_path_for_window(
+        &window,
+        state.inner(),
+        path,
+        resume_position,
+        initial_volume,
+    )
 }
 
 pub fn open_path_for_window(
     window: &impl HasWindowHandle,
     state: &MpvEmbedState,
     path: String,
+    resume_position: Option<f64>,
+    initial_volume: Option<f64>,
 ) -> Result<MpvEmbedSnapshot, String> {
     let path = validate_media_path(&path)?;
     let host = MpvVideoHost::new(window)?;
@@ -184,7 +213,10 @@ pub fn open_path_for_window(
     #[cfg(target_os = "macos")]
     let render_context = create_macos_render_context(&mpv, &host)?;
     let path_text = path.to_string_lossy().to_string();
+    let initial_volume = normalize_initial_volume(initial_volume)?;
 
+    mpv.set_property("volume", initial_volume)
+        .map_err(|error| format!("mpv initial volume failed: {error}"))?;
     configure_audio_visualizer(&mpv, &path);
     mpv.command("loadfile", &[&path_text, "replace"])
         .map_err(|error| format!("mpv loadfile failed: {error}"))?;
@@ -194,19 +226,22 @@ pub fn open_path_for_window(
         .player
         .lock()
         .map_err(|_| "mpv embed state lock failed".to_string())?;
-    let mut next_player = MpvEmbedPlayer {
+    *player = Some(MpvEmbedPlayer {
         #[cfg(target_os = "macos")]
         _render_context: render_context,
         mpv,
         host,
         path: path_text,
-        volume: 82.0,
+        volume: initial_volume,
         video_fill: false,
         ended: false,
         force_paused_until: None,
-    };
+    });
+    let next_player = player
+        .as_mut()
+        .ok_or_else(|| "mpv embed player initialization failed".to_string())?;
+    next_player.apply_initial_resume_seek(resume_position);
     let snapshot = next_player.snapshot(wid, "playing");
-    *player = Some(next_player);
 
     Ok(snapshot)
 }
@@ -274,11 +309,7 @@ pub async fn mpv_embed_frame_back_step(app: AppHandle) -> Result<MpvEmbedSnapsho
 
 #[tauri::command]
 pub async fn mpv_embed_set_volume(app: AppHandle, volume: f64) -> Result<MpvEmbedSnapshot, String> {
-    if !volume.is_finite() {
-        return Err("invalid mpv volume".to_string());
-    }
-
-    let volume = volume.clamp(0.0, 100.0);
+    let volume = normalize_volume(volume)?;
     run_mpv_command(app, move |state| {
         with_player(state, |player| {
             player
@@ -598,7 +629,173 @@ fn track_property_for_kind(kind: &str) -> Result<&'static str, String> {
     }
 }
 
+fn normalize_initial_resume_position(position: Option<f64>) -> Option<f64> {
+    position.filter(|position| position.is_finite() && *position > 0.0)
+}
+
+fn normalize_volume(volume: f64) -> Result<f64, String> {
+    if !volume.is_finite() {
+        return Err("invalid mpv volume".to_string());
+    }
+
+    Ok(volume.clamp(0.0, 100.0))
+}
+
+fn normalize_initial_volume(volume: Option<f64>) -> Result<f64, String> {
+    volume.map_or(Ok(DEFAULT_VOLUME), normalize_volume)
+}
+
+fn initial_resume_seek_readiness(
+    target_position: f64,
+    duration: f64,
+    seekable: bool,
+) -> InitialResumeSeekReadiness {
+    if !target_position.is_finite() || target_position <= 0.0 {
+        return InitialResumeSeekReadiness::Skip;
+    }
+
+    if seekable || (duration.is_finite() && duration > 0.0 && target_position < duration) {
+        return InitialResumeSeekReadiness::Ready;
+    }
+
+    if !duration.is_finite() || duration <= 0.0 || target_position >= duration {
+        return InitialResumeSeekReadiness::Wait;
+    }
+
+    InitialResumeSeekReadiness::Wait
+}
+
+fn is_transient_initial_resume_seek_error(error: &libmpv2::Error) -> bool {
+    matches!(error, libmpv2::Error::Raw(code) if *code == libmpv2::mpv_error::Command)
+}
+
+fn handle_mpv_event(event: libmpv2::Result<Event<'_>>) -> MpvEventEffect {
+    match event {
+        Ok(Event::EndFile(mpv_end_file_reason::Eof)) => MpvEventEffect::Ended,
+        Ok(Event::StartFile | Event::FileLoaded | Event::Seek | Event::PlaybackRestart) => {
+            MpvEventEffect::Active
+        }
+        Ok(Event::LogMessage {
+            prefix,
+            level,
+            text,
+            ..
+        }) => {
+            log_mpv_video_diagnostic(prefix, level, text);
+            MpvEventEffect::None
+        }
+        Err(error) => {
+            eprintln!("OpenPlayer mpv event failed: {error}");
+            MpvEventEffect::None
+        }
+        _ => MpvEventEffect::None,
+    }
+}
+
 impl MpvEmbedPlayer {
+    fn apply_initial_resume_seek(&mut self, resume_position: Option<f64>) {
+        let Some(target_position) = normalize_initial_resume_position(resume_position) else {
+            return;
+        };
+
+        let deadline = Instant::now() + INITIAL_RESUME_SEEK_TIMEOUT;
+
+        loop {
+            if !self.wait_for_initial_resume_seek(target_position, deadline) {
+                return;
+            }
+
+            match self
+                .mpv
+                .command("seek", &[&target_position.to_string(), "absolute"])
+            {
+                Ok(()) => {
+                    self.ended = false;
+                    self.settle_initial_resume_seek(target_position);
+                    return;
+                }
+                Err(error) if is_transient_initial_resume_seek_error(&error) => {
+                    if Instant::now() >= deadline {
+                        eprintln!("OpenPlayer initial resume seek timed out: {error}");
+                        return;
+                    }
+                    self.wait_for_mpv_event(deadline, INITIAL_RESUME_SEEK_EVENT_WAIT);
+                }
+                Err(error) => {
+                    eprintln!("OpenPlayer initial resume seek skipped: {error}");
+                    return;
+                }
+            }
+        }
+    }
+
+    fn wait_for_initial_resume_seek(&mut self, target_position: f64, deadline: Instant) -> bool {
+        loop {
+            let duration = self.mpv.get_property::<f64>("duration").unwrap_or(0.0);
+            let seekable = self.mpv.get_property::<bool>("seekable").unwrap_or(false);
+            match initial_resume_seek_readiness(target_position, duration, seekable) {
+                InitialResumeSeekReadiness::Ready => return true,
+                InitialResumeSeekReadiness::Skip => return false,
+                InitialResumeSeekReadiness::Wait => {}
+            }
+
+            let now = Instant::now();
+            if now >= deadline {
+                return false;
+            }
+
+            self.wait_for_mpv_event(deadline, INITIAL_RESUME_SEEK_EVENT_WAIT);
+        }
+    }
+
+    fn settle_initial_resume_seek(&mut self, target_position: f64) {
+        let deadline = Instant::now() + INITIAL_RESUME_SEEK_SETTLE_TIMEOUT;
+
+        loop {
+            let position = self.mpv.get_property::<f64>("time-pos").unwrap_or(0.0);
+            if position.is_finite()
+                && (position - target_position).abs() <= INITIAL_RESUME_SEEK_TOLERANCE_SECONDS
+            {
+                return;
+            }
+
+            let now = Instant::now();
+            if now >= deadline {
+                return;
+            }
+
+            self.wait_for_mpv_event(deadline, INITIAL_RESUME_SEEK_EVENT_WAIT);
+        }
+    }
+
+    fn wait_for_mpv_event(&mut self, deadline: Instant, max_wait: Duration) {
+        let now = Instant::now();
+        if now >= deadline {
+            return;
+        }
+
+        let wait = deadline
+            .saturating_duration_since(now)
+            .min(max_wait)
+            .as_secs_f64();
+        if let Some(event) = self.mpv.wait_event(wait) {
+            let effect = handle_mpv_event(event);
+            self.apply_mpv_event_effect(effect);
+        }
+    }
+
+    fn apply_mpv_event_effect(&mut self, effect: MpvEventEffect) {
+        match effect {
+            MpvEventEffect::Active => {
+                self.ended = false;
+            }
+            MpvEventEffect::Ended => {
+                self.ended = true;
+            }
+            MpvEventEffect::None => {}
+        }
+    }
+
     fn snapshot(&mut self, hwnd: i64, fallback_status: &str) -> MpvEmbedSnapshot {
         self.drain_events();
         let raw_paused = self.mpv.get_property::<bool>("pause").unwrap_or(false);
@@ -667,23 +864,8 @@ impl MpvEmbedPlayer {
 
     fn drain_events(&mut self) {
         while let Some(event) = self.mpv.wait_event(0.0) {
-            match event {
-                Ok(Event::EndFile(mpv_end_file_reason::Eof)) => {
-                    self.ended = true;
-                }
-                Ok(Event::StartFile | Event::Seek | Event::PlaybackRestart) => {
-                    self.ended = false;
-                }
-                Ok(Event::LogMessage {
-                    prefix,
-                    level,
-                    text,
-                    ..
-                }) => {
-                    log_mpv_video_diagnostic(prefix, level, text);
-                }
-                _ => {}
-            }
+            let effect = handle_mpv_event(event);
+            self.apply_mpv_event_effect(effect);
         }
     }
 }
@@ -1510,6 +1692,76 @@ mod tests {
         assert_eq!(
             normalize_hwdec_mode("gpu-next").expect_err("unsupported modes should be rejected"),
             "invalid mpv hardware decoding mode"
+        );
+    }
+
+    #[test]
+    fn normalizes_initial_resume_positions() {
+        assert_eq!(normalize_initial_resume_position(Some(42.0)), Some(42.0));
+        assert_eq!(normalize_initial_resume_position(Some(0.0)), None);
+        assert_eq!(normalize_initial_resume_position(Some(-1.0)), None);
+        assert_eq!(normalize_initial_resume_position(Some(f64::NAN)), None);
+        assert_eq!(normalize_initial_resume_position(None), None);
+    }
+
+    #[test]
+    fn normalizes_initial_volume_before_media_load() {
+        assert_eq!(normalize_initial_volume(None).unwrap(), DEFAULT_VOLUME);
+        assert_eq!(normalize_initial_volume(Some(0.0)).unwrap(), 0.0);
+        assert_eq!(normalize_initial_volume(Some(150.0)).unwrap(), 100.0);
+        assert_eq!(
+            normalize_initial_volume(Some(f64::NAN)).expect_err("nan volume should be rejected"),
+            "invalid mpv volume"
+        );
+    }
+
+    #[test]
+    fn waits_for_initial_resume_seek_until_duration_and_seekability_are_ready() {
+        assert_eq!(
+            initial_resume_seek_readiness(120.0, 0.0, true),
+            InitialResumeSeekReadiness::Ready
+        );
+        assert_eq!(
+            initial_resume_seek_readiness(120.0, 600.0, false),
+            InitialResumeSeekReadiness::Ready
+        );
+        assert_eq!(
+            initial_resume_seek_readiness(120.0, 600.0, true),
+            InitialResumeSeekReadiness::Ready
+        );
+    }
+
+    #[test]
+    fn waits_instead_of_skipping_when_early_duration_is_shorter_than_resume_target() {
+        assert_eq!(
+            initial_resume_seek_readiness(1800.0, 30.0, false),
+            InitialResumeSeekReadiness::Wait
+        );
+        assert_eq!(
+            initial_resume_seek_readiness(1800.0, 30.0, true),
+            InitialResumeSeekReadiness::Ready
+        );
+    }
+
+    #[test]
+    fn treats_early_mpv_command_rejection_as_transient_resume_seek_failure() {
+        assert!(is_transient_initial_resume_seek_error(
+            &libmpv2::Error::Raw(libmpv2::mpv_error::Command)
+        ));
+        assert!(!is_transient_initial_resume_seek_error(
+            &libmpv2::Error::Raw(libmpv2::mpv_error::Generic)
+        ));
+    }
+
+    #[test]
+    fn skips_initial_resume_seek_only_when_target_is_invalid() {
+        assert_eq!(
+            initial_resume_seek_readiness(0.0, 600.0, true),
+            InitialResumeSeekReadiness::Skip
+        );
+        assert_eq!(
+            initial_resume_seek_readiness(f64::NAN, 600.0, true),
+            InitialResumeSeekReadiness::Skip
         );
     }
 
