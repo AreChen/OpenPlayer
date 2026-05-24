@@ -4,7 +4,7 @@
 
 # 🎬 OpenPlayer
 
-**基于 Tauri v2、Rust、React 与 libmpv 构建的高性能桌面媒体播放器**
+**基于 Tauri v2、Rust、React 与 libmpv 构建的美观、可扩展、高性能桌面媒体播放器**
 
 <p>
   <a href="README.md"><img alt="English" src="https://img.shields.io/badge/English-Switch-111111?style=for-the-badge" /></a>
@@ -27,7 +27,7 @@
 
 ## ✨ 项目介绍
 
-OpenPlayer 是一个使用 **Tauri v2 + Rust + React + libmpv** 构建的轻量桌面媒体播放器。它让播放画面尽量贴近原生 mpv 渲染路径，同时使用透明 React 覆盖层承载控件、菜单、快捷键和设置界面。
+OpenPlayer 是一个使用 **Tauri v2 + Rust + React + libmpv** 构建的轻量、美观桌面媒体播放器。它让播放画面尽量贴近原生 mpv 渲染路径，同时使用透明 React 覆盖层承载控件、菜单、快捷键和设置界面。
 
 当前默认播放路径是 `mpv-embed`：主 Tauri 窗口作为原生 libmpv 视频宿主，透明 overlay 窗口承载交互 UI。这样的架构兼顾原生播放性能、窗口稳定性和现代桌面界面的可定制能力。
 
@@ -121,6 +121,25 @@ npm run tauri:build -- --config src-tauri/tauri.windows.conf.json
 ```text
 target/release/bundle/nsis/
 ```
+
+## 🤝 项目关联
+
+OpenPlayer 建立在这些优秀开源项目之上：
+
+- [Tauri](https://tauri.app/)：安全、轻量的桌面应用外壳。
+- [Rust](https://www.rust-lang.org/)：原生后端、系统集成和持久化能力。
+- [mpv / libmpv](https://mpv.io/)：高质量媒体播放内核。
+- [React](https://react.dev/)：覆盖层控件和设置界面。
+- [Vite](https://vite.dev/) 与 [TypeScript](https://www.typescriptlang.org/)：前端构建和类型系统。
+- [redb](https://github.com/cberner/redb)：用于历史记录、设置和播放状态的嵌入式持久化存储。
+
+## ⚖️ 许可证说明
+
+OpenPlayer 应用源码使用 MIT License。发行包还会包含或链接一些使用各自许可证的上游组件。
+
+- Tauri、Rust 生态依赖、React、Vite、TypeScript 和 redb 根据包元数据主要使用 MIT、Apache-2.0 或类似宽松许可证。
+- Windows 发行自动化使用 `zhongfly/mpv-winbuild` 提供的 `mpv-dev-lgpl` libmpv 构建，以便让打包的媒体运行时更适合 OpenPlayer 当前的 MIT 应用源码许可。
+- Linux 包依赖发行版提供的 `libmpv2`；macOS 包会打包 Homebrew libmpv dylib。对应平台上游包的 notice、源码和再分发义务仍按各自许可证执行。
 
 ## 📄 许可证
 

@@ -4,7 +4,7 @@
 
 # 🎬 OpenPlayer
 
-**A high-performance desktop media player powered by Tauri v2, Rust, React, and libmpv**
+**A beautiful, extensible, high-performance desktop media player powered by Tauri v2, Rust, React, and libmpv**
 
 <p>
   <a href="README.md"><img alt="English" src="https://img.shields.io/badge/English-Default-111111?style=for-the-badge" /></a>
@@ -27,7 +27,7 @@
 
 ## ✨ Overview
 
-OpenPlayer is a lightweight desktop media player built with **Tauri v2, Rust, React, and libmpv**. It keeps playback close to the native mpv surface while using a transparent React overlay for polished controls, menus, shortcuts, and settings.
+OpenPlayer is a lightweight, visually refined desktop media player built with **Tauri v2, Rust, React, and libmpv**. It keeps playback close to the native mpv surface while using a transparent React overlay for polished controls, menus, shortcuts, and settings.
 
 The default playback path is `mpv-embed`: the main Tauri window hosts the native libmpv video surface, while the overlay window hosts the interactive UI. This split gives OpenPlayer native-level playback behavior without giving up a modern, customizable desktop experience.
 
@@ -121,6 +121,25 @@ The installer is emitted under:
 ```text
 target/release/bundle/nsis/
 ```
+
+## 🤝 Built With
+
+OpenPlayer stands on the work of excellent open source projects:
+
+- [Tauri](https://tauri.app/) - secure, lightweight desktop app shell.
+- [Rust](https://www.rust-lang.org/) - native backend, shell integration, and persistence.
+- [mpv / libmpv](https://mpv.io/) - high-quality media playback engine.
+- [React](https://react.dev/) - overlay controls and settings UI.
+- [Vite](https://vite.dev/) and [TypeScript](https://www.typescriptlang.org/) - frontend tooling.
+- [redb](https://github.com/cberner/redb) - embedded persistence for history, settings, and playback state.
+
+## ⚖️ Licensing Notes
+
+OpenPlayer's application source code is released under MIT. Release packages also include or link to upstream components under their own licenses.
+
+- Tauri, Rust ecosystem crates, React, Vite, TypeScript, and redb are MIT, Apache-2.0, or similarly permissive according to their package metadata.
+- Windows release automation uses the `mpv-dev-lgpl` libmpv artifact from `zhongfly/mpv-winbuild` to keep the bundled media runtime aligned with OpenPlayer's permissive application license.
+- Linux packages depend on the distribution's `libmpv2`; macOS packages bundle Homebrew libmpv dylibs. Their notices and source obligations remain governed by the upstream packages used for each platform.
 
 ## 📄 License
 
