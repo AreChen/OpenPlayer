@@ -273,6 +273,7 @@ fn wide_null(value: &str) -> Vec<u16> {
     OsStr::new(value).encode_wide().chain(Some(0)).collect()
 }
 
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
 fn registry_font_name_to_family(name: &str) -> Option<String> {
     let trimmed = name.trim().trim_start_matches('@').trim();
     if trimmed.is_empty() {
@@ -316,6 +317,7 @@ fn registry_font_name_to_family(name: &str) -> Option<String> {
     (!family.is_empty()).then_some(family)
 }
 
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
 fn normalize_font_family_list(fonts: Vec<String>) -> Vec<String> {
     let mut fonts = if fonts.is_empty() {
         default_font_families()
@@ -1286,36 +1288,6 @@ pub fn run() {
         .expect("failed to run OpenPlayer desktop app");
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn extracts_font_family_names_from_windows_registry_labels() {
-        assert_eq!(
-            registry_font_name_to_family("Arial Bold (TrueType)").as_deref(),
-            Some("Arial")
-        );
-        assert_eq!(
-            registry_font_name_to_family("@Microsoft YaHei UI (TrueType)").as_deref(),
-            Some("Microsoft YaHei UI")
-        );
-    }
-
-    #[test]
-    fn normalizes_font_family_list_case_insensitively() {
-        assert_eq!(
-            normalize_font_family_list(vec![
-                "Arial".to_string(),
-                "arial".to_string(),
-                "Segoe UI".to_string(),
-            ]),
-            vec!["Arial".to_string(), "Segoe UI".to_string()]
-        );
-        assert!(normalize_font_family_list(Vec::new()).contains(&"sans-serif".to_string()));
-    }
-}
-
 #[cfg(feature = "mpv-embed")]
 pub fn run() {
     prepare_platform_runtime();
@@ -1448,4 +1420,34 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("failed to run OpenPlayer desktop app");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extracts_font_family_names_from_windows_registry_labels() {
+        assert_eq!(
+            registry_font_name_to_family("Arial Bold (TrueType)").as_deref(),
+            Some("Arial")
+        );
+        assert_eq!(
+            registry_font_name_to_family("@Microsoft YaHei UI (TrueType)").as_deref(),
+            Some("Microsoft YaHei UI")
+        );
+    }
+
+    #[test]
+    fn normalizes_font_family_list_case_insensitively() {
+        assert_eq!(
+            normalize_font_family_list(vec![
+                "Arial".to_string(),
+                "arial".to_string(),
+                "Segoe UI".to_string(),
+            ]),
+            vec!["Arial".to_string(), "Segoe UI".to_string()]
+        );
+        assert!(normalize_font_family_list(Vec::new()).contains(&"sans-serif".to_string()));
+    }
 }

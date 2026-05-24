@@ -590,7 +590,7 @@ pub async fn mpv_embed_start_recording(
 #[tauri::command]
 pub async fn mpv_embed_stop_recording(app: AppHandle) -> Result<MpvRecordingState, String> {
     run_mpv_command(app, move |state| {
-        with_player(state, |player| stop_recording_for_player(player))
+        with_player(state, stop_recording_for_player)
     })
     .await
 }
