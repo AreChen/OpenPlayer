@@ -42,6 +42,7 @@ Thumbs.db
 
 # Superpowers brainstorming artifacts
 /.superpowers/
+/docs/superpowers/
 
 # Browser automation artifacts
 /.playwright-mcp/

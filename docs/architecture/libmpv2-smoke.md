@@ -1,28 +1,41 @@
-# libmpv2 Smoke Spike
+# libmpv Smoke Test
 
-The `mpv-smoke` feature proves that the desktop Rust crate can compile, link, and initialize `libmpv2` against local Windows `libmpv` artifacts.
+The optional `mpv-smoke` feature verifies that the desktop Rust crate can
+compile, link, and initialize libmpv in a headless mode.
 
-The smoke feature requires local ignored native artifacts under `vendor/native/mpv/windows-x64`, or an `OPENPLAYER_MPV_DIR` override pointing at a directory containing `libmpv.dll.a` and `libmpv-2.dll`. These native artifacts are not tracked by git: a clean checkout can run default builds, but cannot run this smoke test until the artifacts are restored locally.
+The default application path is still `mpv-embed`, not this smoke feature. The
+smoke test does not open media, create an embedded video child window, or test
+the React overlay.
 
-Run the smoke test from the repository root:
+## Local Requirements
 
-```powershell
-$env:PATH = "E:\Project\CodeProject\RustPlayer\vendor\native\mpv\windows-x64;$env:PATH"; cargo test -p openplayer-desktop --features mpv-smoke mpv_smoke -- --nocapture
+Windows builds use ignored native artifacts under:
+
+```text
+vendor/native/mpv/windows-x64
 ```
 
-The default application path remains the browser `File` + `URL.createObjectURL` + HTML `<video>` renderer. The smoke feature does not register a frontend command, replace the renderer, or enable mpv window embedding.
+You can also set `OPENPLAYER_MPV_DIR` to a directory containing the required
+libmpv import/runtime libraries.
 
-This spike proves:
+## Run
 
-- The Rust crate can depend on `libmpv2` without affecting default builds.
-- The local Windows import library can satisfy `libmpv2-sys` linking with the MSVC Rust toolchain.
-- `libmpv-2.dll` can initialize at runtime when its directory is on `PATH`.
+From the repository root:
 
-This spike does not prove:
+```powershell
+$env:PATH = "$PWD\vendor\native\mpv\windows-x64;$env:PATH"
+cargo test -p openplayer-desktop --features mpv-smoke mpv_smoke -- --nocapture
+```
 
-- Local media path playback through `loadfile`.
-- Tauri/WebView video-surface embedding.
-- OpenGL render context integration.
-- Packaging of `libmpv-2.dll` into release installers.
-- Clean-checkout reproducibility of the smoke test without restoring local native artifacts.
-- Better playback performance than the current HTML video path.
+This proves:
+
+- The Rust crate can enable the optional libmpv smoke feature.
+- libmpv can initialize with `vo=null` and `ao=null`.
+- The local native runtime can be found by the process.
+
+This does not prove:
+
+- Embedded video playback.
+- Resume seek behavior.
+- Overlay input handling.
+- Release package dependency layout.
