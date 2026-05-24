@@ -326,8 +326,11 @@ assert.match(appSource, /isWheelInsideInteractiveSurface[\s\S]*handleShellWheel/
 assert.match(appSource, /expandedPluginIds[\s\S]*plugin-setting-list/, "plugin settings must be collapsible in the settings page");
 assert.match(appSource, /type PluginActionDefinition/, "frontend must type declarative plugin actions");
 assert.match(appSource, /player\.captureScreenshot/, "frontend must expose plugin screenshot actions");
+assert.match(appSource, /player\.toggleRecording/, "frontend must expose plugin recording actions");
 assert.match(appSource, /player\.openStream/, "frontend must expose plugin stream actions");
+assert.match(appSource, /player\.openStreamDialog/, "frontend must expose plugin network stream dialog actions");
 assert.match(appSource, /mpv_embed_capture_screenshot/, "frontend must call the backend screenshot capability");
+assert.match(appSource, /mpv_embed_start_recording[\s\S]*mpv_embed_stop_recording/, "frontend must call backend recording capabilities");
 assert.match(appSource, /executePluginAction/, "frontend must route plugin actions through built-in command handlers");
 assert.match(appSource, /pluginControlRightActions/, "frontend must render plugin actions in the control strip");
 assert.match(appSource, /pluginContextMenuActions/, "frontend must render plugin actions in the context menu");
@@ -649,6 +652,7 @@ assert.match(mpvEmbedSource, /tauri::async_runtime::spawn_blocking/, "mpv comman
 assert.doesNotMatch(mpvSnapshotSource, /host\.resize/, "mpv snapshots must not resize the AppKit video host while holding the player mutex");
 assert.match(mpvEmbedSource, /mpv_embed_set_video_fill[\s\S]*set_property\("panscan"[\s\S]*1\.0[\s\S]*0\.0/, "mpv video fill must use panscan only when the explicit video layout option is enabled");
 assert.match(mpvEmbedSource, /mpv_embed_capture_screenshot[\s\S]*screenshot-to-file/, "mpv embed backend must expose screenshot capture through mpv");
+assert.match(mpvEmbedSource, /mpv_embed_start_recording[\s\S]*stream-record[\s\S]*mpv_embed_stop_recording/, "mpv embed backend must expose native stream recording through mpv");
 assert.match(mpvEmbedSource, /validate_media_stream_url/, "mpv embed backend must allow safe stream URLs for mpv playback");
 assert.match(mpvEmbedSource, /fn window_mpv_wid/, "mpv native video host must map raw platform handles to mpv wid values");
 assert.match(mpvEmbedSource, /fn wid\(&self\) -> i64/, "mpv native video host must expose a platform-owned mpv wid boundary");
@@ -728,7 +732,9 @@ assert.match(appearanceStoreSource, /appearance_plugin_runtime_sources/, "appear
 assert.match(appearanceStoreSource, /PluginRuntimeKind::WebviewJs[\s\S]*openplayer-worker/, "appearance store must allow only the worker-backed webviewJs runtime");
 assert.match(appearanceStoreSource, /MAX_PLUGIN_RUNTIME_SCRIPT_BYTES/, "appearance store must cap plugin runtime script size");
 assert.match(appearanceStoreSource, /player\.captureScreenshot[\s\S]*mpv\.capture/, "appearance store must require capture permission for screenshot plugin actions");
+assert.match(appearanceStoreSource, /player\.toggleRecording[\s\S]*mpv\.capture/, "appearance store must require capture permission for recording plugin actions");
 assert.match(appearanceStoreSource, /player\.openStream[\s\S]*media\.openStream/, "appearance store must require stream permission for stream plugin actions");
+assert.match(appearanceStoreSource, /player\.openStreamDialog[\s\S]*media\.openStream/, "appearance store must require stream permission for stream dialog actions");
 assert.match(appearanceStoreSource, /validate_plugin_stream_url/, "appearance store must validate plugin-provided stream URLs");
 assert.match(appearanceStoreSource, /ThemePluginEntry[\s\S]*manifest/, "theme plugins must remain manifest-only in this slice");
 assert.match(appearanceStoreSource, /PlayerPreferences/, "appearance settings store must persist player preferences in the shared settings database");
@@ -753,6 +759,7 @@ assert.match(windowToggleFullscreenSource, /schedule_overlay_sync_to_main\(&app\
 assert.doesNotMatch(windowToggleFullscreenSource, /sync_overlay_to_main\(&app\)/, "fullscreen toggling must not immediately sync the overlay using stale fullscreen transition bounds");
 assert.match(mpvEmbedRunSource, /mpv_embed_frame_step[\s\S]*mpv_embed_frame_back_step[\s\S]*mpv_embed_set_speed[\s\S]*mpv_embed_set_video_fill[\s\S]*mpv_embed_set_subtitle_delay[\s\S]*mpv_embed_select_track[\s\S]*mpv_embed_add_subtitle/, "desktop runtime must register frame, speed, video layout, subtitle delay, track, and subtitle mpv commands");
 assert.match(mpvEmbedRunSource, /mpv_embed_capture_screenshot/, "desktop runtime must register screenshot capability commands");
+assert.match(mpvEmbedRunSource, /mpv_embed_recording_state[\s\S]*mpv_embed_start_recording[\s\S]*mpv_embed_stop_recording/, "desktop runtime must register recording capability commands");
 assert.match(tauriLibSource, /window_start_resize[\s\S]*start_resize_dragging/, "desktop backend must start resizing the main video window from overlay hit areas");
 assert.match(tauriLibSource, /fn window_set_resize_cursor[\s\S]*CursorIcon::NeResize[\s\S]*CursorIcon::Default/, "desktop backend must expose native resize cursor icons for overlay hit areas");
 assert.match(windowApplyResizeDeltaSource, /set_position[\s\S]*set_size/, "macOS manual resize fallback must resize the main video window");

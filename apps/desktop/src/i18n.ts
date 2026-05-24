@@ -23,7 +23,10 @@ export const translations = {
       loading: "Loading",
       reset: "Reset",
       restoreDefaults: "Restore Defaults",
+      cancel: "Cancel",
       clear: "Clear",
+      choose: "Choose",
+      open: "Open",
       none: "None",
       off: "Off",
       unset: "Not set",
@@ -38,6 +41,11 @@ export const translations = {
       unsupportedPlayback: (session: string) => `Native mpv embedding is not supported on this platform or graphics session (${session})`,
       alwaysOnTopEnabled: "Pinned on top",
       alwaysOnTopDisabled: "No longer pinned",
+      screenshotSaved: (directory: string | null, copied: boolean) =>
+        `${copied ? "Screenshot saved and copied" : "Screenshot saved"}${directory ? ` · ${directory}` : ""}`,
+      recordingActive: "REC",
+      recordingStarted: "Recording started",
+      recordingSaved: (directory: string | null) => `Recording saved${directory ? ` · ${directory}` : ""}`,
     },
     shortcuts: {
       groups: {
@@ -264,6 +272,17 @@ export const translations = {
       maximize: "Maximize or restore window",
       close: "Close window",
     },
+    streamDialog: {
+      title: "Open Network Stream",
+      subtitle: "Play RTSP, RTMP, and HTTP(S) streams through mpv.",
+      urlLabel: "Stream URL",
+      open: "Open Stream",
+      recent: "Recent Streams",
+      clearHistory: "Clear History",
+      emptyHistory: "No network stream history",
+      supportedProtocols: "RTSP, RTMP, HTTP, HTTPS",
+      error: (message: string) => `Unable to open stream: ${message}`,
+    },
     dialog: {
       mediaFiles: "Media files",
       mediaFolder: "Media folder",
@@ -278,7 +297,10 @@ export const translations = {
       loading: "加载中",
       reset: "重置",
       restoreDefaults: "恢复默认",
+      cancel: "取消",
       clear: "清除",
+      choose: "选择",
+      open: "打开",
       none: "无",
       off: "Off",
       unset: "未设置",
@@ -293,6 +315,11 @@ export const translations = {
       unsupportedPlayback: (session: string) => `当前平台或图形会话暂不支持原生 mpv 嵌入播放（${session}）`,
       alwaysOnTopEnabled: "已窗口置顶",
       alwaysOnTopDisabled: "已取消置顶",
+      screenshotSaved: (directory: string | null, copied: boolean) =>
+        `${copied ? "截图已保存并复制" : "截图已保存"}${directory ? ` · ${directory}` : ""}`,
+      recordingActive: "录制中",
+      recordingStarted: "开始录制",
+      recordingSaved: (directory: string | null) => `录制已保存${directory ? ` · ${directory}` : ""}`,
     },
     shortcuts: {
       groups: {
@@ -518,6 +545,17 @@ export const translations = {
       minimize: "最小化窗口",
       maximize: "最大化或还原窗口",
       close: "关闭窗口",
+    },
+    streamDialog: {
+      title: "打开网络流",
+      subtitle: "通过 mpv 播放 RTSP、RTMP 和 HTTP(S) 视频流。",
+      urlLabel: "视频流地址",
+      open: "打开视频流",
+      recent: "最近网络流",
+      clearHistory: "清除历史",
+      emptyHistory: "暂无网络流历史",
+      supportedProtocols: "RTSP、RTMP、HTTP、HTTPS",
+      error: (message: string) => `无法打开视频流：${message}`,
     },
     dialog: {
       mediaFiles: "Media files",

@@ -1428,11 +1428,11 @@ fn validate_plugin_setting_value(
             }
             Ok(())
         }
-        "text" => {
+        "text" | "directory" => {
             let Some(text) = value.as_str() else {
                 return Err(format!("plugin setting {} expects text", setting.id));
             };
-            if text.len() > 512 {
+            if text.len() > 1024 {
                 return Err(format!("plugin setting {} text is too long", setting.id));
             }
             Ok(())
@@ -1479,7 +1479,14 @@ fn validate_plugin_action_args(action: &PluginActionManifest) -> Result<(), Stri
     match action.command.as_str() {
         "player.captureScreenshot" => {
             for key in args.keys() {
-                if key != "openFolder" {
+                if !matches!(
+                    key.as_str(),
+                    "openFolder"
+                        | "openFolderSetting"
+                        | "format"
+                        | "formatSetting"
+                        | "directorySetting"
+                ) {
                     return Err(format!(
                         "plugin action {} has unknown argument: {key}",
                         action.id
@@ -1494,6 +1501,60 @@ fn validate_plugin_action_args(action: &PluginActionManifest) -> Result<(), Stri
                     action.id
                 ));
             }
+            validate_optional_plugin_action_string_arg(action, args, "format", 16)?;
+            validate_optional_plugin_action_string_arg(action, args, "formatSetting", 96)?;
+            validate_optional_plugin_action_string_arg(action, args, "openFolderSetting", 96)?;
+            validate_optional_plugin_action_string_arg(action, args, "directorySetting", 96)?;
+            Ok(())
+        }
+        "player.startRecording" | "player.toggleRecording" => {
+            for key in args.keys() {
+                if !matches!(
+                    key.as_str(),
+                    "openFolder"
+                        | "openFolderSetting"
+                        | "format"
+                        | "formatSetting"
+                        | "directorySetting"
+                ) {
+                    return Err(format!(
+                        "plugin action {} has unknown argument: {key}",
+                        action.id
+                    ));
+                }
+            }
+            if let Some(open_folder) = args.get("openFolder")
+                && !open_folder.is_boolean()
+            {
+                return Err(format!(
+                    "plugin action {} openFolder argument must be boolean",
+                    action.id
+                ));
+            }
+            validate_optional_plugin_action_string_arg(action, args, "format", 16)?;
+            validate_optional_plugin_action_string_arg(action, args, "formatSetting", 96)?;
+            validate_optional_plugin_action_string_arg(action, args, "openFolderSetting", 96)?;
+            validate_optional_plugin_action_string_arg(action, args, "directorySetting", 96)?;
+            Ok(())
+        }
+        "player.stopRecording" => {
+            for key in args.keys() {
+                if !matches!(key.as_str(), "openFolder" | "openFolderSetting") {
+                    return Err(format!(
+                        "plugin action {} has unknown argument: {key}",
+                        action.id
+                    ));
+                }
+            }
+            if let Some(open_folder) = args.get("openFolder")
+                && !open_folder.is_boolean()
+            {
+                return Err(format!(
+                    "plugin action {} openFolder argument must be boolean",
+                    action.id
+                ));
+            }
+            validate_optional_plugin_action_string_arg(action, args, "openFolderSetting", 96)?;
             Ok(())
         }
         "player.openStream" => {
@@ -1530,6 +1591,29 @@ fn validate_plugin_action_args(action: &PluginActionManifest) -> Result<(), Stri
             }
         }
     }
+}
+
+fn validate_optional_plugin_action_string_arg(
+    action: &PluginActionManifest,
+    args: &serde_json::Map<String, Value>,
+    key: &str,
+    max_len: usize,
+) -> Result<(), String> {
+    if let Some(value) = args.get(key) {
+        let Some(value) = value.as_str() else {
+            return Err(format!(
+                "plugin action {} {key} argument must be text",
+                action.id
+            ));
+        };
+        if value.trim().is_empty() || value.len() > max_len {
+            return Err(format!(
+                "plugin action {} {key} argument is invalid",
+                action.id
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_plugin_stream_url(url: &str) -> Result<(), String> {
@@ -1571,7 +1655,10 @@ fn is_supported_plugin_permission(permission: &str) -> bool {
 }
 
 fn is_supported_setting_kind(kind: &str) -> bool {
-    matches!(kind, "boolean" | "number" | "text" | "select" | "color")
+    matches!(
+        kind,
+        "boolean" | "number" | "text" | "select" | "color" | "directory"
+    )
 }
 
 fn is_supported_setting_placement(placement: &str) -> bool {
@@ -1607,7 +1694,11 @@ fn is_supported_plugin_action_command(command: &str) -> bool {
         command,
         "player.openMedia"
             | "player.openStream"
+            | "player.openStreamDialog"
             | "player.captureScreenshot"
+            | "player.startRecording"
+            | "player.stopRecording"
+            | "player.toggleRecording"
             | "player.togglePlayback"
             | "player.stop"
             | "player.restart"
@@ -1623,8 +1714,11 @@ fn is_supported_plugin_action_command(command: &str) -> bool {
 
 fn plugin_action_required_permission(command: &str) -> Option<&'static str> {
     match command {
-        "player.captureScreenshot" => Some("mpv.capture"),
-        "player.openStream" => Some("media.openStream"),
+        "player.captureScreenshot"
+        | "player.startRecording"
+        | "player.stopRecording"
+        | "player.toggleRecording" => Some("mpv.capture"),
+        "player.openStream" | "player.openStreamDialog" => Some("media.openStream"),
         _ => None,
     }
 }
@@ -1652,6 +1746,7 @@ fn is_supported_plugin_action_icon(icon: &str) -> bool {
             | "pin"
             | "plugin"
             | "camera"
+            | "record"
             | "stream"
             | "info"
     )
@@ -2615,6 +2710,15 @@ mod tests {
                 "permissions": ["media.openStream"]
               }
             ],
+            "settings": [
+              {
+                "id": "capture-directory",
+                "label": "Save Directory",
+                "kind": "directory",
+                "placement": "captureSettings",
+                "defaultValue": ""
+              }
+            ],
             "actions": [
               {
                 "id": "screenshot",
@@ -2624,7 +2728,8 @@ mod tests {
                 "icon": "camera",
                 "requiresMedia": true,
                 "args": {
-                  "openFolder": true
+                  "openFolder": true,
+                  "directorySetting": "capture-directory"
                 }
               },
               {
@@ -2636,6 +2741,26 @@ mod tests {
                 "args": {
                   "url": "https://example.com/live.m3u8",
                   "name": "Live Stream"
+                }
+              },
+              {
+                "id": "open-stream-dialog",
+                "label": "Open Network Stream",
+                "placement": "contextMenu",
+                "command": "player.openStreamDialog",
+                "icon": "stream"
+              },
+              {
+                "id": "toggle-recording",
+                "label": "Record",
+                "placement": "controls.right",
+                "command": "player.toggleRecording",
+                "icon": "record",
+                "requiresMedia": true,
+                "args": {
+                  "formatSetting": "recording-format",
+                  "directorySetting": "capture-directory",
+                  "openFolderSetting": "open-folder-after-capture"
                 }
               }
             ]
@@ -2984,16 +3109,28 @@ mod tests {
             .iter()
             .find(|plugin| plugin.id == "dev.openplayer.capability.actions")
             .expect("capability action plugin should be listed");
-        assert_eq!(plugin.action_count, 2);
+        assert_eq!(plugin.action_count, 4);
+        assert!(
+            plugin.settings.iter().any(|setting| {
+                setting.id == "capture-directory" && setting.kind == "directory"
+            })
+        );
         assert_eq!(plugin.actions[0].command, "player.captureScreenshot");
         assert_eq!(
             plugin.actions[0].args,
-            serde_json::json!({ "openFolder": true })
+            serde_json::json!({ "openFolder": true, "directorySetting": "capture-directory" })
         );
         assert_eq!(plugin.actions[1].command, "player.openStream");
         assert_eq!(
             plugin.actions[1].args,
             serde_json::json!({ "url": "https://example.com/live.m3u8", "name": "Live Stream" })
+        );
+        assert_eq!(plugin.actions[2].command, "player.openStreamDialog");
+        assert!(plugin.actions[2].args.is_object());
+        assert_eq!(plugin.actions[3].command, "player.toggleRecording");
+        assert_eq!(
+            plugin.actions[3].args,
+            serde_json::json!({ "formatSetting": "recording-format", "directorySetting": "capture-directory", "openFolderSetting": "open-folder-after-capture" })
         );
     }
 

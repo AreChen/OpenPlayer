@@ -88,13 +88,15 @@ use media_paths::{
 use mpv_embed::{
     MpvEmbedSnapshot, MpvEmbedState, mpv_embed_add_subtitle, mpv_embed_capture_screenshot,
     mpv_embed_frame_back_step, mpv_embed_frame_step, mpv_embed_pause, mpv_embed_play,
-    mpv_embed_seek, mpv_embed_select_track, mpv_embed_set_hwdec, mpv_embed_set_loop_file,
-    mpv_embed_set_plugin_property, mpv_embed_set_speed, mpv_embed_set_subtitle_delay,
-    mpv_embed_set_video_fill, mpv_embed_set_volume, mpv_embed_snapshot, mpv_embed_stop,
+    mpv_embed_recording_state, mpv_embed_seek, mpv_embed_select_track, mpv_embed_set_hwdec,
+    mpv_embed_set_loop_file, mpv_embed_set_plugin_property, mpv_embed_set_speed,
+    mpv_embed_set_subtitle_delay, mpv_embed_set_video_fill, mpv_embed_set_volume,
+    mpv_embed_snapshot, mpv_embed_start_recording, mpv_embed_stop, mpv_embed_stop_recording,
 };
 use platform_support::{platform_support, prepare_platform_runtime};
 use playback_store::{
     PlaybackStoreState, history_clear, history_list, history_remember, history_resume_position,
+    network_stream_history_clear, network_stream_history_list, network_stream_history_remember,
     playback_media_settings, playback_media_settings_update, playback_settings_state,
     playback_settings_update,
 };
@@ -703,6 +705,21 @@ fn window_reveal_path(path: String) -> Result<(), String> {
     reveal_path_in_file_manager(&path)
 }
 
+#[tauri::command]
+fn window_open_directory(path: String) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("directory path is empty".to_string());
+    }
+
+    let path = PathBuf::from(trimmed);
+    if !path.is_dir() {
+        return Err(format!("directory path does not exist: {}", path.display()));
+    }
+
+    open_directory_in_file_manager(&path)
+}
+
 fn set_window_always_on_top(app: &AppHandle, enabled: bool) -> Result<(), String> {
     main_window(app)?
         .set_always_on_top(enabled)
@@ -713,6 +730,33 @@ fn set_window_always_on_top(app: &AppHandle, enabled: bool) -> Result<(), String
             .map_err(|error| error.to_string())?;
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn open_directory_in_file_manager(path: &Path) -> Result<(), String> {
+    std::process::Command::new("explorer")
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("failed to open directory: {error}"))
+}
+
+#[cfg(target_os = "macos")]
+fn open_directory_in_file_manager(path: &Path) -> Result<(), String> {
+    std::process::Command::new("open")
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("failed to open directory: {error}"))
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn open_directory_in_file_manager(path: &Path) -> Result<(), String> {
+    std::process::Command::new("xdg-open")
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("failed to open directory: {error}"))
 }
 
 #[cfg(windows)]
@@ -1202,6 +1246,7 @@ pub fn run() {
             window_apply_resize_delta,
             window_close,
             window_reveal_path,
+            window_open_directory,
             media_files_from_paths,
             media_files_in_directory,
             startup_media_paths,
@@ -1229,6 +1274,9 @@ pub fn run() {
             history_remember,
             history_resume_position,
             history_clear,
+            network_stream_history_list,
+            network_stream_history_remember,
+            network_stream_history_clear,
             playback_settings_state,
             playback_settings_update,
             playback_media_settings,
@@ -1341,6 +1389,7 @@ pub fn run() {
             window_set_resize_cursor,
             window_apply_resize_delta,
             window_reveal_path,
+            window_open_directory,
             mpv_overlay_open_path,
             mpv_embed_play,
             mpv_embed_pause,
@@ -1354,6 +1403,9 @@ pub fn run() {
             mpv_embed_set_subtitle_delay,
             mpv_embed_set_plugin_property,
             mpv_embed_capture_screenshot,
+            mpv_embed_recording_state,
+            mpv_embed_start_recording,
+            mpv_embed_stop_recording,
             mpv_embed_select_track,
             mpv_embed_add_subtitle,
             mpv_embed_set_volume,
@@ -1386,6 +1438,9 @@ pub fn run() {
             history_remember,
             history_resume_position,
             history_clear,
+            network_stream_history_list,
+            network_stream_history_remember,
+            network_stream_history_clear,
             playback_settings_state,
             playback_settings_update,
             playback_media_settings,

@@ -38,7 +38,10 @@ manifest.
   `sub-spacing`, `sub-outline-size`, `sub-border-size`, and
   `sub-shadow-offset`.
 - Let declarative actions call safe built-in capability APIs:
-  `player.captureScreenshot` and `player.openStream`.
+  `player.captureScreenshot`, `player.openStream`, and
+  `player.openStreamDialog`.
+- Let capture plugins start and stop lightweight mpv native stream recording
+  through permissioned host commands.
 - Execute optional `webviewJs` runtime scripts in a Web Worker sandbox with no
   DOM, Tauri API, local filesystem access, or direct host privileges.
 
@@ -228,6 +231,10 @@ openplayer.onReady(async () => {
 Supported worker bridge requests match the built-in action command allowlist.
 Permissioned requests such as `player.captureScreenshot` and `player.openStream`
 are rejected unless the plugin manifest declares the required permission.
+`player.openStreamDialog` is available to declarative actions and opens the
+host-owned network stream dialog.
+Capture requests such as `player.startRecording`, `player.stopRecording`,
+`player.toggleRecording`, and `player.recordingState` require `mpv.capture`.
 
 ## Contributions
 
@@ -258,6 +265,7 @@ Supported permission declarations:
 - `text`
 - `select`
 - `color`
+- `directory`
 
 Setting, action, and capability display text may include optional locale maps
 next to their default English strings. OpenPlayer currently resolves `zh-CN`,
@@ -312,7 +320,11 @@ Supported action commands:
 
 - `player.openMedia`
 - `player.openStream`
+- `player.openStreamDialog`
 - `player.captureScreenshot`
+- `player.startRecording`
+- `player.stopRecording`
+- `player.toggleRecording`
 - `player.togglePlayback`
 - `player.stop`
 - `player.restart`
@@ -339,16 +351,33 @@ Supported action icons:
 - `pin`
 - `plugin`
 - `camera`
+- `record`
 - `stream`
 - `info`
 
 Action arguments:
 
-- `player.captureScreenshot` accepts optional `args.openFolder: boolean`.
-  It requires the plugin to declare `mpv.capture`.
+- `player.captureScreenshot` accepts optional `args.format`,
+  `args.formatSetting`, `args.directorySetting`, `args.openFolder`, and
+  `args.openFolderSetting`.
+  Supported screenshot formats are `png`, `jpg`, and `webp`. It requires the
+  plugin to declare `mpv.capture`.
+- `player.startRecording` and `player.toggleRecording` accept optional
+  `args.format`, `args.formatSetting`, `args.directorySetting`,
+  `args.openFolder`, and `args.openFolderSetting`. Supported recording containers are `mkv`, `mp4`, and
+  `ts`. Local files and HTTP/HTTPS streams are clipped with mpv `dump-cache`;
+  live protocols such as RTSP, RTMP, SRT, and UDP use mpv `stream-record`.
+  Recording uses the requested container but does not transcode media, so codec
+  and muxer compatibility depends on the source. These commands require
+  `mpv.capture`.
+- `player.stopRecording` accepts optional `args.openFolder` and
+  `args.openFolderSetting`. It requires `mpv.capture`.
 - `player.openStream` requires `args.url` and accepts optional `args.name`.
   Supported stream protocols are `http`, `https`, `rtmp`, `rtmps`, `rtsp`,
   `rtsps`, `srt`, and `udp`. It requires the plugin to declare
+  `media.openStream`.
+- `player.openStreamDialog` opens OpenPlayer's network stream dialog with recent
+  RTSP, RTMP, and HTTP(S) streams. It requires the plugin to declare
   `media.openStream`.
 
 ## Validation Rules

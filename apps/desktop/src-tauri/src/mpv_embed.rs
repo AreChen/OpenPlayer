@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     ffi::CString,
     fs,
     path::{Path, PathBuf},
@@ -41,6 +42,8 @@ const INITIAL_RESUME_SEEK_TIMEOUT: Duration = Duration::from_millis(8000);
 const INITIAL_RESUME_SEEK_EVENT_WAIT: Duration = Duration::from_millis(80);
 const INITIAL_RESUME_SEEK_SETTLE_TIMEOUT: Duration = Duration::from_millis(750);
 const INITIAL_RESUME_SEEK_TOLERANCE_SECONDS: f64 = 1.0;
+const RECORDING_OUTPUT_READY_TIMEOUT: Duration = Duration::from_secs(5);
+const RECORDING_DUMP_PREROLL_SECONDS: f64 = 5.0;
 const DEFAULT_VOLUME: f64 = 82.0;
 const MIN_PLAYBACK_SPEED: f64 = 0.25;
 const MAX_PLAYBACK_SPEED: f64 = 4.0;
@@ -85,6 +88,20 @@ struct MpvEmbedPlayer {
     video_fill: bool,
     ended: bool,
     force_paused_until: Option<Instant>,
+    recording: Option<MpvRecordingSession>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct MpvRecordingSession {
+    path: String,
+    format: String,
+    method: MpvRecordingMethod,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum MpvRecordingMethod {
+    StreamRecord,
+    DumpCache { start_position: f64 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -186,6 +203,15 @@ pub struct MpvEmbedTrack {
 #[serde(rename_all = "camelCase")]
 pub struct MpvCaptureArtifact {
     path: String,
+    copied_to_clipboard: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MpvRecordingState {
+    active: bool,
+    path: Option<String>,
+    format: Option<String>,
 }
 
 #[tauri::command]
@@ -233,6 +259,9 @@ pub fn open_path_for_window(
         .player
         .lock()
         .map_err(|_| "mpv embed state lock failed".to_string())?;
+    if let Some(existing) = player.as_mut() {
+        let _ = stop_recording_for_player(existing);
+    }
     *player = Some(MpvEmbedPlayer {
         #[cfg(target_os = "macos")]
         _render_context: render_context,
@@ -243,6 +272,7 @@ pub fn open_path_for_window(
         video_fill: false,
         ended: false,
         force_paused_until: None,
+        recording: None,
     });
     let next_player = player
         .as_mut()
@@ -456,8 +486,13 @@ pub async fn mpv_embed_set_plugin_property(
 }
 
 #[tauri::command]
-pub async fn mpv_embed_capture_screenshot(app: AppHandle) -> Result<MpvCaptureArtifact, String> {
-    let capture_directory = capture_directory_for_app(&app)?;
+pub async fn mpv_embed_capture_screenshot(
+    app: AppHandle,
+    format: Option<String>,
+    directory: Option<String>,
+) -> Result<MpvCaptureArtifact, String> {
+    let capture_directory = capture_directory_for_app(&app, directory)?;
+    let format = normalize_capture_image_format(format)?;
 
     run_mpv_command(app, move |state| {
         with_player(state, |player| {
@@ -467,14 +502,95 @@ pub async fn mpv_embed_capture_screenshot(app: AppHandle) -> Result<MpvCaptureAr
                 &capture_directory,
                 &player.path,
                 current_time_ms_for_capture(),
+                &format,
             );
             let output_text = output_path.to_string_lossy().to_string();
             player
                 .mpv
                 .command("screenshot-to-file", &[&output_text, "video"])
                 .map_err(|error| format!("mpv screenshot failed: {error}"))?;
-            Ok(MpvCaptureArtifact { path: output_text })
+            let copied_to_clipboard = copy_image_file_to_clipboard(&output_path).is_ok();
+            Ok(MpvCaptureArtifact {
+                path: output_text,
+                copied_to_clipboard,
+            })
         })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn mpv_embed_recording_state(app: AppHandle) -> Result<MpvRecordingState, String> {
+    let state = app.state::<MpvEmbedState>();
+    let mut player = state
+        .player
+        .lock()
+        .map_err(|_| "mpv embed state lock failed".to_string())?;
+
+    let Some(player) = player.as_mut() else {
+        return Ok(MpvRecordingState::inactive(None));
+    };
+    player.drain_events();
+    Ok(player.recording_state())
+}
+
+#[tauri::command]
+pub async fn mpv_embed_start_recording(
+    app: AppHandle,
+    format: Option<String>,
+    directory: Option<String>,
+) -> Result<MpvRecordingState, String> {
+    let recording_directory = recording_directory_for_app(&app, directory)?;
+    let requested_format = normalize_recording_container_format(format)?;
+
+    run_mpv_command(app, move |state| {
+        with_player(state, |player| {
+            if player.recording.is_some() {
+                return Ok(player.recording_state());
+            }
+
+            fs::create_dir_all(&recording_directory)
+                .map_err(|error| format!("failed to create recording directory: {error}"))?;
+            let start_position = player.mpv.get_property::<f64>("time-pos").unwrap_or(0.0);
+            let method = recording_method_for_media_path(&player.path, start_position);
+            let format = recording_container_format_for_method(&method, &requested_format);
+            let output_path = recording_output_path(
+                &recording_directory,
+                &player.path,
+                current_time_ms_for_capture(),
+                &format,
+            );
+            let output_text = output_path.to_string_lossy().to_string();
+            match &method {
+                MpvRecordingMethod::StreamRecord => {
+                    player
+                        .mpv
+                        .set_property("stream-record", output_text.as_str())
+                        .map_err(|error| format!("mpv recording start failed: {error}"))?;
+                }
+                MpvRecordingMethod::DumpCache { start_position } => {
+                    let start_arg = recording_time_arg(*start_position)?;
+                    player
+                        .mpv
+                        .command("async", &["dump-cache", &start_arg, "no", &output_text])
+                        .map_err(|error| format!("mpv recording start failed: {error}"))?;
+                }
+            }
+            player.recording = Some(MpvRecordingSession {
+                path: output_text,
+                format,
+                method,
+            });
+            Ok(player.recording_state())
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn mpv_embed_stop_recording(app: AppHandle) -> Result<MpvRecordingState, String> {
+    run_mpv_command(app, move |state| {
+        with_player(state, |player| stop_recording_for_player(player))
     })
     .await
 }
@@ -1013,8 +1129,21 @@ impl MpvEmbedPlayer {
             }
             MpvEventEffect::Ended => {
                 self.ended = true;
+                let _ = stop_recording_for_player(self);
             }
             MpvEventEffect::None => {}
+        }
+    }
+
+    fn recording_state(&self) -> MpvRecordingState {
+        if let Some(recording) = &self.recording {
+            MpvRecordingState {
+                active: true,
+                path: Some(recording.path.clone()),
+                format: Some(recording.format.clone()),
+            }
+        } else {
+            MpvRecordingState::inactive(None)
         }
     }
 
@@ -1092,6 +1221,16 @@ impl MpvEmbedPlayer {
     }
 }
 
+impl MpvRecordingState {
+    fn inactive(path: Option<String>) -> Self {
+        Self {
+            active: false,
+            path,
+            format: None,
+        }
+    }
+}
+
 impl MpvEmbedState {
     #[allow(dead_code)]
     pub fn resize_video_host(&self) -> Result<(), String> {
@@ -1142,7 +1281,8 @@ fn stop_player(state: &MpvEmbedState) -> Result<(), String> {
         .lock()
         .map_err(|_| "mpv embed state lock failed".to_string())?;
 
-    if let Some(player) = player.take() {
+    if let Some(mut player) = player.take() {
+        let _ = stop_recording_for_player(&mut player);
         player
             .mpv
             .command("stop", &[])
@@ -1712,7 +1852,16 @@ fn is_supported_media_stream_scheme(scheme: &str) -> bool {
     )
 }
 
-fn capture_directory_for_app(app: &AppHandle) -> Result<PathBuf, String> {
+fn capture_directory_for_app(
+    app: &AppHandle,
+    directory_override: Option<String>,
+) -> Result<PathBuf, String> {
+    if let Some(directory) = normalize_capture_directory_override(directory_override)? {
+        fs::create_dir_all(&directory)
+            .map_err(|error| format!("failed to create capture directory: {error}"))?;
+        return Ok(directory);
+    }
+
     if let Ok(mut directory) = app.path().picture_dir() {
         directory.push("OpenPlayer");
         directory.push("Captures");
@@ -1727,9 +1876,215 @@ fn capture_directory_for_app(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(directory)
 }
 
-fn capture_output_path(directory: &Path, media_path: &str, timestamp_ms: u64) -> PathBuf {
+fn recording_directory_for_app(
+    app: &AppHandle,
+    directory_override: Option<String>,
+) -> Result<PathBuf, String> {
+    if let Some(directory) = normalize_capture_directory_override(directory_override)? {
+        fs::create_dir_all(&directory)
+            .map_err(|error| format!("failed to create recording directory: {error}"))?;
+        return Ok(directory);
+    }
+
+    if let Ok(mut directory) = app.path().video_dir() {
+        directory.push("OpenPlayer");
+        directory.push("Recordings");
+        return Ok(directory);
+    }
+
+    let mut directory = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("failed to resolve recording directory: {error}"))?;
+    directory.push("recordings");
+    Ok(directory)
+}
+
+fn capture_output_path(
+    directory: &Path,
+    media_path: &str,
+    timestamp_ms: u64,
+    format: &str,
+) -> PathBuf {
     let stem = capture_file_stem(media_path);
-    directory.join(format!("openplayer-{stem}-{timestamp_ms}.png"))
+    directory.join(format!("openplayer-{stem}-{timestamp_ms}.{format}"))
+}
+
+fn recording_output_path(
+    directory: &Path,
+    media_path: &str,
+    timestamp_ms: u64,
+    format: &str,
+) -> PathBuf {
+    let stem = capture_file_stem(media_path);
+    directory.join(format!("openplayer-{stem}-{timestamp_ms}.{format}"))
+}
+
+fn normalize_capture_image_format(format: Option<String>) -> Result<String, String> {
+    let format = format
+        .as_deref()
+        .map(str::trim)
+        .filter(|format| !format.is_empty())
+        .unwrap_or("png")
+        .to_ascii_lowercase();
+    match format.as_str() {
+        "png" | "jpg" | "webp" => Ok(format),
+        "jpeg" => Ok("jpg".to_string()),
+        _ => Err(format!("unsupported screenshot format: {format}")),
+    }
+}
+
+fn normalize_recording_container_format(format: Option<String>) -> Result<String, String> {
+    let format = format
+        .as_deref()
+        .map(str::trim)
+        .filter(|format| !format.is_empty())
+        .unwrap_or("mp4")
+        .to_ascii_lowercase();
+    match format.as_str() {
+        "mp4" | "mkv" | "ts" => Ok(format),
+        _ => Err(format!("unsupported recording format: {format}")),
+    }
+}
+
+fn recording_container_format_for_method(
+    method: &MpvRecordingMethod,
+    requested_format: &str,
+) -> String {
+    match method {
+        MpvRecordingMethod::DumpCache { .. } | MpvRecordingMethod::StreamRecord => {
+            requested_format.to_string()
+        }
+    }
+}
+
+fn normalize_capture_directory_override(
+    directory: Option<String>,
+) -> Result<Option<PathBuf>, String> {
+    let Some(directory) = directory
+        .as_deref()
+        .map(str::trim)
+        .filter(|directory| !directory.is_empty())
+    else {
+        return Ok(None);
+    };
+    if directory.len() > 1024 {
+        return Err("capture directory path is too long".to_string());
+    }
+    let path = PathBuf::from(directory);
+    if !path.is_absolute() {
+        return Err("capture directory path must be absolute".to_string());
+    }
+    if path.is_file() {
+        return Err("capture directory path is not a directory".to_string());
+    }
+    Ok(Some(path))
+}
+
+fn stop_recording_for_player(player: &mut MpvEmbedPlayer) -> Result<MpvRecordingState, String> {
+    let Some(recording) = player.recording.take() else {
+        return Ok(MpvRecordingState::inactive(None));
+    };
+    match recording.method {
+        MpvRecordingMethod::StreamRecord => {
+            player
+                .mpv
+                .set_property("stream-record", "")
+                .map_err(|error| format!("mpv recording stop failed: {error}"))?;
+        }
+        MpvRecordingMethod::DumpCache { .. } => {
+            let _ = player.mpv.command("dump-cache", &["0", "0", ""]);
+        }
+    }
+    wait_for_recording_output(&recording.path, RECORDING_OUTPUT_READY_TIMEOUT)?;
+    Ok(MpvRecordingState::inactive(Some(recording.path)))
+}
+
+fn recording_method_for_media_path(media_path: &str, start_position: f64) -> MpvRecordingMethod {
+    if media_stream_scheme(media_path).is_some_and(is_live_recording_stream_scheme) {
+        MpvRecordingMethod::StreamRecord
+    } else {
+        MpvRecordingMethod::DumpCache {
+            start_position: recording_dump_start_position(start_position),
+        }
+    }
+}
+
+fn media_stream_scheme(media_path: &str) -> Option<&str> {
+    media_path
+        .split_once("://")
+        .map(|(scheme, _)| scheme)
+        .filter(|scheme| !scheme.is_empty())
+}
+
+fn is_live_recording_stream_scheme(scheme: &str) -> bool {
+    matches!(
+        scheme.to_ascii_lowercase().as_str(),
+        "rtmp" | "rtmps" | "rtsp" | "rtsps" | "srt" | "udp"
+    )
+}
+
+fn recording_dump_start_position(position: f64) -> f64 {
+    if !position.is_finite() {
+        return 0.0;
+    }
+    (position - RECORDING_DUMP_PREROLL_SECONDS).max(0.0)
+}
+
+fn recording_time_arg(position: f64) -> Result<String, String> {
+    if !position.is_finite() {
+        return Err("recording start time is invalid".to_string());
+    }
+    Ok(format!("{:.3}", position.max(0.0)))
+}
+
+fn wait_for_recording_output(path: &str, timeout: Duration) -> Result<(), String> {
+    let path = Path::new(path);
+    let deadline = Instant::now() + timeout;
+    loop {
+        if recording_output_has_content(path).unwrap_or(false) {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return ensure_recording_output_has_content(path);
+        }
+        thread::sleep(Duration::from_millis(40));
+    }
+}
+
+fn recording_output_has_content(path: &Path) -> Result<bool, String> {
+    let metadata =
+        fs::metadata(path).map_err(|error| format!("recording output was not created: {error}"))?;
+    Ok(metadata.len() > 0)
+}
+
+fn ensure_recording_output_has_content(path: &Path) -> Result<(), String> {
+    if !recording_output_has_content(path)? {
+        let _ = fs::remove_file(path);
+        return Err(
+            "mpv produced an empty recording file; try recording for longer or using MKV"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn copy_image_file_to_clipboard(path: &Path) -> Result<(), String> {
+    let image = image::ImageReader::open(path)
+        .map_err(|error| format!("failed to open screenshot for clipboard: {error}"))?
+        .decode()
+        .map_err(|error| format!("failed to decode screenshot for clipboard: {error}"))?
+        .to_rgba8();
+    let (width, height) = image.dimensions();
+    let mut clipboard = arboard::Clipboard::new()
+        .map_err(|error| format!("failed to access clipboard: {error}"))?;
+    clipboard
+        .set_image(arboard::ImageData {
+            width: width as usize,
+            height: height as usize,
+            bytes: Cow::Owned(image.into_raw()),
+        })
+        .map_err(|error| format!("failed to copy screenshot to clipboard: {error}"))
 }
 
 fn capture_file_stem(media_path: &str) -> String {
@@ -1987,12 +2342,229 @@ mod tests {
     #[test]
     fn builds_sanitized_capture_output_paths() {
         let directory = PathBuf::from("captures");
-        let path = capture_output_path(&directory, "https://example.com/live stream.m3u8", 42);
+        let path = capture_output_path(
+            &directory,
+            "https://example.com/live stream.m3u8",
+            42,
+            "png",
+        );
 
         assert_eq!(
             path,
             PathBuf::from("captures").join("openplayer-live_stream-42.png")
         );
+    }
+
+    #[test]
+    fn normalizes_capture_screenshot_formats() {
+        assert_eq!(normalize_capture_image_format(None).unwrap(), "png");
+        assert_eq!(
+            normalize_capture_image_format(Some("JPEG".to_string())).unwrap(),
+            "jpg"
+        );
+        assert_eq!(
+            normalize_capture_image_format(Some("webp".to_string())).unwrap(),
+            "webp"
+        );
+        assert_eq!(
+            normalize_capture_image_format(Some("bmp".to_string()))
+                .expect_err("unsupported screenshot formats should be rejected"),
+            "unsupported screenshot format: bmp"
+        );
+    }
+
+    #[test]
+    fn builds_sanitized_recording_output_paths() {
+        let directory = PathBuf::from("recordings");
+        let path = recording_output_path(&directory, "rtsp://camera.local/live stream", 42, "mp4");
+
+        assert_eq!(
+            path,
+            PathBuf::from("recordings").join("openplayer-live_stream-42.mp4")
+        );
+    }
+
+    #[test]
+    fn normalizes_recording_container_formats() {
+        assert_eq!(normalize_recording_container_format(None).unwrap(), "mp4");
+        assert_eq!(
+            normalize_recording_container_format(Some("MKV".to_string())).unwrap(),
+            "mkv"
+        );
+        assert_eq!(
+            normalize_recording_container_format(Some("ts".to_string())).unwrap(),
+            "ts"
+        );
+        assert_eq!(
+            normalize_recording_container_format(Some("avi".to_string()))
+                .expect_err("unsupported recording formats should be rejected"),
+            "unsupported recording format: avi"
+        );
+    }
+
+    #[test]
+    fn dump_cache_recordings_preserve_requested_container() {
+        assert_eq!(
+            recording_container_format_for_method(
+                &MpvRecordingMethod::DumpCache {
+                    start_position: 12.0
+                },
+                "mp4"
+            ),
+            "mp4"
+        );
+        assert_eq!(
+            recording_container_format_for_method(
+                &MpvRecordingMethod::DumpCache {
+                    start_position: 12.0
+                },
+                "ts"
+            ),
+            "ts"
+        );
+    }
+
+    #[test]
+    fn stream_recordings_preserve_requested_container() {
+        assert_eq!(
+            recording_container_format_for_method(&MpvRecordingMethod::StreamRecord, "ts"),
+            "ts"
+        );
+        assert_eq!(
+            recording_container_format_for_method(&MpvRecordingMethod::StreamRecord, "mp4"),
+            "mp4"
+        );
+    }
+
+    #[test]
+    fn local_recordings_use_cache_dump_with_short_preroll() {
+        assert_eq!(
+            recording_method_for_media_path("F:\\Movies\\clip.mp4", 12.5),
+            MpvRecordingMethod::DumpCache {
+                start_position: 7.5
+            }
+        );
+        assert_eq!(
+            recording_method_for_media_path("F:\\Movies\\clip.mp4", 2.5),
+            MpvRecordingMethod::DumpCache {
+                start_position: 0.0
+            }
+        );
+    }
+
+    #[test]
+    fn http_network_recordings_use_cache_dump_with_short_preroll() {
+        assert_eq!(
+            recording_method_for_media_path("https://example.com/live.m3u8", 12.5),
+            MpvRecordingMethod::DumpCache {
+                start_position: 7.5
+            }
+        );
+    }
+
+    #[test]
+    fn live_network_recordings_use_stream_record() {
+        assert_eq!(
+            recording_method_for_media_path("rtsp://camera.local/live", 12.5),
+            MpvRecordingMethod::StreamRecord
+        );
+        assert_eq!(
+            recording_method_for_media_path("rtmp://example.com/live", 12.5),
+            MpvRecordingMethod::StreamRecord
+        );
+    }
+
+    #[test]
+    fn recording_dump_start_positions_include_bounded_preroll() {
+        assert_eq!(recording_dump_start_position(8.0), 3.0);
+        assert_eq!(recording_dump_start_position(3.0), 0.0);
+        assert_eq!(recording_dump_start_position(f64::NAN), 0.0);
+    }
+
+    #[test]
+    fn recording_start_time_args_are_finite_and_non_negative() {
+        assert_eq!(
+            recording_time_arg(1.25).expect("valid recording start"),
+            "1.250"
+        );
+        assert_eq!(
+            recording_time_arg(-4.5).expect("negative starts should clamp"),
+            "0.000"
+        );
+        assert_eq!(
+            recording_time_arg(f64::NAN).expect_err("invalid starts should fail"),
+            "recording start time is invalid"
+        );
+    }
+
+    #[test]
+    fn rejects_empty_recording_outputs() {
+        let directory = std::env::temp_dir().join(format!(
+            "openplayer-empty-recording-{}-{}",
+            std::process::id(),
+            current_time_ms_for_capture()
+        ));
+        std::fs::create_dir_all(&directory).expect("temp recording directory should be created");
+        let output_path = directory.join("empty.mp4");
+        std::fs::write(&output_path, []).expect("empty recording file should be written");
+
+        let error = ensure_recording_output_has_content(&output_path)
+            .expect_err("empty recording outputs should fail");
+        let _ = std::fs::remove_dir_all(&directory);
+
+        assert!(error.contains("empty recording file"));
+    }
+
+    #[test]
+    fn polling_empty_recording_outputs_does_not_delete_them() {
+        let directory = std::env::temp_dir().join(format!(
+            "openplayer-empty-recording-poll-{}-{}",
+            std::process::id(),
+            current_time_ms_for_capture()
+        ));
+        std::fs::create_dir_all(&directory).expect("temp recording directory should be created");
+        let output_path = directory.join("empty.mp4");
+        std::fs::write(&output_path, []).expect("empty recording file should be written");
+
+        assert!(
+            !recording_output_has_content(&output_path).expect("empty file should be readable")
+        );
+        assert!(output_path.exists());
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn accepts_custom_capture_directory_overrides() {
+        let directory = std::env::temp_dir().join(format!(
+            "openplayer-capture-directory-{}-{}",
+            std::process::id(),
+            current_time_ms_for_capture()
+        ));
+        let resolved =
+            normalize_capture_directory_override(Some(directory.to_string_lossy().to_string()))
+                .expect("custom capture directory should normalize");
+        let _ = std::fs::remove_dir_all(&directory);
+
+        assert_eq!(resolved, Some(directory));
+    }
+
+    #[test]
+    fn rejects_file_capture_directory_overrides() {
+        let directory = std::env::temp_dir().join(format!(
+            "openplayer-capture-directory-file-{}-{}",
+            std::process::id(),
+            current_time_ms_for_capture()
+        ));
+        std::fs::create_dir_all(&directory).expect("temp capture directory should be created");
+        let file_path = directory.join("not-a-directory.txt");
+        std::fs::write(&file_path, b"fixture").expect("temp file should be written");
+
+        let error =
+            normalize_capture_directory_override(Some(file_path.to_string_lossy().to_string()))
+                .expect_err("file capture directory overrides should be rejected");
+        let _ = std::fs::remove_dir_all(&directory);
+
+        assert!(error.contains("capture directory path is not a directory"));
     }
 
     #[test]

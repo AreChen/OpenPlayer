@@ -15,8 +15,14 @@ const HISTORY_BY_UPDATED: TableDefinition<&str, &str> = TableDefinition::new("hi
 const PLAYBACK_SETTINGS: TableDefinition<&str, &str> = TableDefinition::new("playback_settings");
 const MEDIA_SETTINGS_BY_PATH: TableDefinition<&str, &str> =
     TableDefinition::new("media_settings_by_path");
+const NETWORK_STREAMS_BY_URL: TableDefinition<&str, &str> =
+    TableDefinition::new("network_streams_by_url");
+const NETWORK_STREAMS_BY_UPDATED: TableDefinition<&str, &str> =
+    TableDefinition::new("network_streams_by_updated");
 const HISTORY_LIMIT: usize = 10_000;
 const HISTORY_LIST_LIMIT: usize = 100;
+const NETWORK_STREAM_HISTORY_LIMIT: usize = 500;
+const NETWORK_STREAM_HISTORY_LIST_LIMIT: usize = 50;
 const MIN_RESUME_PROGRESS_RATIO: f64 = 0.01;
 const RESUME_END_PROGRESS_RATIO: f64 = 0.95;
 const PLAYBACK_SETTINGS_KEY: &str = "global";
@@ -96,6 +102,23 @@ pub struct MediaPlaybackSettings {
 pub struct MediaPlaybackSettingsUpdate {
     #[serde(default)]
     subtitle_track_id: Option<Option<i64>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkStreamHistoryEntry {
+    url: String,
+    name: String,
+    scheme: String,
+    updated_at: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkStreamHistoryUpdate {
+    url: String,
+    name: Option<String>,
+    updated_at: Option<i64>,
 }
 
 pub struct PlaybackStoreState {
@@ -178,6 +201,12 @@ impl PlaybackStore {
                 .map_err(|error| {
                     format!("failed to open media playback settings table: {error}")
                 })?;
+            transaction
+                .open_table(NETWORK_STREAMS_BY_URL)
+                .map_err(|error| format!("failed to open network stream history table: {error}"))?;
+            transaction
+                .open_table(NETWORK_STREAMS_BY_UPDATED)
+                .map_err(|error| format!("failed to open network stream history index: {error}"))?;
         }
         transaction
             .commit()
@@ -397,6 +426,121 @@ impl PlaybackStore {
         Ok(settings)
     }
 
+    fn network_stream_history(&self) -> Result<Vec<NetworkStreamHistoryEntry>, String> {
+        let transaction = self
+            .database
+            .begin_read()
+            .map_err(|error| format!("failed to read network stream history: {error}"))?;
+        let by_url = transaction
+            .open_table(NETWORK_STREAMS_BY_URL)
+            .map_err(|error| format!("failed to open network stream history table: {error}"))?;
+        let by_updated = transaction
+            .open_table(NETWORK_STREAMS_BY_UPDATED)
+            .map_err(|error| format!("failed to open network stream history index: {error}"))?;
+        let mut entries = Vec::new();
+
+        for item in by_updated
+            .iter()
+            .map_err(|error| format!("failed to scan network stream history index: {error}"))?
+            .take(NETWORK_STREAM_HISTORY_LIST_LIMIT)
+        {
+            let (_, url_key) = item
+                .map_err(|error| format!("failed to read network stream history index: {error}"))?;
+            if let Some(stored) = by_url
+                .get(url_key.value())
+                .map_err(|error| format!("failed to read network stream history entry: {error}"))?
+            {
+                entries.push(decode_network_stream_entry(stored.value())?);
+            }
+        }
+
+        Ok(entries)
+    }
+
+    fn remember_network_stream(
+        &mut self,
+        update: NetworkStreamHistoryUpdate,
+    ) -> Result<Vec<NetworkStreamHistoryEntry>, String> {
+        let entry = normalize_network_stream_update(update)?;
+        let entry_key = network_stream_key_for_url(&entry.url);
+        let transaction = self
+            .database
+            .begin_write()
+            .map_err(|error| format!("failed to write network stream history: {error}"))?;
+        {
+            let mut by_url = transaction
+                .open_table(NETWORK_STREAMS_BY_URL)
+                .map_err(|error| format!("failed to open network stream history table: {error}"))?;
+            let mut by_updated = transaction
+                .open_table(NETWORK_STREAMS_BY_UPDATED)
+                .map_err(|error| format!("failed to open network stream history index: {error}"))?;
+
+            if let Some(previous) = by_url
+                .get(entry_key.as_str())
+                .map_err(|error| format!("failed to read old network stream history: {error}"))?
+            {
+                let previous = decode_network_stream_entry(previous.value())?;
+                let old_index_key = updated_index_key(previous.updated_at, &entry_key);
+                by_updated.remove(old_index_key.as_str()).map_err(|error| {
+                    format!("failed to replace network stream history index: {error}")
+                })?;
+            }
+
+            let encoded = serde_json::to_string(&entry).map_err(|error| {
+                format!("failed to encode network stream history entry: {error}")
+            })?;
+            let index_key = updated_index_key(entry.updated_at, &entry_key);
+            by_url
+                .insert(entry_key.as_str(), encoded.as_str())
+                .map_err(|error| {
+                    format!("failed to store network stream history entry: {error}")
+                })?;
+            by_updated
+                .insert(index_key.as_str(), entry_key.as_str())
+                .map_err(|error| {
+                    format!("failed to store network stream history index: {error}")
+                })?;
+
+            prune_network_stream_history(&mut by_url, &mut by_updated)?;
+        }
+        transaction
+            .commit()
+            .map_err(|error| format!("failed to commit network stream history: {error}"))?;
+
+        self.network_stream_history()
+    }
+
+    fn clear_network_stream_history(&mut self) -> Result<Vec<NetworkStreamHistoryEntry>, String> {
+        let transaction = self
+            .database
+            .begin_write()
+            .map_err(|error| format!("failed to clear network stream history: {error}"))?;
+        {
+            let mut by_url = transaction
+                .open_table(NETWORK_STREAMS_BY_URL)
+                .map_err(|error| format!("failed to open network stream history table: {error}"))?;
+            let mut by_updated = transaction
+                .open_table(NETWORK_STREAMS_BY_UPDATED)
+                .map_err(|error| format!("failed to open network stream history index: {error}"))?;
+
+            for key in table_keys(&by_url, "network stream history entries")? {
+                by_url.remove(key.as_str()).map_err(|error| {
+                    format!("failed to remove network stream history entry: {error}")
+                })?;
+            }
+            for key in table_keys(&by_updated, "network stream history index")? {
+                by_updated.remove(key.as_str()).map_err(|error| {
+                    format!("failed to remove network stream history index: {error}")
+                })?;
+            }
+        }
+        transaction
+            .commit()
+            .map_err(|error| format!("failed to commit network stream history clear: {error}"))?;
+
+        Ok(Vec::new())
+    }
+
     fn clear(&mut self) -> Result<Vec<PlaybackHistoryEntry>, String> {
         let transaction = self
             .database
@@ -494,6 +638,28 @@ pub fn playback_media_settings_update(
     state.with_store(|store| store.update_media_settings(&path, settings))
 }
 
+#[tauri::command]
+pub fn network_stream_history_list(
+    state: State<'_, PlaybackStoreState>,
+) -> Result<Vec<NetworkStreamHistoryEntry>, String> {
+    state.with_store(|store| store.network_stream_history())
+}
+
+#[tauri::command]
+pub fn network_stream_history_remember(
+    state: State<'_, PlaybackStoreState>,
+    entry: NetworkStreamHistoryUpdate,
+) -> Result<Vec<NetworkStreamHistoryEntry>, String> {
+    state.with_store(|store| store.remember_network_stream(entry))
+}
+
+#[tauri::command]
+pub fn network_stream_history_clear(
+    state: State<'_, PlaybackStoreState>,
+) -> Result<Vec<NetworkStreamHistoryEntry>, String> {
+    state.with_store(|store| store.clear_network_stream_history())
+}
+
 fn create_database_with_retry(path: &Path, label: &str) -> Result<Database, String> {
     let mut last_error = None;
     for _ in 0..16 {
@@ -548,6 +714,33 @@ fn prune_history(
         by_path
             .remove(path.as_str())
             .map_err(|error| format!("failed to prune playback history entry: {error}"))?;
+    }
+
+    Ok(())
+}
+
+fn prune_network_stream_history(
+    by_url: &mut redb::Table<'_, &str, &str>,
+    by_updated: &mut redb::Table<'_, &str, &str>,
+) -> Result<(), String> {
+    while by_updated
+        .len()
+        .map_err(|error| format!("failed to count network stream history entries: {error}"))?
+        > NETWORK_STREAM_HISTORY_LIMIT as u64
+    {
+        let oldest = by_updated
+            .last()
+            .map_err(|error| format!("failed to find old network stream history entry: {error}"))?
+            .map(|(index_key, url)| (index_key.value().to_string(), url.value().to_string()));
+        let Some((index_key, url)) = oldest else {
+            break;
+        };
+        by_updated
+            .remove(index_key.as_str())
+            .map_err(|error| format!("failed to prune network stream history index: {error}"))?;
+        by_url
+            .remove(url.as_str())
+            .map_err(|error| format!("failed to prune network stream history entry: {error}"))?;
     }
 
     Ok(())
@@ -616,6 +809,11 @@ fn decode_media_settings(value: &str) -> Result<MediaPlaybackSettings, String> {
     serde_json::from_str(value)
         .map(sanitize_media_settings)
         .map_err(|error| format!("failed to decode media playback settings: {error}"))
+}
+
+fn decode_network_stream_entry(value: &str) -> Result<NetworkStreamHistoryEntry, String> {
+    serde_json::from_str(value)
+        .map_err(|error| format!("failed to decode network stream history entry: {error}"))
 }
 
 fn normalize_non_negative_number(value: f64) -> f64 {
@@ -724,6 +922,53 @@ fn normalize_track_id(track_id: Option<i64>) -> Result<Option<i64>, String> {
     }
 }
 
+fn normalize_network_stream_update(
+    update: NetworkStreamHistoryUpdate,
+) -> Result<NetworkStreamHistoryEntry, String> {
+    let (url, scheme) = normalize_network_stream_url(&update.url)?;
+    Ok(NetworkStreamHistoryEntry {
+        name: update
+            .name
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| network_stream_name_from_url(&url)),
+        url,
+        scheme,
+        updated_at: update.updated_at.unwrap_or_else(now_millis).max(0),
+    })
+}
+
+fn normalize_network_stream_url(url: &str) -> Result<(String, String), String> {
+    let trimmed = url.trim();
+    if trimmed.is_empty() || trimmed.len() > 2048 || trimmed.chars().any(char::is_whitespace) {
+        return Err("network stream url is invalid".to_string());
+    }
+    let Some((scheme, rest)) = trimmed.split_once("://") else {
+        return Err("network stream url must include a protocol".to_string());
+    };
+    let scheme = scheme.to_ascii_lowercase();
+    if !is_supported_network_stream_scheme(&scheme) {
+        return Err(format!("unsupported network stream protocol: {scheme}"));
+    }
+    if rest.trim_matches('/').is_empty() {
+        return Err("network stream url must include a host or path".to_string());
+    }
+    Ok((format!("{scheme}://{rest}"), scheme))
+}
+
+fn is_supported_network_stream_scheme(scheme: &str) -> bool {
+    matches!(
+        scheme,
+        "http" | "https" | "rtmp" | "rtmps" | "rtsp" | "rtsps"
+    )
+}
+
+fn network_stream_key_for_url(url: &str) -> String {
+    url.trim().to_string()
+}
+
 fn updated_index_key(updated_at: i64, path: &str) -> String {
     let newest_first = u64::MAX - updated_at.max(0) as u64;
     format!("{newest_first:020}|{path}")
@@ -782,6 +1027,26 @@ fn media_name_from_path(path: &str) -> String {
         .and_then(|name| name.to_str())
         .filter(|name| !name.is_empty())
         .unwrap_or(path)
+        .to_string()
+}
+
+fn network_stream_name_from_url(url: &str) -> String {
+    let without_query = url.split(['?', '#']).next().unwrap_or(url);
+    if let Some(tail) = without_query
+        .rsplit('/')
+        .find(|part| !part.is_empty() && !part.contains("://"))
+    {
+        return tail.to_string();
+    }
+    let without_scheme = without_query
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or(without_query);
+    without_scheme
+        .split('/')
+        .next()
+        .filter(|host| !host.is_empty())
+        .unwrap_or(url)
         .to_string()
 }
 
@@ -957,5 +1222,94 @@ mod tests {
         assert!(settings.video_fill);
         assert_eq!(settings.time_display_mode, "frames");
         assert_eq!(media_settings.subtitle_track_id, Some(3));
+    }
+
+    #[test]
+    fn redb_store_persists_network_stream_history_newest_first() {
+        let directory = std::env::temp_dir().join(format!(
+            "openplayer-network-streams-{}-{}",
+            std::process::id(),
+            now_millis()
+        ));
+        fs::create_dir_all(&directory).expect("temp stream directory should be created");
+        let database_path = directory.join("history.redb");
+        let mut store = PlaybackStore::open(database_path).expect("redb store should open");
+
+        store
+            .remember_network_stream(NetworkStreamHistoryUpdate {
+                url: "rtsp://camera.local/live".to_string(),
+                name: None,
+                updated_at: Some(10),
+            })
+            .expect("rtsp stream should be stored");
+        store
+            .remember_network_stream(NetworkStreamHistoryUpdate {
+                url: "https://example.com/live/channel.m3u8".to_string(),
+                name: Some("Example Live".to_string()),
+                updated_at: Some(20),
+            })
+            .expect("https stream should be stored");
+        store
+            .remember_network_stream(NetworkStreamHistoryUpdate {
+                url: "RTSP://camera.local/live".to_string(),
+                name: Some("Front Door".to_string()),
+                updated_at: Some(30),
+            })
+            .expect("same rtsp stream should update after protocol normalization");
+
+        let entries = store
+            .network_stream_history()
+            .expect("network stream history should be readable");
+        let _ = fs::remove_dir_all(&directory);
+
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].url, "rtsp://camera.local/live");
+        assert_eq!(entries[0].name, "Front Door");
+        assert_eq!(entries[0].scheme, "rtsp");
+        assert_eq!(entries[1].url, "https://example.com/live/channel.m3u8");
+        assert_eq!(entries[1].name, "Example Live");
+    }
+
+    #[test]
+    fn redb_store_clears_network_stream_history() {
+        let directory = std::env::temp_dir().join(format!(
+            "openplayer-network-streams-clear-{}-{}",
+            std::process::id(),
+            now_millis()
+        ));
+        fs::create_dir_all(&directory).expect("temp stream directory should be created");
+        let database_path = directory.join("history.redb");
+        let mut store = PlaybackStore::open(database_path).expect("redb store should open");
+
+        store
+            .remember_network_stream(NetworkStreamHistoryUpdate {
+                url: "rtmp://example.com/live".to_string(),
+                name: None,
+                updated_at: Some(10),
+            })
+            .expect("rtmp stream should be stored");
+
+        let entries = store
+            .clear_network_stream_history()
+            .expect("network stream history should clear");
+        let after_clear = store
+            .network_stream_history()
+            .expect("network stream history should be readable");
+        let _ = fs::remove_dir_all(&directory);
+
+        assert!(entries.is_empty());
+        assert!(after_clear.is_empty());
+    }
+
+    #[test]
+    fn network_stream_history_rejects_unsupported_protocols() {
+        let error = normalize_network_stream_update(NetworkStreamHistoryUpdate {
+            url: "file:///C:/secret.mp4".to_string(),
+            name: None,
+            updated_at: Some(10),
+        })
+        .expect_err("local file urls should not be accepted as network streams");
+
+        assert!(error.contains("unsupported network stream protocol"));
     }
 }

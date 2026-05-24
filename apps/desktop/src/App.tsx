@@ -1,4 +1,13 @@
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent as ReactFormEvent,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type WheelEvent as ReactWheelEvent,
+} from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview, type DragDropEvent } from "@tauri-apps/api/webview";
@@ -16,6 +25,13 @@ type PlaybackHistoryEntry = {
   name: string;
   position: number;
   duration: number;
+  updatedAt: number;
+};
+
+type NetworkStreamHistoryEntry = {
+  url: string;
+  name: string;
+  scheme: string;
   updatedAt: number;
 };
 
@@ -47,6 +63,7 @@ type MpvSnapshot = {
 
 type MpvCaptureArtifact = {
   path: string;
+  copiedToClipboard: boolean;
 };
 
 type PlatformSupport = {
@@ -112,7 +129,7 @@ type PluginCapabilitySummary = {
 };
 
 type PluginCapabilityKind = "subtitleStyle" | "capture" | "streamSource" | "aiTranscription" | "aiTranslation";
-type PluginSettingKind = "boolean" | "number" | "text" | "select" | "color";
+type PluginSettingKind = "boolean" | "number" | "text" | "select" | "color" | "directory";
 type PluginSettingPlacement =
   | "pluginSettings"
   | "subtitleSettings"
@@ -153,7 +170,11 @@ type PluginActionPlacement = "controls.left" | "controls.center" | "controls.rig
 type PluginActionCommand =
   | "player.openMedia"
   | "player.openStream"
+  | "player.openStreamDialog"
   | "player.captureScreenshot"
+  | "player.startRecording"
+  | "player.stopRecording"
+  | "player.toggleRecording"
   | "player.togglePlayback"
   | "player.stop"
   | "player.restart"
@@ -314,12 +335,24 @@ type VolumeFeedback = {
 type AlwaysOnTopFeedback = {
   enabled: boolean;
 };
+type CaptureFeedback = {
+  icon: "camera" | "record";
+  message: string;
+};
 
 type ResizeDirection = "East" | "North" | "NorthEast" | "NorthWest" | "South" | "SouthEast" | "SouthWest" | "West";
 type ResizeFeedback = {
   direction: ResizeDirection;
   active: boolean;
 };
+
+type MpvRecordingState = {
+  active: boolean;
+  path: string | null;
+  format: string | null;
+};
+
+const INACTIVE_RECORDING_STATE: MpvRecordingState = { active: false, path: null, format: null };
 
 type WindowCommand = "window_minimize" | "window_toggle_maximize" | "window_toggle_fullscreen" | "window_close";
 type ShortcutAction =
@@ -365,6 +398,7 @@ type IconName =
   | "plugin"
   | "preview"
   | "previous"
+  | "record"
   | "restart"
   | "settings"
   | "stop"
@@ -546,6 +580,7 @@ const SEEK_CONFIRM_TOLERANCE_SECONDS = 0.75;
 const SEEK_SNAPSHOT_SUPPRESS_MS = 1600;
 const AUTO_HIDE_CONTROLS_MS = 5000;
 const VOLUME_FEEDBACK_MS = 1100;
+const PLAYBACK_ERROR_FEEDBACK_MS = 5000;
 const STORE_SYNC_INTERVAL_MS = 1600;
 const END_OF_MEDIA_SNAP_TOLERANCE_SECONDS = 0.5;
 const CONTEXT_MENU_WIDTH = 236;
@@ -1018,6 +1053,18 @@ function mediaNameFromPath(path: string) {
   return normalized.split("/").pop() || path;
 }
 
+function parentDirectoryFromPath(path: string | null | undefined) {
+  if (!path) {
+    return null;
+  }
+  const normalized = path.replace(/\\/g, "/");
+  const index = normalized.lastIndexOf("/");
+  if (index <= 0) {
+    return null;
+  }
+  return path.slice(0, index);
+}
+
 function streamNameFromUrl(url: string, fallbackName: string | null = null) {
   if (fallbackName?.trim()) {
     return fallbackName.trim();
@@ -1029,6 +1076,29 @@ function streamNameFromUrl(url: string, fallbackName: string | null = null) {
   } catch {
     return mediaNameFromPath(url);
   }
+}
+
+const networkStreamProtocols = new Set(["http:", "https:", "rtmp:", "rtmps:", "rtsp:", "rtsps:"]);
+
+function normalizeNetworkStreamInput(url: string) {
+  const trimmed = url.trim();
+  if (!trimmed || /\s/.test(trimmed) || trimmed.length > 2048) {
+    throw new Error("network stream url is invalid");
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    throw new Error("network stream url must include a protocol");
+  }
+  if (!networkStreamProtocols.has(parsed.protocol.toLowerCase())) {
+    throw new Error(`unsupported network stream protocol: ${parsed.protocol.replace(":", "")}`);
+  }
+  if (!parsed.host && !parsed.pathname.replace(/\//g, "")) {
+    throw new Error("network stream url must include a host or path");
+  }
+  parsed.protocol = parsed.protocol.toLowerCase();
+  return parsed.toString();
 }
 
 function defaultShellPreviewExtensions(formats: ShellPreviewFormatInfo[]) {
@@ -1127,6 +1197,7 @@ function normalizePluginSettingValue(setting: PluginSettingDefinition, value: Pl
       return setting.options.some((option) => option.value === selected) ? selected : String(setting.defaultValue);
     }
     case "color":
+    case "directory":
     case "text":
       return String(value);
     default:
@@ -1165,6 +1236,36 @@ function pluginActionStringArg(action: PluginActionDefinition, key: string) {
 
 function pluginActionBooleanArg(action: PluginActionDefinition, key: string) {
   return action.args?.[key] === true;
+}
+
+function pluginSettingStringValue(plugin: ThemePluginSummary, settingId: string | null) {
+  if (!settingId) {
+    return null;
+  }
+  const setting = plugin.settings.find((candidate) => candidate.id === settingId);
+  return typeof setting?.value === "string" && setting.value.trim() ? setting.value.trim() : null;
+}
+
+function pluginSettingBooleanValue(plugin: ThemePluginSummary, settingId: string | null) {
+  if (!settingId) {
+    return null;
+  }
+  const setting = plugin.settings.find((candidate) => candidate.id === settingId);
+  return typeof setting?.value === "boolean" ? setting.value : null;
+}
+
+function pluginActionStringArgWithSetting(plugin: ThemePluginSummary, action: PluginActionDefinition, key: string, settingKey: string) {
+  const settingValue = pluginSettingStringValue(plugin, pluginActionStringArg(action, settingKey));
+  return settingValue ?? pluginActionStringArg(action, key);
+}
+
+function pluginActionBooleanArgWithSetting(plugin: ThemePluginSummary, action: PluginActionDefinition, key: string, settingKey: string) {
+  const settingValue = pluginSettingBooleanValue(plugin, pluginActionStringArg(action, settingKey));
+  return settingValue ?? pluginActionBooleanArg(action, key);
+}
+
+function pluginActionDirectoryArgWithSetting(plugin: ThemePluginSummary, action: PluginActionDefinition) {
+  return pluginSettingStringValue(plugin, pluginActionStringArg(action, "directorySetting"));
 }
 
 function runtimeArgsRecord(args: unknown) {
@@ -1279,6 +1380,9 @@ try {
 function pluginActionCommandRequiresMedia(command: PluginActionCommand) {
   return [
     "player.captureScreenshot",
+    "player.startRecording",
+    "player.stopRecording",
+    "player.toggleRecording",
     "player.togglePlayback",
     "player.stop",
     "player.restart",
@@ -1414,6 +1518,7 @@ function Icon({ name }: { name: IconName }) {
     plugin: "M9 3v4M15 3v4M8 7h8a2 2 0 0 1 2 2v3a6 6 0 0 1-12 0V9a2 2 0 0 1 2-2ZM12 18v3",
     preview: "M4 5h16v11H4zM8 20h8M10 16l-1.5 4M14 16l1.5 4M7 13l3-3 2 2 2.5-3 3.5 4",
     previous: "M17 6l-7 6 7 6V6ZM8 6v12",
+    record: "M12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10Z",
     restart: "M5 12a7 7 0 1 0 2-4.9M5 5v5h5",
     settings: "M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7ZM19 12a7.2 7.2 0 0 0-.08-1l2-1.55-2-3.45-2.36.95a7.4 7.4 0 0 0-1.72-1L14.5 3h-4l-.34 2.95a7.4 7.4 0 0 0-1.72 1L6.08 6l-2 3.45L6.08 11A7.2 7.2 0 0 0 6 12c0 .34.03.67.08 1l-2 1.55 2 3.45 2.36-.95c.53.42 1.1.75 1.72 1l.34 2.95h4l.34-2.95c.62-.25 1.19-.58 1.72-1l2.36.95 2-3.45-2-1.55c.05-.33.08-.66.08-1Z",
     stop: "M7 7h10v10H7z",
@@ -1438,6 +1543,7 @@ function App() {
   const [queue, setQueue] = useState<MediaItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number | null>(null);
   const [playbackHistory, setPlaybackHistory] = useState<PlaybackHistoryEntry[]>([]);
+  const [networkStreamHistory, setNetworkStreamHistory] = useState<NetworkStreamHistoryEntry[]>([]);
   const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -1458,6 +1564,9 @@ function App() {
   const [isDropActive, setIsDropActive] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [isNetworkStreamDialogOpen, setIsNetworkStreamDialogOpen] = useState(false);
+  const [networkStreamUrl, setNetworkStreamUrl] = useState("");
+  const [networkStreamError, setNetworkStreamError] = useState<string | null>(null);
   const [platformSupport, setPlatformSupport] = useState<PlatformSupport | null>(null);
   const [appearanceState, setAppearanceState] = useState<AppearanceState | null>(null);
   const [playerPreferences, setPlayerPreferences] = useState<PlayerPreferences>(DEFAULT_PLAYER_PREFERENCES);
@@ -1466,6 +1575,8 @@ function App() {
   const [updateState, setUpdateState] = useState<UpdateState>(DEFAULT_UPDATE_STATE);
   const [volumeFeedback, setVolumeFeedback] = useState<VolumeFeedback | null>(null);
   const [alwaysOnTopFeedback, setAlwaysOnTopFeedback] = useState<AlwaysOnTopFeedback | null>(null);
+  const [captureFeedback, setCaptureFeedback] = useState<CaptureFeedback | null>(null);
+  const [recordingState, setRecordingState] = useState<MpvRecordingState>(INACTIVE_RECORDING_STATE);
   const [contextMenu, setContextMenu] = useState<ContextMenuPosition | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("appearance");
@@ -1483,8 +1594,10 @@ function App() {
   const playbackClockAnchorRef = useRef<PlaybackClockAnchor>({ position: 0, startedAt: performance.now(), playing: false, speed: 1 });
   const snapshotRequestIdRef = useRef(0);
   const chromeHideTimerRef = useRef<number | null>(null);
+  const playbackErrorTimerRef = useRef<number | null>(null);
   const volumeFeedbackTimerRef = useRef<number | null>(null);
   const alwaysOnTopFeedbackTimerRef = useRef<number | null>(null);
+  const captureFeedbackTimerRef = useRef<number | null>(null);
   const pendingWindowDragRef = useRef<PendingWindowDrag | null>(null);
   const manualResizeDragRef = useRef<ManualResizeDrag | null>(null);
   const resizeCursorDirectionRef = useRef<ResizeDirection | null>(null);
@@ -1509,7 +1622,7 @@ function App() {
   const activeTheme = activeThemeFromAppearance(appearanceState);
   const appearanceStyle = themeStyleVariables(appearanceState);
   const isMediaPanelOpen = mediaPanelMode !== null;
-  const isChromePinned = !media || isPlaylistOpen || isMediaPanelOpen || isPickerOpen || playbackError !== null || contextMenu !== null || isSettingsOpen;
+  const isChromePinned = !media || isPlaylistOpen || isMediaPanelOpen || isPickerOpen || playbackError !== null || contextMenu !== null || isSettingsOpen || isNetworkStreamDialogOpen;
   pluginRuntimeCommandHandlerRef.current = executePluginRuntimeCommand;
 
   useEffect(() => {
@@ -1532,6 +1645,16 @@ function App() {
       })
       .catch((error: unknown) => {
         console.warn("Failed to load playback history", error);
+      });
+
+    invoke<NetworkStreamHistoryEntry[]>("network_stream_history_list")
+      .then((entries) => {
+        if (!disposed) {
+          setNetworkStreamHistory(Array.isArray(entries) ? entries : []);
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn("Failed to load network stream history", error);
       });
 
     invoke<AppearanceState>("appearance_state")
@@ -1744,6 +1867,9 @@ function App() {
       invoke<PlaybackHistoryEntry[]>("history_list")
         .then((entries) => setPlaybackHistory(Array.isArray(entries) ? entries : []))
         .catch((error: unknown) => console.warn("Failed to sync playback history", error));
+      invoke<NetworkStreamHistoryEntry[]>("network_stream_history_list")
+        .then((entries) => setNetworkStreamHistory(Array.isArray(entries) ? entries : []))
+        .catch((error: unknown) => console.warn("Failed to sync network stream history", error));
     }, STORE_SYNC_INTERVAL_MS);
 
     return () => window.clearInterval(timer);
@@ -1784,11 +1910,17 @@ function App() {
       if (isSettingsOpen) {
         event.preventDefault();
         setIsSettingsOpen(false);
+        return;
+      }
+
+      if (isNetworkStreamDialogOpen) {
+        event.preventDefault();
+        closeNetworkStreamDialog();
       }
       return;
     }
 
-    if (contextMenu || isSettingsOpen || isTextEntryShortcutTarget(event.target)) {
+    if (contextMenu || isSettingsOpen || isNetworkStreamDialogOpen || isTextEntryShortcutTarget(event.target)) {
       return;
     }
 
@@ -1806,7 +1938,7 @@ function App() {
   };
 
   nativeShortcutActionRef.current = (action: ShortcutAction) => {
-    if (contextMenu || isSettingsOpen || recordingShortcutAction) {
+    if (contextMenu || isSettingsOpen || isNetworkStreamDialogOpen || recordingShortcutAction) {
       return;
     }
 
@@ -1894,19 +2026,40 @@ function App() {
   }, [shortcutBindings]);
 
   useEffect(() => {
-    const enabled = !contextMenu && !isSettingsOpen && !recordingShortcutAction;
+    const enabled = !contextMenu && !isSettingsOpen && !isNetworkStreamDialogOpen && !recordingShortcutAction;
     invoke("window_set_shortcuts_enabled", { enabled }).catch((error: unknown) => {
       console.warn("Native shortcut state update failed", error);
     });
-  }, [contextMenu, isSettingsOpen, recordingShortcutAction]);
+  }, [contextMenu, isSettingsOpen, isNetworkStreamDialogOpen, recordingShortcutAction]);
+
+  useEffect(() => {
+    if (playbackErrorTimerRef.current !== null) {
+      window.clearTimeout(playbackErrorTimerRef.current);
+      playbackErrorTimerRef.current = null;
+    }
+    if (!playbackError) {
+      return;
+    }
+
+    playbackErrorTimerRef.current = window.setTimeout(() => {
+      setPlaybackError(null);
+      playbackErrorTimerRef.current = null;
+    }, PLAYBACK_ERROR_FEEDBACK_MS);
+  }, [playbackError]);
 
   useEffect(() => {
     return () => {
+      if (playbackErrorTimerRef.current !== null) {
+        window.clearTimeout(playbackErrorTimerRef.current);
+      }
       if (volumeFeedbackTimerRef.current !== null) {
         window.clearTimeout(volumeFeedbackTimerRef.current);
       }
       if (alwaysOnTopFeedbackTimerRef.current !== null) {
         window.clearTimeout(alwaysOnTopFeedbackTimerRef.current);
+      }
+      if (captureFeedbackTimerRef.current !== null) {
+        window.clearTimeout(captureFeedbackTimerRef.current);
       }
     };
   }, []);
@@ -2059,6 +2212,17 @@ function App() {
     alwaysOnTopFeedbackTimerRef.current = window.setTimeout(() => {
       setAlwaysOnTopFeedback(null);
       alwaysOnTopFeedbackTimerRef.current = null;
+    }, VOLUME_FEEDBACK_MS);
+  }
+
+  function showCaptureFeedback(icon: CaptureFeedback["icon"], message: string) {
+    setCaptureFeedback({ icon, message });
+    if (captureFeedbackTimerRef.current !== null) {
+      window.clearTimeout(captureFeedbackTimerRef.current);
+    }
+    captureFeedbackTimerRef.current = window.setTimeout(() => {
+      setCaptureFeedback(null);
+      captureFeedbackTimerRef.current = null;
     }, VOLUME_FEEDBACK_MS);
   }
 
@@ -2217,6 +2381,7 @@ function App() {
       resumePosition: rememberedPosition > 0 ? rememberedPosition : null,
       initialVolume: savedSettings.volume,
     });
+    setRecordingState(INACTIVE_RECORDING_STATE);
     activeSnapshot = await applyStoredPlaybackSettings(activeSnapshot, savedSettings);
     activeSnapshot = await applyStoredMediaPlaybackSettings(path, activeSnapshot);
     activeSnapshot = await applyStoredPluginMpvSettings(activeSnapshot);
@@ -2373,6 +2538,37 @@ function App() {
         return state;
       }),
     );
+  }
+
+  async function choosePluginDirectory(pluginId: string, setting: PluginSettingDefinition) {
+    if (isPickerOpen) {
+      return;
+    }
+
+    setIsPickerOpen(true);
+    try {
+      const selection = await open({
+        directory: true,
+        multiple: false,
+        title: localizedPluginText(setting.label, setting.labelI18n, locale),
+      });
+      if (typeof selection === "string") {
+        setPluginSettingValue(pluginId, setting, selection);
+      }
+    } catch (error) {
+      reportPlaybackError(error);
+    } finally {
+      setIsPickerOpen(false);
+      focusOverlayWindow();
+    }
+  }
+
+  function openPluginDirectory(setting: PluginSettingDefinition) {
+    const value = typeof setting.value === "string" ? setting.value.trim() : "";
+    if (!value) {
+      return;
+    }
+    invoke("window_open_directory", { path: value }).catch(reportPlaybackError).finally(focusOverlayWindow);
   }
 
   async function applyPluginMpvSetting(setting: PluginSettingDefinition, value: PluginSettingValue) {
@@ -2669,7 +2865,7 @@ function App() {
   }
 
   function handleShellWheel(event: ReactWheelEvent<HTMLElement>) {
-    if (contextMenu || isSettingsOpen || recordingShortcutAction || isWheelInsideInteractiveSurface(event.target)) {
+    if (contextMenu || isSettingsOpen || isNetworkStreamDialogOpen || recordingShortcutAction || isWheelInsideInteractiveSurface(event.target)) {
       return;
     }
 
@@ -3143,7 +3339,7 @@ function App() {
     return (action.requiresMedia || pluginActionCommandRequiresMedia(action.command)) && !media;
   }
 
-  function executePluginAction(action: PluginActionDefinition) {
+  function executePluginAction({ plugin, action }: PluginActionInstance) {
     if (isPluginActionDisabled(action)) {
       return;
     }
@@ -3155,8 +3351,20 @@ function App() {
       case "player.openStream":
         openPluginStream(action).catch(reportPlaybackError);
         return;
+      case "player.openStreamDialog":
+        openNetworkStreamDialog();
+        return;
       case "player.captureScreenshot":
-        capturePluginScreenshot(action).catch(reportPlaybackError);
+        capturePluginScreenshot(plugin, action).catch(reportPlaybackError);
+        return;
+      case "player.startRecording":
+        startPluginRecording(plugin, action).catch(reportPlaybackError);
+        return;
+      case "player.stopRecording":
+        stopPluginRecording(plugin, action).catch(reportPlaybackError);
+        return;
+      case "player.toggleRecording":
+        togglePluginRecording(plugin, action).catch(reportPlaybackError);
         return;
       case "player.togglePlayback":
         togglePlayback();
@@ -3200,6 +3408,67 @@ function App() {
     await openRuntimeStream(url, pluginActionStringArg(action, "name"));
   }
 
+  function openNetworkStreamDialog() {
+    setContextMenu(null);
+    closeFloatingPlaybackMenus();
+    setNetworkStreamError(null);
+    setIsNetworkStreamDialogOpen(true);
+  }
+
+  function closeNetworkStreamDialog() {
+    setIsNetworkStreamDialogOpen(false);
+    setNetworkStreamError(null);
+  }
+
+  async function submitNetworkStream(event?: ReactFormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+    const rawUrl = networkStreamUrl.trim();
+    await openNetworkStreamFromInput(rawUrl);
+  }
+
+  async function openNetworkStreamFromInput(rawUrl: string, fallbackName: string | null = null) {
+    try {
+      const normalizedUrl = normalizeNetworkStreamInput(rawUrl);
+      let name = streamNameFromUrl(normalizedUrl, fallbackName);
+      if (!playerPreferences.incognitoMode) {
+        const entries = await invoke<NetworkStreamHistoryEntry[]>("network_stream_history_remember", {
+          entry: {
+            url: normalizedUrl,
+            name,
+            updatedAt: Date.now(),
+          },
+        });
+        if (Array.isArray(entries)) {
+          setNetworkStreamHistory(entries);
+          const activeEntry = entries.find((entry) => entry.url === normalizedUrl) ?? entries[0];
+          if (activeEntry) {
+            name = activeEntry.name;
+          }
+        }
+      }
+      closeNetworkStreamDialog();
+      setNetworkStreamUrl("");
+      await openRuntimeStream(normalizedUrl, name);
+    } catch (error) {
+      setNetworkStreamError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  function openNetworkStreamHistoryEntry(entry: NetworkStreamHistoryEntry) {
+    setNetworkStreamUrl(entry.url);
+    openNetworkStreamFromInput(entry.url, entry.name).catch((error: unknown) => {
+      setNetworkStreamError(error instanceof Error ? error.message : String(error));
+    });
+  }
+
+  function clearNetworkStreamHistory() {
+    invoke<NetworkStreamHistoryEntry[]>("network_stream_history_clear")
+      .then((entries) => setNetworkStreamHistory(Array.isArray(entries) ? entries : []))
+      .catch((error: unknown) => {
+        setNetworkStreamError(error instanceof Error ? error.message : String(error));
+      });
+  }
+
   async function openRuntimeStream(url: string, name: string | null = null) {
     if (platformSupport && !platformSupport.mpvEmbedVideo) {
       setPlaybackError(platformUnsupportedPlaybackMessage(platformSupport, t));
@@ -3235,16 +3504,86 @@ function App() {
         await openRuntimeStream(url, runtimeStringArg(record, "name"));
         return { path: url };
       }
+      case "player.openStreamDialog": {
+        if (!permissions.has("media.openStream")) {
+          throw new Error("plugin runtime command requires media.openStream");
+        }
+        openNetworkStreamDialog();
+        return null;
+      }
       case "player.captureScreenshot": {
         if (!permissions.has("mpv.capture")) {
           throw new Error("plugin runtime command requires mpv.capture");
         }
-        const artifact = await invoke<MpvCaptureArtifact>("mpv_embed_capture_screenshot");
+        const artifact = await invoke<MpvCaptureArtifact>("mpv_embed_capture_screenshot", { format: runtimeStringArg(record, "format"), directory: null });
         if (runtimeBooleanArg(record, "openFolder")) {
           await invoke("window_reveal_path", { path: artifact.path });
         }
+        showCaptureFeedback("camera", t.status.screenshotSaved(parentDirectoryFromPath(artifact.path), artifact.copiedToClipboard));
         focusOverlayWindow();
         return artifact;
+      }
+      case "player.startRecording": {
+        if (!permissions.has("mpv.capture")) {
+          throw new Error("plugin runtime command requires mpv.capture");
+        }
+        const state = await invoke<MpvRecordingState>("mpv_embed_start_recording", { format: runtimeStringArg(record, "format"), directory: null });
+        setRecordingState(state);
+        showCaptureFeedback("record", t.status.recordingStarted);
+        focusOverlayWindow();
+        return state;
+      }
+      case "player.stopRecording": {
+        if (!permissions.has("mpv.capture")) {
+          throw new Error("plugin runtime command requires mpv.capture");
+        }
+        try {
+          const state = await invoke<MpvRecordingState>("mpv_embed_stop_recording");
+          setRecordingState(state);
+          if (runtimeBooleanArg(record, "openFolder") && state.path) {
+            await invoke("window_reveal_path", { path: state.path });
+          }
+          showCaptureFeedback("record", t.status.recordingSaved(parentDirectoryFromPath(state.path)));
+          focusOverlayWindow();
+          return state;
+        } catch (error) {
+          setRecordingState(INACTIVE_RECORDING_STATE);
+          throw error;
+        }
+      }
+      case "player.toggleRecording": {
+        if (!permissions.has("mpv.capture")) {
+          throw new Error("plugin runtime command requires mpv.capture");
+        }
+        const current = await invoke<MpvRecordingState>("mpv_embed_recording_state");
+        if (current.active) {
+          try {
+            const state = await invoke<MpvRecordingState>("mpv_embed_stop_recording");
+            setRecordingState(state);
+            if (runtimeBooleanArg(record, "openFolder") && state.path) {
+              await invoke("window_reveal_path", { path: state.path });
+            }
+            showCaptureFeedback("record", t.status.recordingSaved(parentDirectoryFromPath(state.path)));
+            focusOverlayWindow();
+            return state;
+          } catch (error) {
+            setRecordingState(INACTIVE_RECORDING_STATE);
+            throw error;
+          }
+        }
+        const state = await invoke<MpvRecordingState>("mpv_embed_start_recording", { format: runtimeStringArg(record, "format"), directory: null });
+        setRecordingState(state);
+        showCaptureFeedback("record", t.status.recordingStarted);
+        focusOverlayWindow();
+        return state;
+      }
+      case "player.recordingState": {
+        if (!permissions.has("mpv.capture")) {
+          throw new Error("plugin runtime command requires mpv.capture");
+        }
+        const state = await invoke<MpvRecordingState>("mpv_embed_recording_state");
+        setRecordingState(state);
+        return state;
       }
       case "player.togglePlayback":
         togglePlayback();
@@ -3281,12 +3620,48 @@ function App() {
     }
   }
 
-  async function capturePluginScreenshot(action: PluginActionDefinition) {
-    const artifact = await invoke<MpvCaptureArtifact>("mpv_embed_capture_screenshot");
-    if (pluginActionBooleanArg(action, "openFolder")) {
+  async function capturePluginScreenshot(plugin: ThemePluginSummary, action: PluginActionDefinition) {
+    const format = pluginActionStringArgWithSetting(plugin, action, "format", "formatSetting");
+    const directory = pluginActionDirectoryArgWithSetting(plugin, action);
+    const artifact = await invoke<MpvCaptureArtifact>("mpv_embed_capture_screenshot", { format, directory });
+    if (pluginActionBooleanArgWithSetting(plugin, action, "openFolder", "openFolderSetting")) {
       await invoke("window_reveal_path", { path: artifact.path });
     }
+    showCaptureFeedback("camera", t.status.screenshotSaved(parentDirectoryFromPath(artifact.path), artifact.copiedToClipboard));
     focusOverlayWindow();
+  }
+
+  async function startPluginRecording(plugin: ThemePluginSummary, action: PluginActionDefinition) {
+    const format = pluginActionStringArgWithSetting(plugin, action, "format", "formatSetting");
+    const directory = pluginActionDirectoryArgWithSetting(plugin, action);
+    const state = await invoke<MpvRecordingState>("mpv_embed_start_recording", { format, directory });
+    setRecordingState(state);
+    showCaptureFeedback("record", t.status.recordingStarted);
+    focusOverlayWindow();
+  }
+
+  async function stopPluginRecording(plugin: ThemePluginSummary, action: PluginActionDefinition) {
+    try {
+      const state = await invoke<MpvRecordingState>("mpv_embed_stop_recording");
+      setRecordingState(state);
+      if (pluginActionBooleanArgWithSetting(plugin, action, "openFolder", "openFolderSetting") && state.path) {
+        await invoke("window_reveal_path", { path: state.path });
+      }
+      showCaptureFeedback("record", t.status.recordingSaved(parentDirectoryFromPath(state.path)));
+      focusOverlayWindow();
+    } catch (error) {
+      setRecordingState(INACTIVE_RECORDING_STATE);
+      throw error;
+    }
+  }
+
+  async function togglePluginRecording(plugin: ThemePluginSummary, action: PluginActionDefinition) {
+    const current = await invoke<MpvRecordingState>("mpv_embed_recording_state");
+    if (current.active) {
+      await stopPluginRecording(plugin, action);
+    } else {
+      await startPluginRecording(plugin, action);
+    }
   }
 
   function handleDragRegionPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
@@ -3699,13 +4074,13 @@ function App() {
     { type: "separator", id: "playback-separator" },
     { type: "item", id: "open-location", label: t.contextMenu.openFileLocation, icon: "folder", disabled: !media, onSelect: openCurrentFileLocation },
     ...(pluginContextMenuActions.length > 0 ? [{ type: "separator" as const, id: "plugin-actions-separator" }] : []),
-    ...pluginContextMenuActions.map(({ plugin, action }) => ({
+    ...pluginContextMenuActions.map((instance) => ({
       type: "item" as const,
-      id: `plugin:${plugin.id}:${action.id}`,
-      label: localizedPluginText(action.label, action.labelI18n, locale),
-      icon: action.icon ?? "plugin",
-      disabled: isPluginActionDisabled(action),
-      onSelect: () => executePluginAction(action),
+      id: `plugin:${instance.plugin.id}:${instance.action.id}`,
+      label: localizedPluginText(instance.action.label, instance.action.labelI18n, locale),
+      icon: instance.action.icon ?? "plugin",
+      disabled: isPluginActionDisabled(instance.action),
+      onSelect: () => executePluginAction(instance),
     })),
     { type: "item", id: "fullscreen", label: t.contextMenu.fullscreen, icon: "fullscreen", shortcut: shortcutBindings.toggleFullscreen, onSelect: toggleFullscreen },
     { type: "item", id: "always-on-top", label: isAlwaysOnTop ? t.contextMenu.disableAlwaysOnTop : t.contextMenu.alwaysOnTop, icon: "pin", shortcut: shortcutBindings.toggleAlwaysOnTop, onSelect: toggleAlwaysOnTop },
@@ -3975,6 +4350,24 @@ function App() {
       );
     }
 
+    if (setting.kind === "directory") {
+      const value = typeof setting.value === "string" ? setting.value.trim() : "";
+      return (
+        <div className={rowClassName} key={`${plugin.id}:${setting.id}`}>
+          {settingHeader}
+          <span className="plugin-directory-control">
+            <span title={value || t.common.unset}>{value || t.common.unset}</span>
+            <button className="settings-reset" type="button" disabled={disabled || isPickerOpen} onClick={() => choosePluginDirectory(plugin.id, setting)}>
+              {t.common.choose}
+            </button>
+            <button className="settings-reset" type="button" disabled={disabled || !value} onClick={() => openPluginDirectory(setting)}>
+              {t.common.open}
+            </button>
+          </span>
+        </div>
+      );
+    }
+
     const value = typeof setting.value === "string" ? setting.value : String(setting.defaultValue);
     if (setting.mpvProperty === "sub-font") {
       const fonts = Array.from(new Set([...systemFontFamilies, value, String(setting.defaultValue)].filter(Boolean))).sort((left, right) =>
@@ -4012,7 +4405,7 @@ function App() {
         key={`${plugin.id}:${action.id}`}
         title={actionDescription}
         disabled={isPluginActionDisabled(action)}
-        onClick={() => executePluginAction(action)}
+        onClick={() => executePluginAction({ plugin, action })}
       >
         <Icon name={action.icon ?? "plugin"} />
         <span>{actionLabel}</span>
@@ -4336,6 +4729,92 @@ function App() {
     );
   }
 
+  function renderNetworkStreamDialog() {
+    return (
+      <div
+        className="network-stream-backdrop"
+        onPointerDown={(event) => {
+          if (event.target === event.currentTarget) {
+            closeNetworkStreamDialog();
+          }
+        }}
+      >
+        <section
+          className="network-stream-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="network-stream-title"
+          onContextMenu={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <header className="network-stream-header">
+            <div>
+              <span className="settings-kicker">OpenPlayer</span>
+              <h2 id="network-stream-title">{t.streamDialog.title}</h2>
+              <p>{t.streamDialog.subtitle}</p>
+            </div>
+            <button className="settings-close" type="button" aria-label={t.controls.close} onClick={closeNetworkStreamDialog}>
+              <Icon name="close" />
+            </button>
+          </header>
+
+          <form className="network-stream-form" onSubmit={submitNetworkStream}>
+            <label>
+              <span>{t.streamDialog.urlLabel}</span>
+              <input
+                autoFocus
+                type="url"
+                inputMode="url"
+                spellCheck={false}
+                value={networkStreamUrl}
+                placeholder="rtsp://192.168.1.10/live"
+                onChange={(event) => {
+                  setNetworkStreamUrl(event.currentTarget.value);
+                  setNetworkStreamError(null);
+                }}
+              />
+            </label>
+            {networkStreamError && <p className="network-stream-error">{t.streamDialog.error(networkStreamError)}</p>}
+            <div className="network-stream-actions">
+              <button className="settings-reset" type="button" onClick={closeNetworkStreamDialog}>
+                {t.common.cancel}
+              </button>
+              <button className="settings-reset network-stream-primary" type="submit" disabled={!networkStreamUrl.trim()}>
+                {t.streamDialog.open}
+              </button>
+            </div>
+          </form>
+
+          <section className="network-stream-recent">
+            <header>
+              <div>
+                <h3>{t.streamDialog.recent}</h3>
+                <span>{t.streamDialog.supportedProtocols}</span>
+              </div>
+              <button className="settings-reset" type="button" onClick={clearNetworkStreamHistory} disabled={networkStreamHistory.length === 0}>
+                {t.streamDialog.clearHistory}
+              </button>
+            </header>
+            {networkStreamHistory.length > 0 ? (
+              <div className="network-stream-list">
+                {networkStreamHistory.map((entry) => (
+                  <button className="network-stream-item" type="button" key={`${entry.updatedAt}:${entry.url}`} onClick={() => openNetworkStreamHistoryEntry(entry)}>
+                    <span>{entry.name}</span>
+                    <small>
+                      {entry.scheme.toUpperCase()} · {entry.url}
+                    </small>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="network-stream-empty">{t.streamDialog.emptyHistory}</div>
+            )}
+          </section>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <main
       className="app-shell"
@@ -4453,6 +4932,18 @@ function App() {
             <div className="volume-feedback always-on-top-feedback" role="status" aria-live="polite">
               <Icon name="pin" />
               <span>{alwaysOnTopFeedback.enabled ? t.status.alwaysOnTopEnabled : t.status.alwaysOnTopDisabled}</span>
+            </div>
+          )}
+          {captureFeedback && (
+            <div className="volume-feedback capture-feedback" role="status" aria-live="polite">
+              <Icon name={captureFeedback.icon} />
+              <span>{captureFeedback.message}</span>
+            </div>
+          )}
+          {recordingState.active && (
+            <div className="recording-indicator" role="status" aria-live="polite">
+              <Icon name="record" />
+              <span>{t.status.recordingActive}</span>
             </div>
           )}
 
@@ -4782,6 +5273,8 @@ function App() {
               )}
             </div>
           )}
+
+          {isNetworkStreamDialogOpen && renderNetworkStreamDialog()}
 
           {isSettingsOpen && (
             <div

@@ -29,6 +29,8 @@ libc = "0.2"
 libmpv2 = { version = "6.0.0", optional = true, default-features = false }
 libmpv2-sys = { version = "4", optional = true }
 raw-window-handle = { version = "0.6", optional = true }
+arboard = "3"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 redb = "4.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
