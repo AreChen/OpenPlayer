@@ -50,6 +50,7 @@ const MAX_PLAYBACK_SPEED: f64 = 4.0;
 const MIN_SUBTITLE_DELAY: f64 = -10.0;
 const MAX_SUBTITLE_DELAY: f64 = 10.0;
 const MAX_TRACKS: i64 = 128;
+const HLS_LOADFILE_OPTIONS: &str = "demuxer=+lavf,demuxer-lavf-format=hls";
 const SUPPORTED_SUBTITLE_EXTENSIONS: &[&str] = &["ass", "srt", "ssa", "sub", "vtt"];
 const AUDIO_VISUALIZER_EXTENSIONS: &[&str] = &[
     "aac", "ac3", "adts", "aif", "aifc", "aiff", "alac", "amr", "ape", "au", "awb", "caf", "dff",
@@ -251,8 +252,7 @@ pub fn open_path_for_window(
     mpv.set_property("volume", initial_volume)
         .map_err(|error| format!("mpv initial volume failed: {error}"))?;
     configure_audio_visualizer(&mpv, &path);
-    mpv.command("loadfile", &[&path_text, "replace"])
-        .map_err(|error| format!("mpv loadfile failed: {error}"))?;
+    load_media_file(&mpv, &path_text)?;
     load_sidecar_subtitles(&mpv, &path);
 
     let mut player = state
@@ -1852,6 +1852,50 @@ fn is_supported_media_stream_scheme(scheme: &str) -> bool {
     )
 }
 
+fn load_media_file(mpv: &libmpv2::Mpv, path_text: &str) -> Result<(), String> {
+    let args = loadfile_args_for_media_path(path_text);
+    match mpv.command("loadfile", &args) {
+        Ok(()) => Ok(()),
+        Err(error) if is_hls_manifest_media_url(path_text) => {
+            let legacy_args = legacy_hls_loadfile_args_for_media_path(path_text);
+            mpv.command("loadfile", &legacy_args)
+                .map_err(|legacy_error| {
+                    format!(
+                        "mpv loadfile failed: {error}; legacy HLS loadfile failed: {legacy_error}"
+                    )
+                })
+        }
+        Err(error) => Err(format!("mpv loadfile failed: {error}")),
+    }
+}
+
+fn loadfile_args_for_media_path(path_text: &str) -> Vec<&str> {
+    if is_hls_manifest_media_url(path_text) {
+        vec![path_text, "replace", "-1", HLS_LOADFILE_OPTIONS]
+    } else {
+        vec![path_text, "replace"]
+    }
+}
+
+fn legacy_hls_loadfile_args_for_media_path(path_text: &str) -> Vec<&str> {
+    vec![path_text, "replace", HLS_LOADFILE_OPTIONS]
+}
+
+fn is_hls_manifest_media_url(path_text: &str) -> bool {
+    let Some((scheme, rest)) = path_text.trim().split_once("://") else {
+        return false;
+    };
+    if !matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https") {
+        return false;
+    }
+    let path_without_fragment = rest.split_once('#').map(|(path, _)| path).unwrap_or(rest);
+    let path_without_query = path_without_fragment
+        .split_once('?')
+        .map(|(path, _)| path)
+        .unwrap_or(path_without_fragment);
+    path_without_query.to_ascii_lowercase().ends_with(".m3u8")
+}
+
 fn capture_directory_for_app(
     app: &AppHandle,
     directory_override: Option<String>,
@@ -2337,6 +2381,40 @@ mod tests {
             .expect_err("unsafe stream protocols should be rejected");
 
         assert!(error.contains("unsupported media stream protocol"));
+    }
+
+    #[test]
+    fn hls_manifest_urls_force_lavf_hls_demuxer() {
+        assert!(is_hls_manifest_media_url(
+            "https://ali-m-l.cztv.com/channels/lantian/channel010/1080p.m3u8"
+        ));
+        assert!(is_hls_manifest_media_url(
+            "HTTPS://example.com/live/CHANNEL.M3U8?token=abc#frag"
+        ));
+        assert!(!is_hls_manifest_media_url("https://example.com/movie.mp4"));
+        assert!(!is_hls_manifest_media_url("rtsp://example.com/live.m3u8"));
+
+        assert_eq!(
+            loadfile_args_for_media_path("https://example.com/live.m3u8"),
+            vec![
+                "https://example.com/live.m3u8",
+                "replace",
+                "-1",
+                HLS_LOADFILE_OPTIONS
+            ]
+        );
+        assert_eq!(
+            legacy_hls_loadfile_args_for_media_path("https://example.com/live.m3u8"),
+            vec![
+                "https://example.com/live.m3u8",
+                "replace",
+                HLS_LOADFILE_OPTIONS
+            ]
+        );
+        assert_eq!(
+            loadfile_args_for_media_path("https://example.com/movie.mp4"),
+            vec!["https://example.com/movie.mp4", "replace"]
+        );
     }
 
     #[test]
