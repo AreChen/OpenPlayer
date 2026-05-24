@@ -130,6 +130,33 @@ type ShellPreviewFormatInfo = {
   common: boolean;
 };
 
+type AppVersionInfo = {
+  name: string;
+  version: string;
+  license: string;
+  repository: string;
+  releasesUrl: string;
+};
+
+type ReleaseAsset = {
+  name: string;
+  browserDownloadUrl: string;
+};
+
+type LatestRelease = {
+  version: string;
+  tagName: string;
+  htmlUrl: string;
+  assets: ReleaseAsset[];
+};
+
+type UpdateState = {
+  status: "idle" | "checking" | "current" | "available" | "failed";
+  latest: LatestRelease | null;
+  asset: ReleaseAsset | null;
+  error: string | null;
+};
+
 type PendingSeek = {
   target: number;
   startedAt: number;
@@ -161,7 +188,7 @@ type PlaybackClockAnchor = {
 };
 
 type ThemeStyleProperties = CSSProperties & Record<`--${string}`, string>;
-type SettingsSection = "appearance" | "plugins" | "playback" | "shortcuts";
+type SettingsSection = "appearance" | "plugins" | "playback" | "shortcuts" | "about";
 type MediaPanelMode = "speed" | "tracks" | "loop";
 type LoopMode = "off" | "one" | "all";
 type HardwareDecodingMode = "hardware" | "software";
@@ -169,6 +196,9 @@ type TimeDisplayMode = "timecode" | "frames";
 type SelectableTrackKind = "audio" | "video" | "subtitle";
 type VolumeFeedback = {
   level: number;
+};
+type AlwaysOnTopFeedback = {
+  enabled: boolean;
 };
 
 type ResizeDirection = "East" | "North" | "NorthEast" | "NorthWest" | "South" | "SouthEast" | "SouthWest" | "West";
@@ -190,6 +220,7 @@ type ShortcutAction =
   | "volumeDown"
   | "volumeUp"
   | "toggleFullscreen"
+  | "toggleAlwaysOnTop"
   | "openSettings";
 type ShortcutBindings = Record<ShortcutAction, string | null>;
 type ShortcutDefinition = {
@@ -207,6 +238,7 @@ type IconName =
   | "folder"
   | "folderAdd"
   | "fullscreen"
+  | "info"
   | "list"
   | "maximize"
   | "minimize"
@@ -381,7 +413,15 @@ const DEFAULT_PLAYBACK_SETTINGS: PlaybackSettings = {
   videoFill: false,
   timeDisplayMode: "timecode",
 };
+const DEFAULT_UPDATE_STATE: UpdateState = {
+  status: "idle",
+  latest: null,
+  asset: null,
+  error: null,
+};
 const OPENPLAYER_SHORTCUTS_STORAGE_KEY = "openplayer.shortcuts.v3";
+const OPENPLAYER_RELEASES_API_URL = "https://api.github.com/repos/AreChen/OpenPlayer/releases/latest";
+const OPENPLAYER_RELEASES_URL = "https://github.com/AreChen/OpenPlayer/releases/latest";
 const HISTORY_WRITE_INTERVAL_MS = 1500;
 const MIN_RESUME_PROGRESS_RATIO = 0.01;
 const RESUME_END_PROGRESS_RATIO = 0.95;
@@ -392,7 +432,7 @@ const VOLUME_FEEDBACK_MS = 1100;
 const STORE_SYNC_INTERVAL_MS = 1600;
 const END_OF_MEDIA_SNAP_TOLERANCE_SECONDS = 0.5;
 const CONTEXT_MENU_WIDTH = 236;
-const CONTEXT_MENU_HEIGHT = 492;
+const CONTEXT_MENU_HEIGHT = 420;
 const DEFAULT_SEEK_STEP_SECONDS = 5;
 const DEFAULT_VOLUME_STEP = 0.05;
 const WINDOW_DRAG_START_DISTANCE_PX = 4;
@@ -420,6 +460,7 @@ const shortcutActions: ShortcutAction[] = [
   "volumeDown",
   "volumeUp",
   "toggleFullscreen",
+  "toggleAlwaysOnTop",
   "openSettings",
 ];
 const defaultShortcutBindings: ShortcutBindings = {
@@ -434,6 +475,7 @@ const defaultShortcutBindings: ShortcutBindings = {
   volumeDown: "ArrowDown",
   volumeUp: "ArrowUp",
   toggleFullscreen: "Enter",
+  toggleAlwaysOnTop: "\\",
   openSettings: "Ctrl+,",
 };
 const surface = new URLSearchParams(window.location.search).get("surface");
@@ -553,6 +595,7 @@ function shortcutDefinitionsFor(t: AppStrings): ShortcutDefinition[] {
     { action: "volumeDown", label: t.shortcuts.actions.volumeDown, group: t.shortcuts.groups.volume },
     { action: "volumeUp", label: t.shortcuts.actions.volumeUp, group: t.shortcuts.groups.volume },
     { action: "toggleFullscreen", label: t.shortcuts.actions.toggleFullscreen, group: t.shortcuts.groups.window },
+    { action: "toggleAlwaysOnTop", label: t.shortcuts.actions.toggleAlwaysOnTop, group: t.shortcuts.groups.window },
     { action: "openSettings", label: t.shortcuts.actions.openSettings, group: t.shortcuts.groups.window },
   ];
 }
@@ -920,6 +963,104 @@ function mediaItemFromHistory(entry: PlaybackHistoryEntry): MediaItem {
   };
 }
 
+function normalizeReleaseVersion(value: string) {
+  return value.trim().replace(/^v/i, "");
+}
+
+function compareVersionParts(current: string, latest: string) {
+  const left = normalizeReleaseVersion(current).split(".").map((part) => Number.parseInt(part, 10));
+  const right = normalizeReleaseVersion(latest).split(".").map((part) => Number.parseInt(part, 10));
+  const length = Math.max(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    const leftValue = left[index];
+    const rightValue = right[index];
+    const leftPart = typeof leftValue === "number" && Number.isFinite(leftValue) ? leftValue : 0;
+    const rightPart = typeof rightValue === "number" && Number.isFinite(rightValue) ? rightValue : 0;
+    if (leftPart !== rightPart) {
+      return leftPart < rightPart ? -1 : 1;
+    }
+  }
+  return 0;
+}
+
+function normalizeReleaseAsset(asset: unknown): ReleaseAsset | null {
+  if (!asset || typeof asset !== "object") {
+    return null;
+  }
+
+  const record = asset as Record<string, unknown>;
+  if (typeof record.name !== "string" || typeof record.browser_download_url !== "string") {
+    return null;
+  }
+
+  return {
+    name: record.name,
+    browserDownloadUrl: record.browser_download_url,
+  };
+}
+
+function normalizeLatestRelease(payload: unknown): LatestRelease | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const record = payload as Record<string, unknown>;
+  const tagName = typeof record.tag_name === "string" ? record.tag_name : "";
+  const htmlUrl = typeof record.html_url === "string" ? record.html_url : OPENPLAYER_RELEASES_URL;
+  const assets = Array.isArray(record.assets) ? record.assets.map(normalizeReleaseAsset).filter((asset): asset is ReleaseAsset => asset !== null) : [];
+  const version = normalizeReleaseVersion(tagName);
+  if (!version) {
+    return null;
+  }
+
+  return { version, tagName, htmlUrl, assets };
+}
+
+function releaseAssetCandidates(latest: LatestRelease, support: PlatformSupport | null) {
+  const version = latest.version;
+  const os = support?.os.toLowerCase() ?? "";
+  const userAgent = navigator.userAgent.toLowerCase();
+  if (os === "windows") {
+    return [`OpenPlayer_${latest.version}_x64-setup.exe`];
+  }
+  if (os === "macos") {
+    const macosAssets = [`OpenPlayer_${version}_x64.dmg`, `OpenPlayer_${version}_arm64.dmg`];
+    return userAgent.includes("arm") || userAgent.includes("aarch64") ? [...macosAssets].reverse() : macosAssets;
+  }
+  if (os === "linux") {
+    return [`OpenPlayer_${version}_amd64.AppImage`, `OpenPlayer_${version}_amd64.deb`];
+  }
+  return [`OpenPlayer_${version}_x64-setup.exe`, `OpenPlayer_${version}_amd64.AppImage`, `OpenPlayer_${version}_x64.dmg`, `OpenPlayer_${version}_arm64.dmg`];
+}
+
+function releaseAssetForCurrentPlatform(latest: LatestRelease, support: PlatformSupport | null) {
+  const candidates = releaseAssetCandidates(latest, support);
+  for (const candidate of candidates) {
+    const asset = latest.assets.find((item) => item.name === candidate);
+    if (asset) {
+      return asset;
+    }
+  }
+
+  return latest.assets.find((asset) => asset.name.includes(`OpenPlayer_${latest.version}_`) && !asset.name.endsWith(".sha256")) ?? null;
+}
+
+function updateStatusText(state: UpdateState, t: AppStrings) {
+  switch (state.status) {
+    case "checking":
+      return t.settings.about.checkingUpdates;
+    case "current":
+      return t.settings.about.upToDate;
+    case "available":
+      return state.latest ? t.settings.about.updateAvailable(state.latest.version) : t.settings.about.updateAvailableUnknown;
+    case "failed":
+      return t.settings.about.updateCheckFailed(state.error ?? t.common.none);
+    case "idle":
+    default:
+      return t.settings.about.updateIdle;
+  }
+}
+
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, string> = {
     close: "M6 6l12 12M18 6 6 18",
@@ -927,6 +1068,7 @@ function Icon({ name }: { name: IconName }) {
     folder: "M3 7.5h6l2 2h10v8.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7.5Z",
     folderAdd: "M3 7.5h6l2 2h10v8.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7.5ZM12 13v5M9.5 15.5h5",
     fullscreen: "M8 4H4v4M16 4h4v4M20 16v4h-4M8 20H4v-4",
+    info: "M12 17v-6M12 7h.01M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z",
     list: "M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01",
     maximize: "M7 7h10v10H7z",
     minimize: "M6 12h12",
@@ -985,7 +1127,10 @@ function App() {
   const [appearanceState, setAppearanceState] = useState<AppearanceState | null>(null);
   const [playerPreferences, setPlayerPreferences] = useState<PlayerPreferences>(DEFAULT_PLAYER_PREFERENCES);
   const [playbackSettings, setPlaybackSettings] = useState<PlaybackSettings>(DEFAULT_PLAYBACK_SETTINGS);
+  const [appVersion, setAppVersion] = useState<AppVersionInfo | null>(null);
+  const [updateState, setUpdateState] = useState<UpdateState>(DEFAULT_UPDATE_STATE);
   const [volumeFeedback, setVolumeFeedback] = useState<VolumeFeedback | null>(null);
+  const [alwaysOnTopFeedback, setAlwaysOnTopFeedback] = useState<AlwaysOnTopFeedback | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuPosition | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("appearance");
@@ -1002,6 +1147,7 @@ function App() {
   const snapshotRequestIdRef = useRef(0);
   const chromeHideTimerRef = useRef<number | null>(null);
   const volumeFeedbackTimerRef = useRef<number | null>(null);
+  const alwaysOnTopFeedbackTimerRef = useRef<number | null>(null);
   const pendingWindowDragRef = useRef<PendingWindowDrag | null>(null);
   const manualResizeDragRef = useRef<ManualResizeDrag | null>(null);
   const resizeCursorDirectionRef = useRef<ResizeDirection | null>(null);
@@ -1074,6 +1220,16 @@ function App() {
       })
       .catch((error: unknown) => {
         console.warn("Failed to load playback settings", error);
+      });
+
+    invoke<AppVersionInfo>("app_version")
+      .then((version) => {
+        if (!disposed) {
+          setAppVersion(version);
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn("Failed to load app version metadata", error);
       });
 
     invoke<boolean>("window_always_on_top_state")
@@ -1192,6 +1348,12 @@ function App() {
       setRecordingShortcutAction(null);
     }
   }, [isSettingsOpen]);
+
+  useEffect(() => {
+    if (isSettingsOpen && settingsSection === "about" && updateState.status === "idle") {
+      checkForUpdates();
+    }
+  }, [isSettingsOpen, settingsSection, updateState.status]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -1368,6 +1530,9 @@ function App() {
       if (volumeFeedbackTimerRef.current !== null) {
         window.clearTimeout(volumeFeedbackTimerRef.current);
       }
+      if (alwaysOnTopFeedbackTimerRef.current !== null) {
+        window.clearTimeout(alwaysOnTopFeedbackTimerRef.current);
+      }
     };
   }, []);
 
@@ -1508,6 +1673,17 @@ function App() {
     volumeFeedbackTimerRef.current = window.setTimeout(() => {
       setVolumeFeedback(null);
       volumeFeedbackTimerRef.current = null;
+    }, VOLUME_FEEDBACK_MS);
+  }
+
+  function showAlwaysOnTopFeedback(enabled: boolean) {
+    setAlwaysOnTopFeedback({ enabled });
+    if (alwaysOnTopFeedbackTimerRef.current !== null) {
+      window.clearTimeout(alwaysOnTopFeedbackTimerRef.current);
+    }
+    alwaysOnTopFeedbackTimerRef.current = window.setTimeout(() => {
+      setAlwaysOnTopFeedback(null);
+      alwaysOnTopFeedbackTimerRef.current = null;
     }, VOLUME_FEEDBACK_MS);
   }
 
@@ -1873,6 +2049,70 @@ function App() {
     }
   }
 
+  async function openExternalUrl(url: string | null | undefined) {
+    if (!url) {
+      return;
+    }
+
+    try {
+      await invoke("app_open_url", { url });
+    } catch (error) {
+      reportPlaybackError(error);
+    } finally {
+      focusOverlayWindow();
+    }
+  }
+
+  async function checkForUpdates() {
+    if (updateState.status === "checking") {
+      return;
+    }
+
+    setUpdateState((state) => ({ ...state, status: "checking", error: null }));
+    try {
+      const response = await fetch(OPENPLAYER_RELEASES_API_URL, {
+        headers: { Accept: "application/vnd.github+json" },
+      });
+      if (!response.ok) {
+        throw new Error(`GitHub ${response.status}`);
+      }
+
+      const latest = normalizeLatestRelease(await response.json());
+      if (!latest) {
+        throw new Error("invalid release response");
+      }
+
+      const versionInfo = appVersion ?? (await invoke<AppVersionInfo>("app_version"));
+      if (!appVersion) {
+        setAppVersion(versionInfo);
+      }
+      const asset = releaseAssetForCurrentPlatform(latest, platformSupport);
+      setUpdateState({
+        status: compareVersionParts(versionInfo.version, latest.version) < 0 ? "available" : "current",
+        latest,
+        asset,
+        error: null,
+      });
+    } catch (error) {
+      setUpdateState({
+        status: "failed",
+        latest: null,
+        asset: null,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      focusOverlayWindow();
+    }
+  }
+
+  function openUpdateDownload() {
+    const url =
+      updateState.status === "available" && updateState.asset
+        ? updateState.asset.browserDownloadUrl
+        : (updateState.latest?.htmlUrl ?? appVersion?.releasesUrl ?? OPENPLAYER_RELEASES_URL);
+    void openExternalUrl(url);
+  }
+
   async function importThemePlugin() {
     if (isPickerOpen) {
       return;
@@ -2009,6 +2249,9 @@ function App() {
         break;
       case "toggleFullscreen":
         toggleFullscreen();
+        break;
+      case "toggleAlwaysOnTop":
+        toggleAlwaysOnTop();
         break;
       case "openSettings":
         openSettingsDialog();
@@ -2294,6 +2537,7 @@ function App() {
     invoke<boolean>("window_toggle_always_on_top")
       .then((enabled) => {
         setIsAlwaysOnTop(enabled);
+        showAlwaysOnTopFeedback(enabled);
         focusOverlayWindow();
       })
       .catch(reportPlaybackError);
@@ -2322,6 +2566,7 @@ function App() {
         clearPendingWindowDrag();
         return;
       }
+      event.preventDefault();
       pendingWindowDragRef.current = {
         pointerId: event.pointerId,
         startX: event.clientX,
@@ -2701,12 +2946,9 @@ function App() {
     { type: "item", id: "stop", label: t.contextMenu.stop, icon: "stop", disabled: !media, onSelect: stopPlayback },
     { type: "item", id: "restart", label: t.contextMenu.restart, icon: "restart", shortcut: shortcutBindings.restart, disabled: !media, onSelect: () => restartPlayback() },
     { type: "separator", id: "playback-separator" },
-    { type: "item", id: "loop-mode", label: loopModeLabel(loopMode, t), icon: "restart", disabled: !media, onSelect: toggleLoopPanel },
-    { type: "item", id: "media-options", label: t.contextMenu.tracksSubtitles, icon: "tracks", disabled: !media, onSelect: toggleTrackPanel },
-    { type: "item", id: "playlist", label: t.contextMenu.playlist, icon: "list", shortcut: shortcutBindings.togglePlaylist, disabled: !media && queue.length === 0 && playbackHistory.length === 0, onSelect: togglePlaylist },
     { type: "item", id: "open-location", label: t.contextMenu.openFileLocation, icon: "folder", disabled: !media, onSelect: openCurrentFileLocation },
     { type: "item", id: "fullscreen", label: t.contextMenu.fullscreen, icon: "fullscreen", shortcut: shortcutBindings.toggleFullscreen, onSelect: toggleFullscreen },
-    { type: "item", id: "always-on-top", label: isAlwaysOnTop ? t.contextMenu.disableAlwaysOnTop : t.contextMenu.alwaysOnTop, icon: "pin", onSelect: toggleAlwaysOnTop },
+    { type: "item", id: "always-on-top", label: isAlwaysOnTop ? t.contextMenu.disableAlwaysOnTop : t.contextMenu.alwaysOnTop, icon: "pin", shortcut: shortcutBindings.toggleAlwaysOnTop, onSelect: toggleAlwaysOnTop },
     { type: "item", id: "settings", label: t.contextMenu.settings, icon: "settings", shortcut: shortcutBindings.openSettings, onSelect: openSettingsDialog },
     { type: "separator", id: "window-separator" },
     { type: "item", id: "close", label: t.contextMenu.closeWindow, icon: "close", onSelect: () => runWindowCommand("window_close") },
@@ -3072,6 +3314,78 @@ function App() {
     );
   }
 
+  function renderAboutSettings() {
+    const versionInfo = appVersion ?? {
+      name: t.common.appName,
+      version: t.common.loading,
+      license: t.common.loading,
+      repository: OPENPLAYER_RELEASES_URL.replace(/\/releases\/latest$/, ""),
+      releasesUrl: OPENPLAYER_RELEASES_URL,
+    };
+    const latestVersion = updateState.latest?.version ?? t.common.none;
+    const downloadLabel = updateState.status === "available" && updateState.asset ? t.settings.about.downloadUpdate : t.settings.about.openReleasePage;
+
+    return (
+      <section className="settings-panel" aria-labelledby="about-settings-title">
+        <div className="settings-panel-heading">
+          <div>
+            <h3 id="about-settings-title">{t.settings.about.title}</h3>
+            <span>{t.settings.about.subtitle}</span>
+          </div>
+        </div>
+
+        <div className="about-panel">
+          <section className="about-hero">
+            <img src={openPlayerLogoUrl} alt="" draggable={false} />
+            <div>
+              <strong>{versionInfo.name}</strong>
+              <p>{t.settings.about.description}</p>
+            </div>
+          </section>
+
+          <dl className="about-meta">
+            <div>
+              <dt>{t.settings.about.version}</dt>
+              <dd>{versionInfo.version}</dd>
+            </div>
+            <div>
+              <dt>{t.settings.about.license}</dt>
+              <dd>{versionInfo.license}</dd>
+            </div>
+            <div>
+              <dt>{t.settings.about.latestVersion}</dt>
+              <dd>{latestVersion}</dd>
+            </div>
+          </dl>
+
+          <section className="about-update-card" aria-label={t.settings.about.update}>
+            <div>
+              <strong>{t.settings.about.update}</strong>
+              <small>{updateStatusText(updateState, t)}</small>
+            </div>
+            <div className="about-actions">
+              <button className="settings-reset" type="button" onClick={checkForUpdates} disabled={updateState.status === "checking"}>
+                {updateState.status === "checking" ? t.settings.about.checkingShort : t.settings.about.checkForUpdates}
+              </button>
+              <button className="settings-reset" type="button" onClick={openUpdateDownload} disabled={updateState.status !== "available" && !updateState.latest}>
+                {downloadLabel}
+              </button>
+            </div>
+          </section>
+
+          <div className="about-links">
+            <button type="button" onClick={() => void openExternalUrl(versionInfo.repository)}>
+              {t.settings.about.repository}
+            </button>
+            <button type="button" onClick={() => void openExternalUrl(versionInfo.releasesUrl)}>
+              {t.settings.about.releases}
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <main
       className="app-shell"
@@ -3119,7 +3433,9 @@ function App() {
           <div
             className="drag-region"
             aria-hidden="true"
+            draggable={false}
             onAuxClick={(event) => event.preventDefault()}
+            onDragStart={(event) => event.preventDefault()}
             onDoubleClick={handleDragRegionDoubleClick}
             onPointerDown={handleDragRegionPointerDown}
             onPointerMove={handleDragRegionPointerMove}
@@ -3181,6 +3497,12 @@ function App() {
             <div className="volume-feedback" role="status" aria-live="polite">
               <Icon name="volume" />
               <span>{Math.round(volumeFeedback.level * 100)}%</span>
+            </div>
+          )}
+          {alwaysOnTopFeedback && (
+            <div className="volume-feedback always-on-top-feedback" role="status" aria-live="polite">
+              <Icon name="pin" />
+              <span>{alwaysOnTopFeedback.enabled ? t.status.alwaysOnTopEnabled : t.status.alwaysOnTopDisabled}</span>
             </div>
           )}
 
@@ -3564,12 +3886,22 @@ function App() {
                       <Icon name="settings" />
                       <span>{t.settings.nav.shortcuts}</span>
                     </button>
+                    <button
+                      className={`settings-nav-item ${settingsSection === "about" ? "settings-nav-item--active" : ""}`}
+                      type="button"
+                      aria-current={settingsSection === "about" ? "page" : undefined}
+                      onClick={() => setSettingsSection("about")}
+                    >
+                      <Icon name="info" />
+                      <span>{t.settings.nav.about}</span>
+                    </button>
                   </nav>
 
                   {settingsSection === "appearance" && renderAppearanceSettings()}
                   {settingsSection === "plugins" && renderPluginSettings()}
                   {settingsSection === "playback" && renderPlaybackSettings()}
                   {settingsSection === "shortcuts" && renderShortcutSettings()}
+                  {settingsSection === "about" && renderAboutSettings()}
                 </div>
               </section>
             </div>

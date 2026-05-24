@@ -5,6 +5,7 @@ use std::ffi::c_void;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
+    process::Command,
     sync::Mutex,
     thread,
     time::Duration,
@@ -37,7 +38,8 @@ use windows_sys::Win32::{
     UI::{
         Input::KeyboardAndMouse::{
             GetAsyncKeyState, VK_BACK, VK_CONTROL, VK_DELETE, VK_DOWN, VK_ESCAPE, VK_LEFT, VK_LWIN,
-            VK_MENU, VK_OEM_COMMA, VK_RETURN, VK_RIGHT, VK_RWIN, VK_SHIFT, VK_SPACE, VK_UP,
+            VK_MENU, VK_OEM_5, VK_OEM_COMMA, VK_RETURN, VK_RIGHT, VK_RWIN, VK_SHIFT, VK_SPACE,
+            VK_UP,
         },
         WindowsAndMessaging::{
             CallNextHookEx, GetForegroundWindow, GetMessageW, GetWindowThreadProcessId,
@@ -114,6 +116,19 @@ struct WindowState {
     always_on_top: Mutex<bool>,
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppVersionInfo {
+    name: &'static str,
+    version: &'static str,
+    license: &'static str,
+    repository: &'static str,
+    releases_url: &'static str,
+}
+
+const OPENPLAYER_REPOSITORY_URL: &str = "https://github.com/AreChen/OpenPlayer";
+const OPENPLAYER_RELEASES_URL: &str = "https://github.com/AreChen/OpenPlayer/releases/latest";
+
 #[cfg(windows)]
 const NATIVE_SHORTCUT_EVENT: &str = "openplayer-native-shortcut";
 
@@ -157,6 +172,61 @@ fn window_set_shortcuts_enabled(enabled: bool) -> Result<(), String> {
     #[cfg(not(windows))]
     let _ = enabled;
     Ok(())
+}
+
+#[tauri::command]
+fn app_version() -> AppVersionInfo {
+    AppVersionInfo {
+        name: "OpenPlayer",
+        version: env!("CARGO_PKG_VERSION"),
+        license: env!("CARGO_PKG_LICENSE"),
+        repository: OPENPLAYER_REPOSITORY_URL,
+        releases_url: OPENPLAYER_RELEASES_URL,
+    }
+}
+
+#[tauri::command]
+fn app_open_url(url: String) -> Result<(), String> {
+    let trimmed = url.trim();
+    if !is_safe_external_url(trimmed) {
+        return Err("invalid external url".to_string());
+    }
+
+    open_external_url(trimmed)
+}
+
+fn is_safe_external_url(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    (lower.starts_with("https://") || lower.starts_with("http://"))
+        && !url.chars().any(char::is_whitespace)
+}
+
+#[cfg(windows)]
+fn open_external_url(url: &str) -> Result<(), String> {
+    Command::new("rundll32")
+        .arg("url.dll,FileProtocolHandler")
+        .arg(url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("failed to open url: {error}"))
+}
+
+#[cfg(target_os = "macos")]
+fn open_external_url(url: &str) -> Result<(), String> {
+    Command::new("open")
+        .arg(url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("failed to open url: {error}"))
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn open_external_url(url: &str) -> Result<(), String> {
+    Command::new("xdg-open")
+        .arg(url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("failed to open url: {error}"))
 }
 
 #[cfg(windows)]
@@ -361,6 +431,7 @@ fn native_shortcut_key(vk_code: u32) -> Option<&'static str> {
         value if value == VK_DOWN as u32 => Some("ArrowDown"),
         value if value == VK_ESCAPE as u32 => Some("Escape"),
         value if value == VK_LEFT as u32 => Some("ArrowLeft"),
+        value if value == VK_OEM_5 as u32 => Some("\\"),
         value if value == VK_OEM_COMMA as u32 => Some(","),
         value if value == VK_RETURN as u32 => Some("Enter"),
         value if value == VK_RIGHT as u32 => Some("ArrowRight"),
@@ -960,6 +1031,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             window_update_shortcuts,
             window_set_shortcuts_enabled,
+            app_version,
+            app_open_url,
             window_minimize,
             window_toggle_maximize,
             window_toggle_fullscreen,
@@ -1059,6 +1132,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             window_update_shortcuts,
             window_set_shortcuts_enabled,
+            app_version,
+            app_open_url,
             window_minimize,
             window_toggle_maximize,
             window_toggle_fullscreen,

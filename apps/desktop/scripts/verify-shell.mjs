@@ -359,7 +359,9 @@ assert.match(appSource, /window_update_shortcuts/, "frontend must mirror custom 
 assert.match(appSource, /window_set_shortcuts_enabled/, "frontend must disable native shortcut dispatch while menus or shortcut capture are active");
 assert.match(appSource, /frameForward/, "player shell must define a configurable forward-one-frame shortcut action");
 assert.match(appSource, /frameBackward/, "player shell must define a configurable backward-one-frame shortcut action");
+assert.match(appSource, /toggleAlwaysOnTop/, "player shell must define a configurable always-on-top shortcut action");
 assert.match(appSource, /toggleFullscreen:\s*"Enter"/, "fullscreen shortcut must default to Enter");
+assert.match(appSource, /toggleAlwaysOnTop:\s*"\\\\"/, "always-on-top shortcut must default to backslash");
 assert.match(appSource, /frameBackward:\s*"D"/, "backward-one-frame shortcut must default to D");
 assert.match(appSource, /frameForward:\s*"F"/, "forward-one-frame shortcut must default to F");
 assert.match(appSource, /mpv_embed_frame_step/, "forward-one-frame shortcut must use mpv frame-step");
@@ -379,12 +381,14 @@ assert.match(appSource, /TEXT_ENTRY_INPUT_TYPES/, "global shortcut filtering mus
 assert.match(appSource, /releaseShortcutFocusTarget/, "global shortcuts must release non-text control focus before dispatching player actions");
 assert.match(appSource, /window_focus_overlay/, "frontend must be able to restore overlay focus after native dialogs or window commands");
 assert.match(appSource, /context-menu/, "overlay must render a custom right-click context menu");
+assert.doesNotMatch(appSource, /id:\s*"loop-mode"[\s\S]*t\.contextMenu\.tracksSubtitles[\s\S]*id:\s*"playlist"/, "context menu must not duplicate loop, track/subtitle, and playlist controls already available in the player UI");
 assert.match(appSource, /settings-dialog/, "overlay must render a settings dialog for player preferences");
 assert.match(appSource, /onContextMenu=\{openContextMenu\}/, "player surface must open the custom context menu on right click");
 assert.match(appSource, /window_toggle_fullscreen/, "overlay UI must route fullscreen through a backend command targeting the main video window");
 assert.doesNotMatch(appSource, /getCurrentWindow\(\)[\s\S]*setFullscreen/, "overlay UI must not fullscreen the overlay window itself");
 assert.match(appSource, /event\.button\s*===\s*1[\s\S]*window_toggle_fullscreen/, "non-control surface must toggle fullscreen with the middle mouse button");
 assert.match(appSource, /onDoubleClick=\{handleDragRegionDoubleClick\}/, "non-control surface must toggle play and pause with double click");
+assert.match(appSource, /onDragStart=\{\(event\) => event\.preventDefault\(\)\}/, "overlay drag region must suppress browser HTML drag so window dragging and double-click playback coexist");
 assert.doesNotMatch(appSource, /data-tauri-drag-region/, "full-surface video interaction layer must not use Tauri's automatic drag region because it swallows double-click playback toggles");
 assert.match(appSource, /WINDOW_DRAG_START_DISTANCE_PX[\s\S]*handleDragRegionPointerMove[\s\S]*startMainWindowDrag/, "video-surface drag must start from pointer movement threshold instead of a timer so dragging remains responsive while double-click works");
 assert.doesNotMatch(appSource, /dragStartTimerRef|setTimeout\(\(\) => \{\s*[^}]*startMainWindowDrag/, "video-surface drag must not wait on a double-click delay timer");
@@ -405,6 +409,8 @@ assert.match(appSource, /onWheel=\{handleShellWheel\}/, "player shell must suppo
 assert.doesNotMatch(handleShellWheelSource, /!media/, "mouse wheel volume control must also work before media is loaded");
 assert.match(handleShellPointerDownSource, /isPointerInsidePlaybackControl[\s\S]*closeFloatingPlaybackMenus/, "clicking the non-control playback surface must dismiss floating playback menus");
 assert.match(appSource, /volumeFeedback/, "volume changes from wheel and shortcuts must display a transient volume overlay");
+assert.match(appSource, /alwaysOnTopFeedback/, "always-on-top changes must display a transient state overlay");
+assert.match(appSource, /showAlwaysOnTopFeedback\(enabled\)/, "always-on-top toggles must show whether the window is pinned or unpinned");
 assert.match(appSource, /previousAudibleVolumeRef[\s\S]*function toggleMute[\s\S]*setVolume\(0/, "volume button must toggle mute and restore the previous audible level");
 assert.doesNotMatch(appSource, /volume-feedback-track/, "volume feedback overlay must stay compact and not render a progress track");
 assert.match(appSource, /accent-picker-preview/, "custom accent picker must render its own clean color preview swatch");
@@ -426,6 +432,12 @@ assert.match(appSource, /clearPlaybackHistory/, "playlist and settings must expo
 assert.match(appSource, /shell_preview_formats/, "settings must load selectable Windows Explorer preview formats");
 assert.match(appSource, /shell_preview_register_formats/, "settings must register only the Explorer preview formats selected by the user");
 assert.match(appSource, /shell_preview_open_default_apps_settings/, "settings must provide a Windows default-app settings shortcut");
+assert.match(appSource, /type SettingsSection = "appearance" \| "plugins" \| "playback" \| "shortcuts" \| "about"/, "settings must include an about section");
+assert.match(appSource, /app_version/, "about settings must load local app version metadata from the backend");
+assert.match(appSource, /checkForUpdates/, "about settings must provide a GitHub release update check");
+assert.match(appSource, /OpenPlayer_\$\{latest\.version\}_/, "about update UI must resolve platform release assets for download");
+assert.match(i18nSource, /about:[\s\S]*license/, "i18n must include about/version/license copy");
+assert.match(i18nSource, /checkForUpdates/, "i18n must include update checking copy");
 assert.match(appSource, /shell-preview-format--unselected/, "Explorer preview format buttons must explicitly mark unselected state");
 assert.match(appSource, /toggleAllShellPreviewFormats/, "settings must expose a select-all and clear-all preview format toggle");
 assert.match(appSource, /resetShellPreviewFormatsToDefault/, "settings must expose a default preview format selection action");
@@ -440,6 +452,7 @@ assert.match(appSource, /mediaPanelMode === "loop"[\s\S]*loop-option/, "restart-
 assert.match(appSource, /loadedMediaPath[\s\S]*mpv_embed_set_loop_file/, "loop-mode synchronization must wait until mpv has actually loaded the selected media");
 assert.match(appSource, /loadedMediaPath !== media\.path[\s\S]*mpv_embed_set_loop_file/, "opening media must not show a transient no-loaded-media warning from loop-mode synchronization");
 assert.match(appSource, /window_start_drag/, "overlay drag region must ask the backend to drag the main video window");
+assert.match(styles, /\.drag-region[\s\S]*user-select:\s*none[\s\S]*-webkit-user-drag:\s*none/, "overlay drag region must disable text selection and WebKit drag images");
 assert.doesNotMatch(appSource, /onDoubleClick=\{toggleFullscreen\}/, "fullscreen must use middle mouse button instead of double-click");
 assert.match(appSource, /window_start_resize/, "overlay resize handles must ask the backend to resize the main video window");
 assert.match(appSource, /pendingSeek/, "seek UI must track pending seek targets to prevent stale snapshot rollback");
@@ -470,6 +483,7 @@ assert.match(styles, /\.app-shell[\s\S]*padding:\s*0/, "window shell must not le
 assert.match(styles, /\.window-controls button\s*\{[\s\S]*color:\s*var\(--accent\)/, "window control icons must follow the selected accent color");
 assert.match(styles, /\.window-controls\s*\{[^}]*right:\s*24px/, "window controls must align horizontally with the bottom transport inset");
 assert.match(styles, /\.volume-feedback\s*\{[^}]*left:\s*24px/, "volume feedback must align horizontally with the bottom transport inset");
+assert.match(styles, /\.always-on-top-feedback[\s\S]*left:\s*24px/, "always-on-top feedback must align with the volume feedback and bottom transport inset");
 assert.doesNotMatch(styles, /\.recent-shortcuts|\.recent-drawer-section|\.status-line/, "minimal UI must not keep recent-media or status chrome styles");
 assert.match(styles, /playlist-item--active/, "playlist styles must mark the active queue item");
 assert.match(styles, /\.history-section/, "styles must include playback history section styling");
@@ -686,6 +700,7 @@ assert.match(tauriLibSource, /fn install_native_shortcut_hook/, "desktop backend
 assert.match(tauriLibSource, /SetWindowsHookExW/, "Windows shortcut bridge must use a low-level keyboard hook while the app is focused");
 assert.match(tauriLibSource, /GetModuleHandleW/, "Windows shortcut hook must pass the current module handle instead of silently failing with a null module");
 assert.match(tauriLibSource, /GetForegroundWindow/, "Windows shortcut bridge must only dispatch shortcuts when OpenPlayer is the foreground app");
+assert.match(tauriLibSource, /VK_OEM_5/, "Windows shortcut bridge must recognize the backslash key for the default always-on-top shortcut");
 assert.match(tauriLibSource, /openplayer-native-shortcut/, "native shortcut bridge must emit actions to the overlay frontend");
 assert.match(tauriLibSource, /sync_overlay_to_main[\s\S]*focus_overlay_window\(app\)/, "overlay sync must return keyboard focus to the controls window");
 assert.match(tauriLibSource, /openplayer_macos_prepare_overlay_window/, "macOS overlay window must be marked as a fullscreen auxiliary child of the video window");
@@ -701,6 +716,8 @@ assert.match(windowApplyResizeDeltaSource, /set_position[\s\S]*set_size/, "macOS
 assert.doesNotMatch(windowApplyResizeDeltaSource, /sync_overlay_to_main|sync_mpv_video_host/, "macOS manual resize deltas must not run immediate duplicate overlay/mpv sync on every pointermove");
 assert.match(tauriLibSource, /window_close/, "desktop backend must keep close command");
 assert.match(tauriLibSource, /window_start_drag[\s\S]*main_window\(&app\)\?[\s\S]*start_dragging/, "backend must drag the main video window when overlay drag strip is used");
+assert.match(tauriLibSource, /fn app_version/, "desktop backend must expose app version metadata for the about page");
+assert.match(tauriLibSource, /fn app_open_url/, "desktop backend must expose a safe external URL opener for releases and licenses");
 assert.match(mainSource, /windows_subsystem\s*=\s*"windows"/, "release Windows app must use GUI subsystem instead of opening a console");
 
 assert.ok(!capability.permissions.includes("core:window:allow-start-dragging"), "capability must not allow the removed JS start_dragging path");
