@@ -13,6 +13,9 @@ use std::{
 #[cfg(windows)]
 use std::{
     collections::HashSet,
+    ffi::OsStr,
+    os::windows::ffi::OsStrExt,
+    ptr::null_mut,
     sync::{
         OnceLock,
         atomic::{AtomicBool, Ordering},
@@ -33,8 +36,14 @@ use tauri_runtime::ResizeDirection;
 use windows_sys::Win32::UI::WindowsAndMessaging::{GWLP_HWNDPARENT, SetWindowLongPtrW};
 #[cfg(windows)]
 use windows_sys::Win32::{
-    Foundation::{LPARAM, LRESULT, WPARAM},
-    System::LibraryLoader::GetModuleHandleW,
+    Foundation::{ERROR_NO_MORE_ITEMS, ERROR_SUCCESS, LPARAM, LRESULT, WPARAM},
+    System::{
+        LibraryLoader::GetModuleHandleW,
+        Registry::{
+            HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, RegCloseKey, RegEnumValueW,
+            RegOpenKeyExW,
+        },
+    },
     UI::{
         Input::KeyboardAndMouse::{
             GetAsyncKeyState, VK_BACK, VK_CONTROL, VK_DELETE, VK_DOWN, VK_ESCAPE, VK_LEFT, VK_LWIN,
@@ -65,21 +74,23 @@ mod playback_store;
 mod shell_preview;
 
 use appearance_store::{
-    AppearanceStoreState, appearance_import_theme_plugin, appearance_reset,
-    appearance_set_accent_override, appearance_set_plugin_enabled, appearance_set_theme,
-    appearance_state, preferences_set_incognito_mode, preferences_set_language_mode,
-    preferences_set_quiet_keyboard_controls, preferences_state,
+    AppearanceStoreState, appearance_import_plugin_directory, appearance_import_plugin_manifest,
+    appearance_import_plugin_package, appearance_import_theme_plugin,
+    appearance_plugin_runtime_sources, appearance_reset, appearance_set_accent_override,
+    appearance_set_plugin_enabled, appearance_set_plugin_setting, appearance_set_theme,
+    appearance_state, appearance_uninstall_plugin, preferences_set_incognito_mode,
+    preferences_set_language_mode, preferences_set_quiet_keyboard_controls, preferences_state,
 };
 use media_paths::{
     StartupMediaState, media_files_from_paths, media_files_in_directory, startup_media_paths,
 };
 #[cfg(feature = "mpv-embed")]
 use mpv_embed::{
-    MpvEmbedSnapshot, MpvEmbedState, mpv_embed_add_subtitle, mpv_embed_frame_back_step,
-    mpv_embed_frame_step, mpv_embed_pause, mpv_embed_play, mpv_embed_seek, mpv_embed_select_track,
-    mpv_embed_set_hwdec, mpv_embed_set_loop_file, mpv_embed_set_speed,
-    mpv_embed_set_subtitle_delay, mpv_embed_set_video_fill, mpv_embed_set_volume,
-    mpv_embed_snapshot, mpv_embed_stop,
+    MpvEmbedSnapshot, MpvEmbedState, mpv_embed_add_subtitle, mpv_embed_capture_screenshot,
+    mpv_embed_frame_back_step, mpv_embed_frame_step, mpv_embed_pause, mpv_embed_play,
+    mpv_embed_seek, mpv_embed_select_track, mpv_embed_set_hwdec, mpv_embed_set_loop_file,
+    mpv_embed_set_plugin_property, mpv_embed_set_speed, mpv_embed_set_subtitle_delay,
+    mpv_embed_set_video_fill, mpv_embed_set_volume, mpv_embed_snapshot, mpv_embed_stop,
 };
 use platform_support::{platform_support, prepare_platform_runtime};
 use playback_store::{
@@ -183,6 +194,152 @@ fn app_version() -> AppVersionInfo {
         repository: OPENPLAYER_REPOSITORY_URL,
         releases_url: OPENPLAYER_RELEASES_URL,
     }
+}
+
+#[tauri::command]
+fn system_font_families() -> Vec<String> {
+    system_font_families_impl()
+}
+
+#[cfg(windows)]
+fn system_font_families_impl() -> Vec<String> {
+    let mut fonts = Vec::new();
+    collect_windows_registry_fonts(
+        HKEY_LOCAL_MACHINE,
+        "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts",
+        &mut fonts,
+    );
+    collect_windows_registry_fonts(
+        HKEY_CURRENT_USER,
+        "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts",
+        &mut fonts,
+    );
+    normalize_font_family_list(fonts)
+}
+
+#[cfg(not(windows))]
+fn system_font_families_impl() -> Vec<String> {
+    default_font_families()
+}
+
+#[cfg(windows)]
+fn collect_windows_registry_fonts(root: HKEY, subkey: &str, fonts: &mut Vec<String>) {
+    let mut key: HKEY = null_mut();
+    let subkey = wide_null(subkey);
+    let status = unsafe { RegOpenKeyExW(root, subkey.as_ptr(), 0, KEY_READ, &mut key) };
+    if status != ERROR_SUCCESS {
+        return;
+    }
+
+    let mut index = 0;
+    loop {
+        let mut name = [0u16; 512];
+        let mut name_len = name.len() as u32;
+        let status = unsafe {
+            RegEnumValueW(
+                key,
+                index,
+                name.as_mut_ptr(),
+                &mut name_len,
+                null_mut(),
+                null_mut(),
+                null_mut(),
+                null_mut(),
+            )
+        };
+        if status == ERROR_NO_MORE_ITEMS {
+            break;
+        }
+        if status != ERROR_SUCCESS {
+            break;
+        }
+        if let Some(font) =
+            registry_font_name_to_family(&String::from_utf16_lossy(&name[..name_len as usize]))
+        {
+            fonts.push(font);
+        }
+        index += 1;
+    }
+
+    unsafe {
+        RegCloseKey(key);
+    }
+}
+
+#[cfg(windows)]
+fn wide_null(value: &str) -> Vec<u16> {
+    OsStr::new(value).encode_wide().chain(Some(0)).collect()
+}
+
+fn registry_font_name_to_family(name: &str) -> Option<String> {
+    let trimmed = name.trim().trim_start_matches('@').trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let mut family = trimmed
+        .split_once(" (")
+        .map(|(family, _)| family)
+        .unwrap_or(trimmed)
+        .trim()
+        .to_string();
+    for suffix in [
+        " Bold Italic",
+        " Bold Oblique",
+        " SemiBold Italic",
+        " Semibold Italic",
+        " ExtraBold Italic",
+        " Light Italic",
+        " Medium Italic",
+        " Regular",
+        " Bold",
+        " Italic",
+        " Oblique",
+        " SemiBold",
+        " Semibold",
+        " ExtraBold",
+        " Medium",
+        " Light",
+        " Black",
+    ] {
+        if family.len() > suffix.len()
+            && family
+                .to_ascii_lowercase()
+                .ends_with(&suffix.to_ascii_lowercase())
+        {
+            family.truncate(family.len() - suffix.len());
+            break;
+        }
+    }
+    let family = family.trim().to_string();
+    (!family.is_empty()).then_some(family)
+}
+
+fn normalize_font_family_list(fonts: Vec<String>) -> Vec<String> {
+    let mut fonts = if fonts.is_empty() {
+        default_font_families()
+    } else {
+        fonts
+    };
+    fonts.sort_by(|left, right| {
+        left.to_ascii_lowercase()
+            .cmp(&right.to_ascii_lowercase())
+            .then_with(|| left.cmp(right))
+    });
+    fonts.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+    fonts
+}
+
+fn default_font_families() -> Vec<String> {
+    [
+        "Arial",
+        "Microsoft YaHei",
+        "Segoe UI",
+        "SimHei",
+        "sans-serif",
+    ]
+    .into_iter()
+    .map(ToOwned::to_owned)
+    .collect()
 }
 
 #[tauri::command]
@@ -1032,6 +1189,7 @@ pub fn run() {
             window_update_shortcuts,
             window_set_shortcuts_enabled,
             app_version,
+            system_font_families,
             app_open_url,
             window_minimize,
             window_toggle_maximize,
@@ -1051,8 +1209,14 @@ pub fn run() {
             appearance_state,
             appearance_set_theme,
             appearance_set_accent_override,
+            appearance_import_plugin_manifest,
+            appearance_import_plugin_package,
+            appearance_import_plugin_directory,
             appearance_import_theme_plugin,
+            appearance_plugin_runtime_sources,
             appearance_set_plugin_enabled,
+            appearance_set_plugin_setting,
+            appearance_uninstall_plugin,
             appearance_reset,
             preferences_state,
             preferences_set_incognito_mode,
@@ -1072,6 +1236,36 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("failed to run OpenPlayer desktop app");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extracts_font_family_names_from_windows_registry_labels() {
+        assert_eq!(
+            registry_font_name_to_family("Arial Bold (TrueType)").as_deref(),
+            Some("Arial")
+        );
+        assert_eq!(
+            registry_font_name_to_family("@Microsoft YaHei UI (TrueType)").as_deref(),
+            Some("Microsoft YaHei UI")
+        );
+    }
+
+    #[test]
+    fn normalizes_font_family_list_case_insensitively() {
+        assert_eq!(
+            normalize_font_family_list(vec![
+                "Arial".to_string(),
+                "arial".to_string(),
+                "Segoe UI".to_string(),
+            ]),
+            vec!["Arial".to_string(), "Segoe UI".to_string()]
+        );
+        assert!(normalize_font_family_list(Vec::new()).contains(&"sans-serif".to_string()));
+    }
 }
 
 #[cfg(feature = "mpv-embed")]
@@ -1133,6 +1327,7 @@ pub fn run() {
             window_update_shortcuts,
             window_set_shortcuts_enabled,
             app_version,
+            system_font_families,
             app_open_url,
             window_minimize,
             window_toggle_maximize,
@@ -1157,6 +1352,8 @@ pub fn run() {
             mpv_embed_set_speed,
             mpv_embed_set_video_fill,
             mpv_embed_set_subtitle_delay,
+            mpv_embed_set_plugin_property,
+            mpv_embed_capture_screenshot,
             mpv_embed_select_track,
             mpv_embed_add_subtitle,
             mpv_embed_set_volume,
@@ -1169,8 +1366,14 @@ pub fn run() {
             appearance_state,
             appearance_set_theme,
             appearance_set_accent_override,
+            appearance_import_plugin_manifest,
+            appearance_import_plugin_package,
+            appearance_import_plugin_directory,
             appearance_import_theme_plugin,
+            appearance_plugin_runtime_sources,
             appearance_set_plugin_enabled,
+            appearance_set_plugin_setting,
+            appearance_uninstall_plugin,
             appearance_reset,
             preferences_state,
             preferences_set_incognito_mode,

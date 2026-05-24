@@ -827,6 +827,10 @@ input:focus-visible {
   opacity: 0.42;
 }
 
+.control-strip .plugin-action-button--compact span {
+  display: none;
+}
+
 .control-strip button:hover:not(:disabled),
 .playlist-toggle--open,
 .tracks-toggle--open,
@@ -1052,6 +1056,16 @@ input:focus-visible {
   color: var(--accent);
   font-size: 0.82rem;
   font-variant-numeric: tabular-nums;
+}
+
+.plugin-slot-section {
+  border-top: 1px solid rgba(236, 231, 221, 0.08);
+  padding-top: 8px;
+}
+
+.plugin-slot-controls {
+  display: grid;
+  gap: 6px;
 }
 
 .subtitle-load {
@@ -1450,9 +1464,9 @@ input:focus-visible {
 }
 
 .settings-panel-heading {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 14px;
   margin-bottom: 14px;
 }
@@ -1467,11 +1481,19 @@ input:focus-visible {
   font-size: 0.76rem;
 }
 
+.settings-heading-actions,
+.plugin-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
 .settings-reset {
   min-height: 32px;
   background: rgba(236, 231, 221, 0.08);
   color: var(--muted);
-  padding: 0 12px;
+  padding: 0 10px;
 }
 
 .settings-reset:hover {
@@ -1705,14 +1727,27 @@ input:focus-visible {
 
 .plugin-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
   min-height: 72px;
   border: 1px solid rgba(236, 231, 221, 0.1);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.025);
   padding: 12px;
+}
+
+.plugin-row--expanded {
+  border-color: color-mix(in srgb, var(--accent) 34%, rgba(236, 231, 221, 0.1));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 42%),
+    rgba(255, 255, 255, 0.025);
+}
+
+.plugin-row-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
 }
 
 .plugin-meta {
@@ -1728,10 +1763,11 @@ input:focus-visible {
   white-space: nowrap;
 }
 
-.plugin-meta p {
+.plugin-description {
   margin: 2px 0 0;
   color: var(--muted);
   font-size: 0.78rem;
+  line-height: 1.4;
 }
 
 .plugin-toggle {
@@ -1746,6 +1782,203 @@ input:focus-visible {
 
 .plugin-toggle input {
   accent-color: var(--accent);
+}
+
+.plugin-uninstall {
+  min-height: 28px;
+  padding: 0 10px;
+}
+
+.plugin-settings-toggle[aria-expanded="true"] {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.plugin-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.plugin-detail-grid span {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(236, 231, 221, 0.08);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.12);
+  color: var(--faint);
+  padding: 5px 8px;
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-install-path {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--faint);
+  font-size: 0.72rem;
+}
+
+.plugin-install-path code {
+  overflow: hidden;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--muted);
+  padding: 4px 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-chip-row,
+.plugin-permissions,
+.plugin-technical-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 3px;
+}
+
+.plugin-technical-summary {
+  color: var(--faint);
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.plugin-chip {
+  min-height: 22px;
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.plugin-setting-list {
+  display: grid;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.plugin-setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 220px);
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  border: 1px solid rgba(236, 231, 221, 0.08);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.16);
+  padding: 9px 10px;
+}
+
+.plugin-setting--compact {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  min-height: 0;
+  padding: 8px;
+}
+
+.plugin-setting-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.plugin-setting-copy strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-setting-copy small {
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-setting input[type="text"],
+.plugin-setting select {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid rgba(236, 231, 221, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--text);
+  padding: 0 10px;
+}
+
+.plugin-setting select option {
+  background: #111417;
+  color: var(--text);
+}
+
+.plugin-setting input[type="color"] {
+  justify-self: end;
+  width: 42px;
+  height: 32px;
+  border: 1px solid rgba(236, 231, 221, 0.18);
+  border-radius: 8px;
+  background: transparent;
+  padding: 2px;
+}
+
+.plugin-setting input:disabled,
+.plugin-setting select:disabled {
+  cursor: not-allowed;
+  opacity: 0.44;
+}
+
+.plugin-number-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  align-items: center;
+  gap: 8px;
+}
+
+.plugin-number-control input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.plugin-number-control output {
+  color: var(--accent);
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.plugin-setting > input[type="checkbox"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.plugin-setting > input[type="checkbox"] + .preference-switch {
+  justify-self: end;
+}
+
+.plugin-setting > input[type="checkbox"]:checked + .preference-switch {
+  background: var(--accent-muted);
+  box-shadow:
+    inset 0 0 0 1px var(--accent-border),
+    0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+.plugin-setting > input[type="checkbox"]:checked + .preference-switch span {
+  transform: translateX(20px);
+  background: var(--accent);
 }
 
 .plugin-empty {
@@ -2309,6 +2542,9 @@ input:focus-visible {
 
   .theme-grid,
   .plugin-row,
+  .plugin-row-header,
+  .plugin-detail-grid,
+  .plugin-install-path,
   .preference-row,
   .shell-preview-card-header,
   .accent-picker,
@@ -2325,7 +2561,18 @@ input:focus-visible {
     justify-content: stretch;
   }
 
+  .settings-panel-heading {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-heading-actions,
+  .plugin-row-actions {
+    justify-content: stretch;
+  }
+
   .shell-preview-actions button,
+  .settings-heading-actions button,
+  .plugin-row-actions button,
   .about-actions button {
     flex: 1;
   }

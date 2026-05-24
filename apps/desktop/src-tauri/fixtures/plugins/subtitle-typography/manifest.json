@@ -1,0 +1,161 @@
+{
+  "id": "dev.openplayer.subtitle.typography",
+  "name": "Subtitle Typography",
+  "version": "1.0.0",
+  "description": "Subtitle font, size, spacing, placement, color, outline, and shadow controls.",
+  "entry": "manifest",
+  "runtime": {
+    "kind": "manifest"
+  },
+  "contributes": {
+    "capabilities": [
+      {
+        "id": "subtitle-style",
+        "name": "Subtitle Styling",
+        "kind": "subtitleStyle",
+        "description": "Adjusts subtitle typography through OpenPlayer's safe mpv property allowlist.",
+        "permissions": ["mpv.subtitleStyle"]
+      }
+    ],
+    "settings": [
+      {
+        "id": "font-family",
+        "label": "Font Family",
+        "description": "Subtitle font family.",
+        "labelI18n": {
+          "zh-CN": "字幕字体"
+        },
+        "descriptionI18n": {
+          "zh-CN": "选择系统中已安装的字幕字体。"
+        },
+        "kind": "text",
+        "placement": "subtitleSettings",
+        "defaultValue": "sans-serif",
+        "mpvProperty": "sub-font"
+      },
+      {
+        "id": "font-size",
+        "label": "Font Size",
+        "description": "Base subtitle font size.",
+        "labelI18n": {
+          "zh-CN": "字号"
+        },
+        "descriptionI18n": {
+          "zh-CN": "调整字幕基础字号。"
+        },
+        "kind": "number",
+        "placement": "subtitleSettings",
+        "defaultValue": 42,
+        "min": 12,
+        "max": 96,
+        "step": 1,
+        "mpvProperty": "sub-font-size"
+      },
+      {
+        "id": "scale",
+        "label": "Scale",
+        "description": "Subtitle scale multiplier.",
+        "labelI18n": {
+          "zh-CN": "缩放"
+        },
+        "descriptionI18n": {
+          "zh-CN": "按比例放大或缩小字幕。"
+        },
+        "kind": "number",
+        "placement": "subtitleSettings",
+        "defaultValue": 1,
+        "min": 0.5,
+        "max": 3,
+        "step": 0.05,
+        "mpvProperty": "sub-scale"
+      },
+      {
+        "id": "letter-spacing",
+        "label": "Letter Spacing",
+        "description": "Extra spacing between subtitle letters.",
+        "labelI18n": {
+          "zh-CN": "字间距"
+        },
+        "descriptionI18n": {
+          "zh-CN": "调整字幕字符之间的距离。"
+        },
+        "kind": "number",
+        "placement": "subtitleSettings",
+        "defaultValue": 0,
+        "min": -10,
+        "max": 10,
+        "step": 1,
+        "mpvProperty": "sub-spacing"
+      },
+      {
+        "id": "position",
+        "label": "Vertical Position",
+        "description": "Subtitle vertical placement.",
+        "labelI18n": {
+          "zh-CN": "垂直位置"
+        },
+        "descriptionI18n": {
+          "zh-CN": "调整字幕在画面中的垂直位置。"
+        },
+        "kind": "number",
+        "placement": "subtitleSettings",
+        "defaultValue": 100,
+        "min": 0,
+        "max": 100,
+        "step": 1,
+        "mpvProperty": "sub-pos"
+      },
+      {
+        "id": "color",
+        "label": "Text Color",
+        "description": "Subtitle text color.",
+        "labelI18n": {
+          "zh-CN": "文字颜色"
+        },
+        "descriptionI18n": {
+          "zh-CN": "调整字幕文字颜色。"
+        },
+        "kind": "color",
+        "placement": "subtitleSettings",
+        "defaultValue": "#ffffff",
+        "mpvProperty": "sub-color"
+      },
+      {
+        "id": "outline",
+        "label": "Outline",
+        "description": "Subtitle outline thickness.",
+        "labelI18n": {
+          "zh-CN": "描边"
+        },
+        "descriptionI18n": {
+          "zh-CN": "调整字幕描边粗细。"
+        },
+        "kind": "number",
+        "placement": "subtitleSettings",
+        "defaultValue": 3,
+        "min": 0,
+        "max": 12,
+        "step": 0.5,
+        "mpvProperty": "sub-outline-size"
+      },
+      {
+        "id": "shadow",
+        "label": "Shadow",
+        "description": "Subtitle shadow offset.",
+        "labelI18n": {
+          "zh-CN": "阴影"
+        },
+        "descriptionI18n": {
+          "zh-CN": "调整字幕阴影偏移。"
+        },
+        "kind": "number",
+        "placement": "subtitleSettings",
+        "defaultValue": 1,
+        "min": 0,
+        "max": 12,
+        "step": 0.5,
+        "mpvProperty": "sub-shadow-offset"
+      }
+    ]
+  }
+}

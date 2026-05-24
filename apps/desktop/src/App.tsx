@@ -45,6 +45,10 @@ type MpvSnapshot = {
   tracks: MpvTrack[];
 };
 
+type MpvCaptureArtifact = {
+  path: string;
+};
+
 type PlatformSupport = {
   os: string;
   displayServer: string;
@@ -83,7 +87,117 @@ type ThemePluginSummary = {
   version: string;
   description: string | null;
   enabled: boolean;
+  packageKind: "legacyManifest" | "manifestFile" | "directory" | "opplugin";
+  installPath: string | null;
+  installedAtMs: number | null;
   themeCount: number;
+  runtime: "manifest" | "webviewJs" | "wasm";
+  capabilityCount: number;
+  settingCount: number;
+  actionCount: number;
+  permissions: string[];
+  capabilities: PluginCapabilitySummary[];
+  settings: PluginSettingDefinition[];
+  actions: PluginActionDefinition[];
+};
+
+type PluginCapabilitySummary = {
+  id: string;
+  name: string;
+  kind: PluginCapabilityKind;
+  description: string | null;
+  nameI18n: Record<string, string>;
+  descriptionI18n: Record<string, string>;
+  permissions: string[];
+};
+
+type PluginCapabilityKind = "subtitleStyle" | "capture" | "streamSource" | "aiTranscription" | "aiTranslation";
+type PluginSettingKind = "boolean" | "number" | "text" | "select" | "color";
+type PluginSettingPlacement =
+  | "pluginSettings"
+  | "subtitleSettings"
+  | "captureSettings"
+  | "streamSettings"
+  | "controls.left"
+  | "controls.center"
+  | "controls.right"
+  | "contextMenu"
+  | "overlay.status"
+  | "playlist.actions";
+type PluginSettingValue = boolean | number | string;
+
+type PluginSettingOption = {
+  value: string;
+  label: string;
+  labelI18n: Record<string, string>;
+};
+
+type PluginSettingDefinition = {
+  id: string;
+  label: string;
+  description: string | null;
+  labelI18n: Record<string, string>;
+  descriptionI18n: Record<string, string>;
+  kind: PluginSettingKind;
+  placement: PluginSettingPlacement;
+  defaultValue: PluginSettingValue;
+  value: PluginSettingValue;
+  min: number | null;
+  max: number | null;
+  step: number | null;
+  options: PluginSettingOption[];
+  mpvProperty: string | null;
+};
+
+type PluginActionPlacement = "controls.left" | "controls.center" | "controls.right" | "contextMenu" | "overlay.status" | "playlist.actions";
+type PluginActionCommand =
+  | "player.openMedia"
+  | "player.openStream"
+  | "player.captureScreenshot"
+  | "player.togglePlayback"
+  | "player.stop"
+  | "player.restart"
+  | "player.togglePlaylist"
+  | "player.toggleTracks"
+  | "player.toggleLoop"
+  | "player.toggleSpeed"
+  | "window.toggleFullscreen"
+  | "window.toggleAlwaysOnTop"
+  | "app.openSettings";
+
+type PluginActionDefinition = {
+  id: string;
+  label: string;
+  description: string | null;
+  labelI18n: Record<string, string>;
+  descriptionI18n: Record<string, string>;
+  placement: PluginActionPlacement;
+  command: PluginActionCommand;
+  icon: IconName | null;
+  requiresMedia: boolean;
+  args: Record<string, unknown>;
+};
+
+type PluginActionInstance = {
+  plugin: ThemePluginSummary;
+  action: PluginActionDefinition;
+};
+
+type PluginRuntimeSource = {
+  pluginId: string;
+  name: string;
+  version: string;
+  entry: string;
+  script: string;
+  permissions: string[];
+};
+
+type PluginRuntimeWorkerState = {
+  pluginId: string;
+  signature: string;
+  worker: Worker;
+  objectUrl: string;
+  permissions: Set<string>;
 };
 
 type AppearanceState = {
@@ -233,6 +347,7 @@ type ContextMenuPosition = {
   y: number;
 };
 type IconName =
+  | "camera"
   | "close"
   | "cpu"
   | "folder"
@@ -253,6 +368,7 @@ type IconName =
   | "restart"
   | "settings"
   | "stop"
+  | "stream"
   | "tracks"
   | "volume"
   | "volumeMuted";
@@ -393,6 +509,7 @@ const audioOnlyExtensions = [
 ];
 const subtitleExtensions = ["ass", "srt", "ssa", "sub", "vtt"];
 const themePluginExtensions = ["json"];
+const pluginPackageExtensions = ["opplugin"];
 const playbackSpeedOptions = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const mediaPathCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 const accentSwatches = ["#caa05d", "#78d5b3", "#93b4ff", "#d78372", "#b48cf2", "#e4b95f"];
@@ -697,6 +814,25 @@ function isPointerInsidePlaybackControl(target: EventTarget | null) {
   );
 }
 
+function isWheelInsideInteractiveSurface(target: EventTarget | null) {
+  return isPointerInsideSelector(
+    target,
+    [
+      "button",
+      "input",
+      "select",
+      "textarea",
+      "[contenteditable='true']",
+      ".context-menu",
+      ".media-panel",
+      ".playlist-drawer",
+      ".settings-dialog",
+      ".transport",
+      ".window-controls",
+    ].join(", "),
+  );
+}
+
 function releaseShortcutFocusTarget(target: EventTarget | null) {
   if (isTextEntryShortcutTarget(target)) {
     return;
@@ -882,6 +1018,19 @@ function mediaNameFromPath(path: string) {
   return normalized.split("/").pop() || path;
 }
 
+function streamNameFromUrl(url: string, fallbackName: string | null = null) {
+  if (fallbackName?.trim()) {
+    return fallbackName.trim();
+  }
+  try {
+    const parsed = new URL(url);
+    const pathName = decodeURIComponent(parsed.pathname.split("/").filter(Boolean).pop() ?? "");
+    return pathName || parsed.hostname || url;
+  } catch {
+    return mediaNameFromPath(url);
+  }
+}
+
 function defaultShellPreviewExtensions(formats: ShellPreviewFormatInfo[]) {
   return formats.filter((format) => format.common).map((format) => format.extension);
 }
@@ -894,6 +1043,11 @@ function isPlayableMediaPath(path: string) {
 function isAudioMediaPath(path: string) {
   const extension = path.split(".").pop()?.toLowerCase();
   return Boolean(extension && audioOnlyExtensions.includes(extension));
+}
+
+function isOpenPlayerPluginPackagePath(path: string) {
+  const extension = path.split(".").pop()?.toLowerCase();
+  return extension === "opplugin";
 }
 
 function sortMediaPaths(paths: string[]) {
@@ -953,6 +1107,185 @@ function normalizePlaybackSettings(settings: Partial<PlaybackSettings> | null | 
 
 function mergePlaybackSettings(current: PlaybackSettings, update: PlaybackSettingsUpdate): PlaybackSettings {
   return normalizePlaybackSettings({ ...current, ...update });
+}
+
+function normalizePluginSettingValue(setting: PluginSettingDefinition, value: PluginSettingValue): PluginSettingValue | null {
+  switch (setting.kind) {
+    case "boolean":
+      return typeof value === "boolean" ? value : value === "true";
+    case "number": {
+      const number = typeof value === "number" ? value : Number(value);
+      if (!Number.isFinite(number)) {
+        return null;
+      }
+      const min = typeof setting.min === "number" ? setting.min : -Infinity;
+      const max = typeof setting.max === "number" ? setting.max : Infinity;
+      return Math.min(max, Math.max(min, number));
+    }
+    case "select": {
+      const selected = String(value);
+      return setting.options.some((option) => option.value === selected) ? selected : String(setting.defaultValue);
+    }
+    case "color":
+    case "text":
+      return String(value);
+    default:
+      return null;
+  }
+}
+
+function pluginCapabilityLabel(kind: PluginCapabilityKind, t: AppStrings) {
+  return t.settings.plugins.capabilityKinds[kind] ?? kind;
+}
+
+function pluginPlacementLabel(placement: PluginSettingPlacement, t: AppStrings) {
+  return t.settings.plugins.placements[placement] ?? placement;
+}
+
+function pluginActionPlacementLabel(placement: PluginActionPlacement, t: AppStrings) {
+  return t.settings.plugins.actionPlacements[placement] ?? placement;
+}
+
+function localizedPluginText(fallback: string, localized: Record<string, string> | undefined, locale: string) {
+  if (!localized) {
+    return fallback;
+  }
+  const language = locale.split("-")[0];
+  return localized[locale] ?? localized[language] ?? localized["en-US"] ?? localized.en ?? fallback;
+}
+
+function pluginPackageKindLabel(kind: ThemePluginSummary["packageKind"], t: AppStrings) {
+  return t.settings.plugins.packageKinds[kind] ?? kind;
+}
+
+function pluginActionStringArg(action: PluginActionDefinition, key: string) {
+  const value = action.args?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function pluginActionBooleanArg(action: PluginActionDefinition, key: string) {
+  return action.args?.[key] === true;
+}
+
+function runtimeArgsRecord(args: unknown) {
+  return args && typeof args === "object" && !Array.isArray(args) ? (args as Record<string, unknown>) : {};
+}
+
+function runtimeStringArg(args: Record<string, unknown>, key: string) {
+  const value = args[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function runtimeBooleanArg(args: Record<string, unknown>, key: string) {
+  return args[key] === true;
+}
+
+function pluginRuntimeSignature(source: PluginRuntimeSource) {
+  return `${source.pluginId}:${source.version}:${source.entry}:${source.script}`;
+}
+
+function buildPluginWorkerSource(source: PluginRuntimeSource) {
+  const pluginLabel = JSON.stringify(`${source.name} (${source.pluginId})`);
+  const pluginScript = source.script;
+  return `
+"use strict";
+(() => {
+  const readyHandlers = [];
+  const eventHandlers = [];
+  const pending = new Map();
+  let nextRequestId = 1;
+  const disabledApi = () => {
+    throw new Error("This browser API is disabled in the OpenPlayer plugin worker sandbox");
+  };
+  globalThis.fetch = undefined;
+  globalThis.XMLHttpRequest = undefined;
+  globalThis.WebSocket = undefined;
+  globalThis.EventSource = undefined;
+  globalThis.Worker = undefined;
+  globalThis.SharedWorker = undefined;
+  globalThis.importScripts = disabledApi;
+  globalThis.openplayer = Object.freeze({
+    request(command, args = {}) {
+      if (typeof command !== "string" || !command.trim()) {
+        return Promise.reject(new Error("OpenPlayer plugin command is required"));
+      }
+      const requestId = nextRequestId++;
+      globalThis.postMessage({ type: "openplayer:request", requestId, command, args });
+      return new Promise((resolve, reject) => {
+        pending.set(requestId, { resolve, reject });
+      });
+    },
+    onReady(handler) {
+      if (typeof handler === "function") {
+        readyHandlers.push(handler);
+      }
+    },
+    onEvent(handler) {
+      if (typeof handler === "function") {
+        eventHandlers.push(handler);
+      }
+    },
+  });
+  globalThis.onmessage = (event) => {
+    const message = event.data || {};
+    if (message.type === "openplayer:response") {
+      const pendingRequest = pending.get(message.requestId);
+      if (!pendingRequest) {
+        return;
+      }
+      pending.delete(message.requestId);
+      if (message.ok) {
+        pendingRequest.resolve(message.result);
+      } else {
+        pendingRequest.reject(new Error(String(message.error || "OpenPlayer plugin request failed")));
+      }
+      return;
+    }
+    if (message.type === "openplayer:event") {
+      for (const handler of eventHandlers) {
+        try {
+          handler(message.event, message.payload);
+        } catch (error) {
+          globalThis.postMessage({ type: "openplayer:error", message: String(error && error.message ? error.message : error) });
+        }
+      }
+    }
+  };
+  globalThis.__openplayerPluginReady = () => {
+    for (const handler of readyHandlers) {
+      try {
+        handler();
+      } catch (error) {
+        globalThis.postMessage({ type: "openplayer:error", message: String(error && error.message ? error.message : error) });
+      }
+    }
+  };
+  globalThis.postMessage({ type: "openplayer:loaded", label: ${pluginLabel} });
+})();
+try {
+${pluginScript}
+} catch (error) {
+  globalThis.postMessage({ type: "openplayer:error", message: String(error && error.message ? error.message : error) });
+}
+try {
+  globalThis.__openplayerPluginReady();
+} finally {
+  delete globalThis.__openplayerPluginReady;
+}
+//# sourceURL=openplayer-plugin-${source.pluginId.replace(/[^a-z0-9.-]/gi, "_")}.js
+`;
+}
+
+function pluginActionCommandRequiresMedia(command: PluginActionCommand) {
+  return [
+    "player.captureScreenshot",
+    "player.togglePlayback",
+    "player.stop",
+    "player.restart",
+    "player.toggleTracks",
+    "player.toggleLoop",
+    "player.toggleSpeed",
+  ].includes(command);
 }
 
 function mediaItemFromHistory(entry: PlaybackHistoryEntry): MediaItem {
@@ -1063,6 +1396,7 @@ function updateStatusText(state: UpdateState, t: AppStrings) {
 
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, string> = {
+    camera: "M4 8h3l1.5-2h7L17 8h3v10H4V8ZM12 16a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z",
     close: "M6 6l12 12M18 6 6 18",
     cpu: "M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3M8 6h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2ZM10 10h4v4h-4z",
     folder: "M3 7.5h6l2 2h10v8.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7.5Z",
@@ -1083,6 +1417,7 @@ function Icon({ name }: { name: IconName }) {
     restart: "M5 12a7 7 0 1 0 2-4.9M5 5v5h5",
     settings: "M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7ZM19 12a7.2 7.2 0 0 0-.08-1l2-1.55-2-3.45-2.36.95a7.4 7.4 0 0 0-1.72-1L14.5 3h-4l-.34 2.95a7.4 7.4 0 0 0-1.72 1L6.08 6l-2 3.45L6.08 11A7.2 7.2 0 0 0 6 12c0 .34.03.67.08 1l-2 1.55 2 3.45 2.36-.95c.53.42 1.1.75 1.72 1l.34 2.95h4l.34-2.95c.62-.25 1.19-.58 1.72-1l2.36.95 2-3.45-2-1.55c.05-.33.08-.66.08-1Z",
     stop: "M7 7h10v10H7z",
+    stream: "M5 18a13 13 0 0 1 14 0M8 14a7.5 7.5 0 0 1 8 0M11 10a2 2 0 0 1 2 0M12 10v8",
     tracks: "M4 7h7M15 7h5M11 5v4M4 12h12M20 12h0M16 10v4M4 17h4M12 17h8M8 15v4",
     volume: "M4 10v4h4l5 4V6l-5 4H4Z M16 9a4 4 0 0 1 0 6",
     volumeMuted: "M4 10v4h4l5 4V6l-5 4H4Z M17 9l4 6M21 9l-4 6",
@@ -1142,6 +1477,8 @@ function App() {
   const [isRegisteringShellPreview, setIsRegisteringShellPreview] = useState(false);
   const [shortcutBindings, setShortcutBindings] = useState<ShortcutBindings>(readShortcutBindings);
   const [recordingShortcutAction, setRecordingShortcutAction] = useState<ShortcutAction | null>(null);
+  const [systemFontFamilies, setSystemFontFamilies] = useState<string[]>([]);
+  const [expandedPluginIds, setExpandedPluginIds] = useState<Set<string>>(() => new Set());
   const pendingSeekRef = useRef<PendingSeek | null>(null);
   const playbackClockAnchorRef = useRef<PlaybackClockAnchor>({ position: 0, startedAt: performance.now(), playing: false, speed: 1 });
   const snapshotRequestIdRef = useRef(0);
@@ -1156,6 +1493,10 @@ function App() {
   const hardwareDecodingModeRef = useRef<HardwareDecodingMode>("hardware");
   const playbackSettingsRef = useRef<PlaybackSettings>(DEFAULT_PLAYBACK_SETTINGS);
   const previousAudibleVolumeRef = useRef(DEFAULT_PLAYBACK_SETTINGS.volume / 100);
+  const pluginRuntimeWorkersRef = useRef<Map<string, PluginRuntimeWorkerState>>(new Map());
+  const pluginRuntimeCommandHandlerRef = useRef<(command: string, args: unknown, permissions: Set<string>) => Promise<unknown>>(async () => {
+    throw new Error("plugin runtime is not ready");
+  });
   const droppedPathsHandlerRef = useRef<(paths: string[]) => void>(() => undefined);
   const shortcutKeyDownRef = useRef<(event: KeyboardEvent) => void>(() => undefined);
   const nativeShortcutActionRef = useRef<(action: ShortcutAction) => void>(() => undefined);
@@ -1169,6 +1510,7 @@ function App() {
   const appearanceStyle = themeStyleVariables(appearanceState);
   const isMediaPanelOpen = mediaPanelMode !== null;
   const isChromePinned = !media || isPlaylistOpen || isMediaPanelOpen || isPickerOpen || playbackError !== null || contextMenu !== null || isSettingsOpen;
+  pluginRuntimeCommandHandlerRef.current = executePluginRuntimeCommand;
 
   useEffect(() => {
     let disposed = false;
@@ -1253,6 +1595,16 @@ function App() {
         console.warn("Failed to load Explorer preview formats", error);
       });
 
+    invoke<string[]>("system_font_families")
+      .then((fonts) => {
+        if (!disposed && Array.isArray(fonts)) {
+          setSystemFontFamilies(fonts.filter((font) => typeof font === "string" && font.trim().length > 0));
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn("Failed to load system fonts", error);
+      });
+
     invoke<string[]>("startup_media_paths")
       .then((paths) => {
         if (!disposed && Array.isArray(paths) && paths.length > 0) {
@@ -1267,6 +1619,29 @@ function App() {
       disposed = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!appearanceState) {
+      return;
+    }
+
+    let disposed = false;
+    invoke<PluginRuntimeSource[]>("appearance_plugin_runtime_sources")
+      .then((sources) => {
+        if (!disposed) {
+          reconcilePluginRuntimeWorkers(Array.isArray(sources) ? sources : []);
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn("Failed to load plugin runtime sources", error);
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, [appearanceState?.plugins.map((plugin) => `${plugin.id}:${plugin.enabled}:${plugin.runtime}:${plugin.version}`).join("|")]);
+
+  useEffect(() => () => terminateAllPluginRuntimeWorkers(), []);
 
   useEffect(() => {
     if (!media) {
@@ -1844,6 +2219,7 @@ function App() {
     });
     activeSnapshot = await applyStoredPlaybackSettings(activeSnapshot, savedSettings);
     activeSnapshot = await applyStoredMediaPlaybackSettings(path, activeSnapshot);
+    activeSnapshot = await applyStoredPluginMpvSettings(activeSnapshot);
     pendingSeekRef.current = null;
     setPlaybackError(null);
     applyCommandSnapshot(activeSnapshot);
@@ -1965,6 +2341,68 @@ function App() {
 
   function setThemePluginEnabled(pluginId: string, enabled: boolean) {
     void updateAppearance(invoke<AppearanceState>("appearance_set_plugin_enabled", { pluginId, enabled }));
+  }
+
+  function togglePluginSettingsExpanded(pluginId: string) {
+    setExpandedPluginIds((current) => {
+      const next = new Set(current);
+      if (next.has(pluginId)) {
+        next.delete(pluginId);
+      } else {
+        next.add(pluginId);
+      }
+      return next;
+    });
+  }
+
+  function setPluginSettingValue(pluginId: string, setting: PluginSettingDefinition, value: PluginSettingValue) {
+    const nextValue = normalizePluginSettingValue(setting, value);
+    if (nextValue === null) {
+      return;
+    }
+
+    void updateAppearance(
+      invoke<AppearanceState>("appearance_set_plugin_setting", {
+        pluginId,
+        settingId: setting.id,
+        value: nextValue,
+      }).then(async (state) => {
+        if (media && setting.mpvProperty) {
+          await applyPluginMpvSetting(setting, nextValue);
+        }
+        return state;
+      }),
+    );
+  }
+
+  async function applyPluginMpvSetting(setting: PluginSettingDefinition, value: PluginSettingValue) {
+    if (!setting.mpvProperty) {
+      return;
+    }
+    try {
+      const snapshot = await invoke<MpvSnapshot>("mpv_embed_set_plugin_property", {
+        property: setting.mpvProperty,
+        value,
+      });
+      applyCommandSnapshot(snapshot);
+    } catch (error) {
+      reportPlaybackError(error);
+    }
+  }
+
+  async function applyStoredPluginMpvSettings(snapshot: MpvSnapshot) {
+    let activeSnapshot = snapshot;
+    const pluginSettings = (appearanceState?.plugins ?? [])
+      .filter((plugin) => plugin.enabled)
+      .flatMap((plugin) => plugin.settings)
+      .filter((setting) => setting.mpvProperty);
+    for (const setting of pluginSettings) {
+      activeSnapshot = await invoke<MpvSnapshot>("mpv_embed_set_plugin_property", {
+        property: setting.mpvProperty,
+        value: normalizePluginSettingValue(setting, setting.value) ?? setting.defaultValue,
+      });
+    }
+    return activeSnapshot;
   }
 
   async function updatePlayerPreferences(request: Promise<PlayerPreferences>) {
@@ -2113,6 +2551,54 @@ function App() {
     void openExternalUrl(url);
   }
 
+  async function importPluginPackage() {
+    if (isPickerOpen) {
+      return;
+    }
+
+    setIsPickerOpen(true);
+    try {
+      const selection = await open({
+        multiple: false,
+        filters: [{ name: t.dialog.openPlayerPlugin, extensions: pluginPackageExtensions }],
+      });
+      if (typeof selection !== "string") {
+        return;
+      }
+
+      await updateAppearance(invoke<AppearanceState>("appearance_import_plugin_package", { path: selection }));
+    } catch (error) {
+      reportPlaybackError(error);
+    } finally {
+      setIsPickerOpen(false);
+      focusOverlayWindow();
+    }
+  }
+
+  async function importPluginDirectory() {
+    if (isPickerOpen) {
+      return;
+    }
+
+    setIsPickerOpen(true);
+    try {
+      const selection = await open({
+        directory: true,
+        multiple: false,
+      });
+      if (typeof selection !== "string") {
+        return;
+      }
+
+      await updateAppearance(invoke<AppearanceState>("appearance_import_plugin_directory", { path: selection }));
+    } catch (error) {
+      reportPlaybackError(error);
+    } finally {
+      setIsPickerOpen(false);
+      focusOverlayWindow();
+    }
+  }
+
   async function importThemePlugin() {
     if (isPickerOpen) {
       return;
@@ -2128,7 +2614,7 @@ function App() {
         return;
       }
 
-      await updateAppearance(invoke<AppearanceState>("appearance_import_theme_plugin", { path: selection }));
+      await updateAppearance(invoke<AppearanceState>("appearance_import_plugin_manifest", { path: selection }));
     } catch (error) {
       reportPlaybackError(error);
     } finally {
@@ -2183,7 +2669,7 @@ function App() {
   }
 
   function handleShellWheel(event: ReactWheelEvent<HTMLElement>) {
-    if (contextMenu || isSettingsOpen || recordingShortcutAction) {
+    if (contextMenu || isSettingsOpen || recordingShortcutAction || isWheelInsideInteractiveSurface(event.target)) {
       return;
     }
 
@@ -2335,18 +2821,36 @@ function App() {
     }
   }
 
+  function uninstallPlugin(pluginId: string) {
+    void updateAppearance(invoke<AppearanceState>("appearance_uninstall_plugin", { pluginId })).catch(reportPlaybackError);
+  }
+
   async function playDroppedPaths(paths: string[]) {
+    const pluginPackagePaths = paths.filter(isOpenPlayerPluginPackagePath);
+    if (pluginPackagePaths.length > 0) {
+      setPlaybackError(null);
+      for (const pluginPath of pluginPackagePaths) {
+        await updateAppearance(invoke<AppearanceState>("appearance_import_plugin_package", { path: pluginPath }));
+      }
+    }
+
+    const mediaCandidatePaths = paths.filter((path) => !isOpenPlayerPluginPackagePath(path));
+    if (!mediaCandidatePaths.length) {
+      focusOverlayWindow();
+      return;
+    }
+
     if (platformSupport && !platformSupport.mpvEmbedVideo) {
       setPlaybackError(platformUnsupportedPlaybackMessage(platformSupport, t));
       return;
     }
 
-    if (!paths.length) {
+    if (!mediaCandidatePaths.length) {
       return;
     }
 
     setPlaybackError(null);
-    const mediaPaths = await invoke<string[]>("media_files_from_paths", { paths });
+    const mediaPaths = await invoke<string[]>("media_files_from_paths", { paths: mediaCandidatePaths });
     await replaceQueueWithMediaPaths(mediaPaths);
     focusOverlayWindow();
   }
@@ -2551,6 +3055,238 @@ function App() {
     invoke("window_reveal_path", { path: media.path })
       .then(focusOverlayWindow)
       .catch(reportPlaybackError);
+  }
+
+  function terminatePluginRuntimeWorker(workerState: PluginRuntimeWorkerState) {
+    workerState.worker.terminate();
+    URL.revokeObjectURL(workerState.objectUrl);
+  }
+
+  function terminateAllPluginRuntimeWorkers() {
+    for (const workerState of pluginRuntimeWorkersRef.current.values()) {
+      terminatePluginRuntimeWorker(workerState);
+    }
+    pluginRuntimeWorkersRef.current.clear();
+  }
+
+  function reconcilePluginRuntimeWorkers(sources: PluginRuntimeSource[]) {
+    for (const [pluginId, workerState] of pluginRuntimeWorkersRef.current) {
+      const source = sources.find((item) => item.pluginId === pluginId);
+      if (!source || workerState.signature !== pluginRuntimeSignature(source)) {
+        terminatePluginRuntimeWorker(workerState);
+        pluginRuntimeWorkersRef.current.delete(pluginId);
+      }
+    }
+
+    for (const source of sources) {
+      if (pluginRuntimeWorkersRef.current.has(source.pluginId)) {
+        continue;
+      }
+      startPluginRuntimeWorker(source);
+    }
+  }
+
+  function startPluginRuntimeWorker(source: PluginRuntimeSource) {
+    const objectUrl = URL.createObjectURL(new Blob([buildPluginWorkerSource(source)], { type: "text/javascript" }));
+    const worker = new Worker(objectUrl, { name: `OpenPlayer plugin ${source.pluginId}` });
+    const workerState: PluginRuntimeWorkerState = {
+      pluginId: source.pluginId,
+      signature: pluginRuntimeSignature(source),
+      worker,
+      objectUrl,
+      permissions: new Set(source.permissions),
+    };
+
+    worker.onmessage = (event) => handlePluginRuntimeMessage(workerState, event.data);
+    worker.onerror = (event) => {
+      console.warn(`Plugin runtime error in ${source.pluginId}`, event.message);
+      event.preventDefault();
+    };
+    pluginRuntimeWorkersRef.current.set(source.pluginId, workerState);
+  }
+
+  function handlePluginRuntimeMessage(workerState: PluginRuntimeWorkerState, message: unknown) {
+    const record = runtimeArgsRecord(message);
+    const type = record.type;
+    if (type === "openplayer:loaded") {
+      return;
+    }
+    if (type === "openplayer:error") {
+      console.warn(`Plugin runtime error in ${workerState.pluginId}`, record.message);
+      return;
+    }
+    if (type !== "openplayer:request") {
+      return;
+    }
+
+    const requestId = typeof record.requestId === "number" ? record.requestId : null;
+    const command = typeof record.command === "string" ? record.command : "";
+    if (requestId === null || !command) {
+      return;
+    }
+
+    pluginRuntimeCommandHandlerRef.current(command, record.args, workerState.permissions)
+      .then((result) => {
+        workerState.worker.postMessage({ type: "openplayer:response", requestId, ok: true, result: result ?? null });
+      })
+      .catch((error: unknown) => {
+        workerState.worker.postMessage({
+          type: "openplayer:response",
+          requestId,
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+  }
+
+  function isPluginActionDisabled(action: PluginActionDefinition) {
+    return (action.requiresMedia || pluginActionCommandRequiresMedia(action.command)) && !media;
+  }
+
+  function executePluginAction(action: PluginActionDefinition) {
+    if (isPluginActionDisabled(action)) {
+      return;
+    }
+
+    switch (action.command) {
+      case "player.openMedia":
+        openNativeMediaFiles();
+        return;
+      case "player.openStream":
+        openPluginStream(action).catch(reportPlaybackError);
+        return;
+      case "player.captureScreenshot":
+        capturePluginScreenshot(action).catch(reportPlaybackError);
+        return;
+      case "player.togglePlayback":
+        togglePlayback();
+        return;
+      case "player.stop":
+        stopPlayback();
+        return;
+      case "player.restart":
+        restartPlayback();
+        return;
+      case "player.togglePlaylist":
+        togglePlaylist();
+        return;
+      case "player.toggleTracks":
+        toggleTrackPanel();
+        return;
+      case "player.toggleLoop":
+        toggleLoopPanel();
+        return;
+      case "player.toggleSpeed":
+        toggleSpeedPanel();
+        return;
+      case "window.toggleFullscreen":
+        toggleFullscreen();
+        return;
+      case "window.toggleAlwaysOnTop":
+        toggleAlwaysOnTop();
+        return;
+      case "app.openSettings":
+        openSettingsDialog();
+        return;
+    }
+  }
+
+  async function openPluginStream(action: PluginActionDefinition) {
+    const url = pluginActionStringArg(action, "url");
+    if (!url) {
+      throw new Error("plugin stream action is missing a url");
+    }
+
+    await openRuntimeStream(url, pluginActionStringArg(action, "name"));
+  }
+
+  async function openRuntimeStream(url: string, name: string | null = null) {
+    if (platformSupport && !platformSupport.mpvEmbedVideo) {
+      setPlaybackError(platformUnsupportedPlaybackMessage(platformSupport, t));
+      return;
+    }
+
+    const item: MediaItem = {
+      id: nextMediaItemId(),
+      name: streamNameFromUrl(url, name),
+      path: url,
+    };
+    setPlaybackError(null);
+    setQueue([item]);
+    setCurrentIndex(0);
+    setIsPlaylistOpen(false);
+    await openMpvPath(url);
+  }
+
+  async function executePluginRuntimeCommand(command: string, args: unknown, permissions: Set<string>) {
+    const record = runtimeArgsRecord(args);
+    switch (command) {
+      case "player.openMedia":
+        openNativeMediaFiles();
+        return null;
+      case "player.openStream": {
+        if (!permissions.has("media.openStream")) {
+          throw new Error("plugin runtime command requires media.openStream");
+        }
+        const url = runtimeStringArg(record, "url");
+        if (!url) {
+          throw new Error("plugin runtime stream command is missing a url");
+        }
+        await openRuntimeStream(url, runtimeStringArg(record, "name"));
+        return { path: url };
+      }
+      case "player.captureScreenshot": {
+        if (!permissions.has("mpv.capture")) {
+          throw new Error("plugin runtime command requires mpv.capture");
+        }
+        const artifact = await invoke<MpvCaptureArtifact>("mpv_embed_capture_screenshot");
+        if (runtimeBooleanArg(record, "openFolder")) {
+          await invoke("window_reveal_path", { path: artifact.path });
+        }
+        focusOverlayWindow();
+        return artifact;
+      }
+      case "player.togglePlayback":
+        togglePlayback();
+        return null;
+      case "player.stop":
+        stopPlayback();
+        return null;
+      case "player.restart":
+        restartPlayback();
+        return null;
+      case "player.togglePlaylist":
+        togglePlaylist();
+        return null;
+      case "player.toggleTracks":
+        toggleTrackPanel();
+        return null;
+      case "player.toggleLoop":
+        toggleLoopPanel();
+        return null;
+      case "player.toggleSpeed":
+        toggleSpeedPanel();
+        return null;
+      case "window.toggleFullscreen":
+        toggleFullscreen();
+        return null;
+      case "window.toggleAlwaysOnTop":
+        toggleAlwaysOnTop();
+        return null;
+      case "app.openSettings":
+        openSettingsDialog();
+        return null;
+      default:
+        throw new Error(`unsupported plugin runtime command: ${command}`);
+    }
+  }
+
+  async function capturePluginScreenshot(action: PluginActionDefinition) {
+    const artifact = await invoke<MpvCaptureArtifact>("mpv_embed_capture_screenshot");
+    if (pluginActionBooleanArg(action, "openFolder")) {
+      await invoke("window_reveal_path", { path: artifact.path });
+    }
+    focusOverlayWindow();
   }
 
   function handleDragRegionPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
@@ -2914,6 +3650,21 @@ function App() {
   const allShellPreviewFormatsSelected = shellPreviewFormats.length > 0 && selectedShellPreviewFormats.length === shellPreviewFormats.length;
   const shellPreviewVideoFormats = shellPreviewFormats.filter((format) => format.kind === "video");
   const shellPreviewAudioFormats = shellPreviewFormats.filter((format) => format.kind === "audio");
+  const pluginActionInstances: PluginActionInstance[] = (appearanceState?.plugins ?? [])
+    .filter((plugin) => plugin.enabled)
+    .flatMap((plugin) => plugin.actions.map((action) => ({ plugin, action })));
+  const pluginControlLeftActions = pluginActionInstances.filter(({ action }) => action.placement === "controls.left");
+  const pluginControlCenterActions = pluginActionInstances.filter(({ action }) => action.placement === "controls.center");
+  const pluginControlRightActions = pluginActionInstances.filter(({ action }) => action.placement === "controls.right");
+  const pluginContextMenuActions = pluginActionInstances.filter(({ action }) => action.placement === "contextMenu");
+  const pluginPlaylistActions = pluginActionInstances.filter(({ action }) => action.placement === "playlist.actions");
+  const subtitlePluginSettingGroups = (appearanceState?.plugins ?? [])
+    .filter((plugin) => plugin.enabled)
+    .map((plugin) => ({
+      plugin,
+      settings: plugin.settings.filter((setting) => setting.placement === "subtitleSettings"),
+    }))
+    .filter((group) => group.settings.length > 0);
   const canShowFrames = canDisplayFrames(framesPerSecond, duration);
   const effectiveTimeDisplayMode: TimeDisplayMode = timeDisplayMode === "frames" && canShowFrames ? "frames" : "timecode";
   const totalFrames = canShowFrames ? Math.max(0, Math.floor(duration * framesPerSecond)) : 0;
@@ -2947,6 +3698,15 @@ function App() {
     { type: "item", id: "restart", label: t.contextMenu.restart, icon: "restart", shortcut: shortcutBindings.restart, disabled: !media, onSelect: () => restartPlayback() },
     { type: "separator", id: "playback-separator" },
     { type: "item", id: "open-location", label: t.contextMenu.openFileLocation, icon: "folder", disabled: !media, onSelect: openCurrentFileLocation },
+    ...(pluginContextMenuActions.length > 0 ? [{ type: "separator" as const, id: "plugin-actions-separator" }] : []),
+    ...pluginContextMenuActions.map(({ plugin, action }) => ({
+      type: "item" as const,
+      id: `plugin:${plugin.id}:${action.id}`,
+      label: localizedPluginText(action.label, action.labelI18n, locale),
+      icon: action.icon ?? "plugin",
+      disabled: isPluginActionDisabled(action),
+      onSelect: () => executePluginAction(action),
+    })),
     { type: "item", id: "fullscreen", label: t.contextMenu.fullscreen, icon: "fullscreen", shortcut: shortcutBindings.toggleFullscreen, onSelect: toggleFullscreen },
     { type: "item", id: "always-on-top", label: isAlwaysOnTop ? t.contextMenu.disableAlwaysOnTop : t.contextMenu.alwaysOnTop, icon: "pin", shortcut: shortcutBindings.toggleAlwaysOnTop, onSelect: toggleAlwaysOnTop },
     { type: "item", id: "settings", label: t.contextMenu.settings, icon: "settings", shortcut: shortcutBindings.openSettings, onSelect: openSettingsDialog },
@@ -3129,6 +3889,137 @@ function App() {
     );
   }
 
+  function renderPluginSettingControl(plugin: ThemePluginSummary, setting: PluginSettingDefinition, compact = false) {
+    const controlId = `plugin-${plugin.id}-${setting.id}-${compact ? "compact" : "settings"}`;
+    const rowClassName = compact ? "plugin-setting plugin-setting--compact" : "plugin-setting";
+    const disabled = !plugin.enabled;
+    const settingLabel = localizedPluginText(setting.label, setting.labelI18n, locale);
+    const settingDescription = localizedPluginText(setting.description ?? pluginPlacementLabel(setting.placement, t), setting.descriptionI18n, locale);
+
+    const settingHeader = (
+      <span className="plugin-setting-copy">
+        <strong>{settingLabel}</strong>
+        <small>
+          {settingDescription}
+          {setting.mpvProperty ? ` · ${setting.mpvProperty}` : ""}
+        </small>
+      </span>
+    );
+
+    if (setting.kind === "boolean") {
+      return (
+        <label className={rowClassName} key={`${plugin.id}:${setting.id}`} htmlFor={controlId}>
+          {settingHeader}
+          <input
+            id={controlId}
+            type="checkbox"
+            disabled={disabled}
+            checked={setting.value === true}
+            onChange={(event) => setPluginSettingValue(plugin.id, setting, event.currentTarget.checked)}
+          />
+          <span className="preference-switch" aria-hidden="true">
+            <span />
+          </span>
+        </label>
+      );
+    }
+
+    if (setting.kind === "number") {
+      const value = typeof setting.value === "number" ? setting.value : Number(setting.defaultValue);
+      const min = typeof setting.min === "number" ? setting.min : 0;
+      const max = typeof setting.max === "number" ? setting.max : 100;
+      const step = typeof setting.step === "number" ? setting.step : 1;
+      return (
+        <label className={rowClassName} key={`${plugin.id}:${setting.id}`} htmlFor={controlId}>
+          {settingHeader}
+          <span className="plugin-number-control">
+            <input
+              id={controlId}
+              type="range"
+              min={min}
+              max={max}
+              step={step}
+              disabled={disabled}
+              value={Number.isFinite(value) ? value : min}
+              onChange={(event) => setPluginSettingValue(plugin.id, setting, Number(event.currentTarget.value))}
+            />
+            <output>{Number.isFinite(value) ? value : setting.defaultValue}</output>
+          </span>
+        </label>
+      );
+    }
+
+    if (setting.kind === "select") {
+      const value = typeof setting.value === "string" ? setting.value : String(setting.defaultValue);
+      return (
+        <label className={rowClassName} key={`${plugin.id}:${setting.id}`} htmlFor={controlId}>
+          {settingHeader}
+          <select id={controlId} value={value} disabled={disabled} onChange={(event) => setPluginSettingValue(plugin.id, setting, event.currentTarget.value)}>
+            {setting.options.map((option) => (
+              <option key={option.value} value={option.value}>
+                {localizedPluginText(option.label, option.labelI18n, locale)}
+              </option>
+            ))}
+          </select>
+        </label>
+      );
+    }
+
+    if (setting.kind === "color") {
+      const value = typeof setting.value === "string" ? setting.value : String(setting.defaultValue);
+      return (
+        <label className={rowClassName} key={`${plugin.id}:${setting.id}`} htmlFor={controlId}>
+          {settingHeader}
+          <input id={controlId} type="color" value={value} disabled={disabled} onChange={(event) => setPluginSettingValue(plugin.id, setting, event.currentTarget.value)} />
+        </label>
+      );
+    }
+
+    const value = typeof setting.value === "string" ? setting.value : String(setting.defaultValue);
+    if (setting.mpvProperty === "sub-font") {
+      const fonts = Array.from(new Set([...systemFontFamilies, value, String(setting.defaultValue)].filter(Boolean))).sort((left, right) =>
+        left.localeCompare(right, locale, { sensitivity: "base" }),
+      );
+      return (
+        <label className={rowClassName} key={`${plugin.id}:${setting.id}`} htmlFor={controlId}>
+          {settingHeader}
+          <select id={controlId} value={value} disabled={disabled} onChange={(event) => setPluginSettingValue(plugin.id, setting, event.currentTarget.value)}>
+            {fonts.map((font) => (
+              <option key={font} value={font}>
+                {font}
+              </option>
+            ))}
+          </select>
+        </label>
+      );
+    }
+
+    return (
+      <label className={rowClassName} key={`${plugin.id}:${setting.id}`} htmlFor={controlId}>
+        {settingHeader}
+        <input id={controlId} type="text" value={value} disabled={disabled} onChange={(event) => setPluginSettingValue(plugin.id, setting, event.currentTarget.value)} />
+      </label>
+    );
+  }
+
+  function renderPluginActionButton({ plugin, action }: PluginActionInstance, compact = false) {
+    const actionLabel = localizedPluginText(action.label, action.labelI18n, locale);
+    const actionDescription = localizedPluginText(action.description ?? `${plugin.name} · ${pluginActionPlacementLabel(action.placement, t)}`, action.descriptionI18n, locale);
+    return (
+      <button
+        className={compact ? "plugin-action-button plugin-action-button--compact" : "plugin-action-button"}
+        type="button"
+        key={`${plugin.id}:${action.id}`}
+        title={actionDescription}
+        disabled={isPluginActionDisabled(action)}
+        onClick={() => executePluginAction(action)}
+      >
+        <Icon name={action.icon ?? "plugin"} />
+        <span>{actionLabel}</span>
+      </button>
+    );
+  }
+
   function renderPluginSettings() {
     return (
       <section className="settings-panel" aria-labelledby="plugin-settings-title">
@@ -3137,27 +4028,86 @@ function App() {
             <h3 id="plugin-settings-title">{t.settings.plugins.title}</h3>
             <span>{t.settings.plugins.subtitle}</span>
           </div>
-          <button className="settings-reset" type="button" onClick={importThemePlugin} disabled={isPickerOpen}>
-            {t.settings.plugins.importJson}
-          </button>
+          <div className="settings-heading-actions">
+            <button className="settings-reset" type="button" onClick={importPluginPackage} disabled={isPickerOpen}>
+              {t.settings.plugins.installPackage}
+            </button>
+            <button className="settings-reset" type="button" onClick={importPluginDirectory} disabled={isPickerOpen}>
+              {t.settings.plugins.importDirectory}
+            </button>
+            <button className="settings-reset" type="button" onClick={importThemePlugin} disabled={isPickerOpen}>
+              {t.settings.plugins.importJson}
+            </button>
+          </div>
         </div>
 
         <div className="plugin-list">
-          {(appearanceState?.plugins ?? []).map((plugin) => (
-            <div className="plugin-row" key={plugin.id}>
-              <div className="plugin-meta">
-                <span>{plugin.name}</span>
-                <small>
-                  {plugin.id} · {t.settings.plugins.themeCount(plugin.themeCount)} · v{plugin.version}
-                </small>
-                {plugin.description && <p>{plugin.description}</p>}
+          {(appearanceState?.plugins ?? []).map((plugin) => {
+            const isExpanded = expandedPluginIds.has(plugin.id);
+            const pluginDescription = plugin.description;
+            return (
+              <div className={isExpanded ? "plugin-row plugin-row--expanded" : "plugin-row"} key={plugin.id}>
+                <div className="plugin-row-header">
+                  <div className="plugin-meta">
+                    <span>{plugin.name}</span>
+                    <small>
+                      {pluginPackageKindLabel(plugin.packageKind, t)} · {t.settings.plugins.runtime(plugin.runtime)} · v{plugin.version}
+                    </small>
+                  </div>
+                  <div className="plugin-row-actions">
+                    <label className="plugin-toggle">
+                      <input type="checkbox" checked={plugin.enabled} onChange={(event) => setThemePluginEnabled(plugin.id, event.currentTarget.checked)} />
+                      <span>{plugin.enabled ? t.settings.plugins.enabled : t.settings.plugins.disabled}</span>
+                    </label>
+                    {plugin.settings.length > 0 && (
+                      <button className="settings-reset plugin-settings-toggle" type="button" aria-expanded={isExpanded} onClick={() => togglePluginSettingsExpanded(plugin.id)}>
+                        {t.settings.plugins.settings}
+                      </button>
+                    )}
+                    <button className="settings-reset plugin-uninstall" type="button" onClick={() => uninstallPlugin(plugin.id)}>
+                      {t.settings.plugins.uninstall}
+                    </button>
+                  </div>
+                </div>
+                <div className="plugin-detail-grid">
+                  <span>{t.settings.plugins.themeCount(plugin.themeCount)}</span>
+                  <span>{t.settings.plugins.capabilityCount(plugin.capabilityCount)}</span>
+                  <span>{t.settings.plugins.settingCount(plugin.settingCount)}</span>
+                  <span>{t.settings.plugins.actionCount(plugin.actionCount)}</span>
+                </div>
+                {pluginDescription && <p className="plugin-description">{pluginDescription}</p>}
+                {plugin.installPath && (
+                  <div className="plugin-install-path">
+                    <span>{t.settings.plugins.installPath}</span>
+                    <code title={plugin.installPath}>{plugin.installPath}</code>
+                  </div>
+                )}
+                {plugin.capabilities.length > 0 && (
+                  <div className="plugin-chip-row" aria-label={t.settings.plugins.capabilities}>
+                    {plugin.capabilities.map((capability) => (
+                      <span className="plugin-chip" key={capability.id} title={localizedPluginText(capability.description ?? capability.kind, capability.descriptionI18n, locale)}>
+                        {localizedPluginText(pluginCapabilityLabel(capability.kind, t), capability.nameI18n, locale)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {(plugin.permissions.length > 0 || plugin.actions.length > 0) && (
+                  <div className="plugin-technical-summary">
+                    {plugin.permissions.length > 0 && <span>{t.settings.plugins.permissions}: {plugin.permissions.join(", ")}</span>}
+                    {plugin.actions.length > 0 && (
+                      <span>
+                        {t.settings.plugins.actions}:{" "}
+                        {plugin.actions
+                          .map((action) => `${localizedPluginText(action.label, action.labelI18n, locale)} (${pluginActionPlacementLabel(action.placement, t)})`)
+                          .join(", ")}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {plugin.settings.length > 0 && isExpanded && <div className="plugin-setting-list">{plugin.settings.map((setting) => renderPluginSettingControl(plugin, setting))}</div>}
               </div>
-              <label className="plugin-toggle">
-                <input type="checkbox" checked={plugin.enabled} onChange={(event) => setThemePluginEnabled(plugin.id, event.currentTarget.checked)} />
-                <span>{plugin.enabled ? t.settings.plugins.enabled : t.settings.plugins.disabled}</span>
-              </label>
-            </div>
-          ))}
+            );
+          })}
           {!appearanceState?.plugins.length && <div className="plugin-empty">{t.settings.plugins.empty}</div>}
         </div>
       </section>
@@ -3560,12 +4510,14 @@ function App() {
               <button className="open-media-button" type="button" aria-label={t.controls.openMedia} onClick={openNativeMediaFiles} disabled={isPickerOpen}>
                 <Icon name="folder" />
               </button>
+              {pluginControlLeftActions.map((instance) => renderPluginActionButton(instance, true))}
               <button type="button" aria-label={t.controls.stop} onClick={stopPlayback} disabled={!media}>
                 <Icon name="stop" />
               </button>
               <button className="control-primary" type="button" aria-label={isPlaying ? t.controls.pause : media ? t.controls.play : t.controls.openMedia} onClick={togglePlayback} disabled={!media && isPickerOpen}>
                 <Icon name={isPlaying ? "pause" : "play"} />
               </button>
+              {pluginControlCenterActions.map((instance) => renderPluginActionButton(instance, true))}
               <button className={mediaPanelMode === "loop" ? "loop-toggle loop-toggle--open" : "loop-toggle"} type="button" aria-label={t.controls.openLoopMode} aria-expanded={mediaPanelMode === "loop"} onClick={toggleLoopPanel} disabled={!media}>
                 <Icon name="restart" />
               </button>
@@ -3611,6 +4563,7 @@ function App() {
               >
                 <Icon name="list" />
               </button>
+              {pluginControlRightActions.map((instance) => renderPluginActionButton(instance, true))}
               <button
                 className={`decode-toggle decode-toggle--${hardwareDecodingMode}`}
                 type="button"
@@ -3715,6 +4668,16 @@ function App() {
                 </div>
               </section>
 
+              {subtitlePluginSettingGroups.map((group) => (
+                <section className="media-panel-section plugin-slot-section" key={group.plugin.id}>
+                  <header>
+                    <h3>{group.plugin.name}</h3>
+                    <span>{t.settings.plugins.slot}</span>
+                  </header>
+                  <div className="plugin-slot-controls">{group.settings.map((setting) => renderPluginSettingControl(group.plugin, setting, true))}</div>
+                </section>
+              ))}
+
               <button className="subtitle-load" type="button" onClick={addExternalSubtitle} disabled={isPickerOpen}>
                 {t.media.loadExternalSubtitle}
               </button>
@@ -3734,6 +4697,7 @@ function App() {
                     <Icon name="folder" />
                     <span>{t.media.addFolder}</span>
                   </button>
+                  {pluginPlaylistActions.map((instance) => renderPluginActionButton(instance))}
                 </div>
               </header>
 

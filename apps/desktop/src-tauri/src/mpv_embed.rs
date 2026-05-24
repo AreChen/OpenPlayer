@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Mutex,
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 #[cfg(target_os = "macos")]
 use std::{
@@ -17,6 +17,7 @@ use libmpv2::{events::Event, mpv_end_file_reason};
 use objc2::MainThreadMarker;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use serde::Serialize;
+use serde_json::Value;
 use tauri::{AppHandle, Manager, State, Window};
 #[cfg(windows)]
 use windows_sys::Win32::{
@@ -179,6 +180,12 @@ pub struct MpvEmbedTrack {
     codec: Option<String>,
     selected: bool,
     external: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MpvCaptureArtifact {
+    path: String,
 }
 
 #[tauri::command]
@@ -407,6 +414,221 @@ pub async fn mpv_embed_set_subtitle_delay(
         })
     })
     .await
+}
+
+#[tauri::command]
+pub async fn mpv_embed_set_plugin_property(
+    app: AppHandle,
+    property: String,
+    value: Value,
+) -> Result<MpvEmbedSnapshot, String> {
+    let (property, value) = normalize_plugin_mpv_property(&property, &value)?;
+
+    run_mpv_command(app, move |state| {
+        with_player(state, |player| {
+            if plugin_subtitle_style_requires_ass_override(property) {
+                player
+                    .mpv
+                    .set_property("sub-ass-override", "force")
+                    .map_err(|error| format!("mpv subtitle style override failed: {error}"))?;
+            }
+
+            let targets = plugin_mpv_property_write_targets(property);
+            let mut wrote_property = false;
+            let mut first_error = None;
+            for target in targets {
+                match set_plugin_mpv_property_value(&player.mpv, target, &value) {
+                    Ok(()) => wrote_property = true,
+                    Err(error) => {
+                        first_error.get_or_insert(error);
+                    }
+                }
+            }
+            if !wrote_property {
+                let error = first_error.unwrap_or_else(|| "unknown error".to_string());
+                return Err(format!("mpv plugin property failed: {error}"));
+            }
+
+            Ok(player.snapshot(0, "playing"))
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn mpv_embed_capture_screenshot(app: AppHandle) -> Result<MpvCaptureArtifact, String> {
+    let capture_directory = capture_directory_for_app(&app)?;
+
+    run_mpv_command(app, move |state| {
+        with_player(state, |player| {
+            fs::create_dir_all(&capture_directory)
+                .map_err(|error| format!("failed to create capture directory: {error}"))?;
+            let output_path = capture_output_path(
+                &capture_directory,
+                &player.path,
+                current_time_ms_for_capture(),
+            );
+            let output_text = output_path.to_string_lossy().to_string();
+            player
+                .mpv
+                .command("screenshot-to-file", &[&output_text, "video"])
+                .map_err(|error| format!("mpv screenshot failed: {error}"))?;
+            Ok(MpvCaptureArtifact { path: output_text })
+        })
+    })
+    .await
+}
+
+#[derive(Debug, PartialEq)]
+enum PluginMpvPropertyValue {
+    Text(String),
+    Number(f64),
+}
+
+fn normalize_plugin_mpv_property(
+    property: &str,
+    value: &Value,
+) -> Result<(&'static str, PluginMpvPropertyValue), String> {
+    match property.trim() {
+        "sub-font" => {
+            let text = plugin_string_value(value)?;
+            if text.trim().is_empty() || text.len() > 128 {
+                return Err("invalid plugin subtitle font".to_string());
+            }
+            Ok(("sub-font", PluginMpvPropertyValue::Text(text)))
+        }
+        "sub-font-size" => {
+            let size = plugin_number_value(value)?;
+            if !(1.0..=128.0).contains(&size) {
+                return Err("invalid plugin subtitle font size".to_string());
+            }
+            Ok(("sub-font-size", PluginMpvPropertyValue::Number(size)))
+        }
+        "sub-scale" => {
+            let scale = plugin_number_value(value)?;
+            if !(0.1..=5.0).contains(&scale) {
+                return Err("invalid plugin subtitle scale".to_string());
+            }
+            Ok(("sub-scale", PluginMpvPropertyValue::Number(scale)))
+        }
+        "sub-pos" => {
+            let position = plugin_number_value(value)?;
+            if !(0.0..=100.0).contains(&position) {
+                return Err("invalid plugin subtitle position".to_string());
+            }
+            Ok(("sub-pos", PluginMpvPropertyValue::Number(position)))
+        }
+        "sub-color" => {
+            let color = plugin_string_value(value)?;
+            if !is_plugin_hex_color(&color) {
+                return Err("invalid plugin subtitle color".to_string());
+            }
+            Ok(("sub-color", PluginMpvPropertyValue::Text(color)))
+        }
+        "sub-spacing" => {
+            let spacing = plugin_number_value(value)?;
+            if !(-10.0..=10.0).contains(&spacing) {
+                return Err("invalid plugin subtitle spacing".to_string());
+            }
+            Ok((
+                "sub-spacing",
+                PluginMpvPropertyValue::Text(format_plugin_number(spacing)),
+            ))
+        }
+        "sub-outline-size" | "sub-border-size" => {
+            let outline_size = plugin_number_value(value)?;
+            if !(0.0..=32.0).contains(&outline_size) {
+                return Err("invalid plugin subtitle outline size".to_string());
+            }
+            Ok((
+                "sub-outline-size",
+                PluginMpvPropertyValue::Number(outline_size),
+            ))
+        }
+        "sub-shadow-offset" => {
+            let shadow_offset = plugin_number_value(value)?;
+            if !(0.0..=32.0).contains(&shadow_offset) {
+                return Err("invalid plugin subtitle shadow offset".to_string());
+            }
+            Ok((
+                "sub-shadow-offset",
+                PluginMpvPropertyValue::Number(shadow_offset),
+            ))
+        }
+        other => Err(format!("unsupported plugin mpv property: {other}")),
+    }
+}
+
+fn plugin_string_value(value: &Value) -> Result<String, String> {
+    value
+        .as_str()
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| "plugin mpv property expects text".to_string())
+}
+
+fn plugin_number_value(value: &Value) -> Result<f64, String> {
+    value
+        .as_f64()
+        .filter(|value| value.is_finite())
+        .ok_or_else(|| "plugin mpv property expects a number".to_string())
+}
+
+fn format_plugin_number(value: f64) -> String {
+    if value == 0.0 {
+        "0".to_string()
+    } else {
+        value.to_string()
+    }
+}
+
+fn set_plugin_mpv_property_value(
+    mpv: &libmpv2::Mpv,
+    property: &str,
+    value: &PluginMpvPropertyValue,
+) -> Result<(), String> {
+    match value {
+        PluginMpvPropertyValue::Text(value) => mpv
+            .set_property(property, value.as_str())
+            .map_err(|error| error.to_string()),
+        PluginMpvPropertyValue::Number(value) => mpv
+            .set_property(property, *value)
+            .map_err(|error| error.to_string()),
+    }
+}
+
+fn plugin_mpv_property_write_targets(property: &'static str) -> &'static [&'static str] {
+    match property {
+        "sub-font" => &["sub-font"],
+        "sub-font-size" => &["sub-font-size"],
+        "sub-scale" => &["sub-scale"],
+        "sub-pos" => &["sub-pos"],
+        "sub-color" => &["sub-color"],
+        "sub-spacing" => &["sub-spacing"],
+        "sub-outline-size" => &["sub-outline-size"],
+        "sub-shadow-offset" => &["sub-shadow-offset"],
+        _ => &[],
+    }
+}
+
+fn plugin_subtitle_style_requires_ass_override(property: &str) -> bool {
+    matches!(
+        property,
+        "sub-font"
+            | "sub-font-size"
+            | "sub-scale"
+            | "sub-pos"
+            | "sub-color"
+            | "sub-spacing"
+            | "sub-outline-size"
+            | "sub-shadow-offset"
+    )
+}
+
+fn is_plugin_hex_color(value: &str) -> bool {
+    let Some(hex) = value.strip_prefix('#') else {
+        return false;
+    };
+    matches!(hex.len(), 3 | 6) && hex.chars().all(|char| char.is_ascii_hexdigit())
 }
 
 #[tauri::command]
@@ -1453,12 +1675,98 @@ fn validate_media_path(path: &str) -> Result<PathBuf, String> {
         return Err("enter a local media path for mpv embed playback".to_string());
     }
 
+    if trimmed.contains("://") {
+        validate_media_stream_url(trimmed)?;
+        return Ok(PathBuf::from(trimmed));
+    }
+
     let path = PathBuf::from(trimmed);
     if !path.is_file() {
         return Err(format!("media path does not exist: {}", path.display()));
     }
 
     Ok(path)
+}
+
+fn validate_media_stream_url(url: &str) -> Result<(), String> {
+    if url.len() > 2048 || url.chars().any(char::is_whitespace) {
+        return Err("media stream url is invalid".to_string());
+    }
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return Err("media stream url must include a protocol".to_string());
+    };
+    if rest.trim_matches('/').is_empty() {
+        return Err("media stream url must include a host or path".to_string());
+    }
+    if is_supported_media_stream_scheme(&scheme.to_ascii_lowercase()) {
+        Ok(())
+    } else {
+        Err(format!("unsupported media stream protocol: {scheme}"))
+    }
+}
+
+fn is_supported_media_stream_scheme(scheme: &str) -> bool {
+    matches!(
+        scheme,
+        "http" | "https" | "rtmp" | "rtmps" | "rtsp" | "rtsps" | "srt" | "udp"
+    )
+}
+
+fn capture_directory_for_app(app: &AppHandle) -> Result<PathBuf, String> {
+    if let Ok(mut directory) = app.path().picture_dir() {
+        directory.push("OpenPlayer");
+        directory.push("Captures");
+        return Ok(directory);
+    }
+
+    let mut directory = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("failed to resolve capture directory: {error}"))?;
+    directory.push("captures");
+    Ok(directory)
+}
+
+fn capture_output_path(directory: &Path, media_path: &str, timestamp_ms: u64) -> PathBuf {
+    let stem = capture_file_stem(media_path);
+    directory.join(format!("openplayer-{stem}-{timestamp_ms}.png"))
+}
+
+fn capture_file_stem(media_path: &str) -> String {
+    let normalized = media_path.replace('\\', "/");
+    let tail = normalized
+        .rsplit('/')
+        .find(|part| !part.is_empty())
+        .unwrap_or("capture");
+    let stem = tail
+        .rsplit_once('.')
+        .map(|(stem, _)| stem)
+        .unwrap_or(tail)
+        .trim();
+    let mut sanitized = String::new();
+    for char in stem.chars() {
+        if char.is_ascii_alphanumeric() || matches!(char, '-' | '_') {
+            sanitized.push(char);
+        } else if char.is_whitespace() || matches!(char, '.' | ':' | '/' | '\\') {
+            sanitized.push('_');
+        }
+        if sanitized.len() >= 80 {
+            break;
+        }
+    }
+    let sanitized = sanitized.trim_matches('_').to_string();
+    if sanitized.is_empty() {
+        "capture".to_string()
+    } else {
+        sanitized
+    }
+}
+
+fn current_time_ms_for_capture() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
+        .unwrap_or(0)
 }
 
 fn validate_subtitle_path(path: &str) -> Result<PathBuf, String> {
@@ -1653,6 +1961,41 @@ mod tests {
     }
 
     #[test]
+    fn accepts_supported_stream_urls_as_media_locations() {
+        assert_eq!(
+            validate_media_path("https://example.com/live.m3u8")
+                .expect("https streams should be accepted")
+                .to_string_lossy(),
+            "https://example.com/live.m3u8"
+        );
+        assert_eq!(
+            validate_media_path("rtsp://camera.local/stream")
+                .expect("rtsp streams should be accepted")
+                .to_string_lossy(),
+            "rtsp://camera.local/stream"
+        );
+    }
+
+    #[test]
+    fn rejects_unsupported_stream_urls_as_media_locations() {
+        let error = validate_media_path("file://C:/secret.mp4")
+            .expect_err("unsafe stream protocols should be rejected");
+
+        assert!(error.contains("unsupported media stream protocol"));
+    }
+
+    #[test]
+    fn builds_sanitized_capture_output_paths() {
+        let directory = PathBuf::from("captures");
+        let path = capture_output_path(&directory, "https://example.com/live stream.m3u8", 42);
+
+        assert_eq!(
+            path,
+            PathBuf::from("captures").join("openplayer-live_stream-42.png")
+        );
+    }
+
+    #[test]
     #[cfg(windows)]
     fn encodes_win32_class_name_with_null_terminator() {
         let encoded = wide_null("STATIC");
@@ -1823,6 +2166,88 @@ mod tests {
         assert_eq!(
             track_property_for_kind("chapter").expect_err("unsupported kinds should be rejected"),
             "invalid mpv track kind"
+        );
+    }
+
+    #[test]
+    fn normalizes_plugin_owned_mpv_properties() {
+        assert_eq!(
+            normalize_plugin_mpv_property("sub-font-size", &serde_json::json!(52)).unwrap(),
+            ("sub-font-size", PluginMpvPropertyValue::Number(52.0))
+        );
+        assert_eq!(
+            normalize_plugin_mpv_property("sub-font", &serde_json::json!("Inter")).unwrap(),
+            (
+                "sub-font",
+                PluginMpvPropertyValue::Text("Inter".to_string())
+            )
+        );
+        assert_eq!(
+            normalize_plugin_mpv_property("sub-color", &serde_json::json!("#78d5b3")).unwrap(),
+            (
+                "sub-color",
+                PluginMpvPropertyValue::Text("#78d5b3".to_string())
+            )
+        );
+        assert_eq!(
+            normalize_plugin_mpv_property("sub-spacing", &serde_json::json!(4)).unwrap(),
+            ("sub-spacing", PluginMpvPropertyValue::Text("4".to_string()))
+        );
+        assert_eq!(
+            normalize_plugin_mpv_property("sub-spacing", &serde_json::json!(10)).unwrap(),
+            (
+                "sub-spacing",
+                PluginMpvPropertyValue::Text("10".to_string())
+            )
+        );
+        assert_eq!(
+            normalize_plugin_mpv_property("sub-border-size", &serde_json::json!(2.5)).unwrap(),
+            ("sub-outline-size", PluginMpvPropertyValue::Number(2.5))
+        );
+        assert_eq!(
+            normalize_plugin_mpv_property("sub-shadow-offset", &serde_json::json!(1.5)).unwrap(),
+            ("sub-shadow-offset", PluginMpvPropertyValue::Number(1.5))
+        );
+    }
+
+    #[test]
+    fn rejects_plugin_owned_mpv_properties_outside_allowlist() {
+        assert_eq!(
+            normalize_plugin_mpv_property("vf", &serde_json::json!("lavfi=[scale=2]"))
+                .expect_err("plugins must not set arbitrary mpv properties"),
+            "unsupported plugin mpv property: vf"
+        );
+        assert_eq!(
+            normalize_plugin_mpv_property("sub-font-size", &serde_json::json!(999))
+                .expect_err("subtitle font size outside the allowed range should be rejected"),
+            "invalid plugin subtitle font size"
+        );
+        assert_eq!(
+            normalize_plugin_mpv_property("sub-spacing", &serde_json::json!(11))
+                .expect_err("subtitle spacing above mpv's stable range should be rejected"),
+            "invalid plugin subtitle spacing"
+        );
+    }
+
+    #[test]
+    fn plugin_subtitle_style_properties_force_ass_overrides() {
+        assert!(plugin_subtitle_style_requires_ass_override("sub-font-size"));
+        assert!(plugin_subtitle_style_requires_ass_override("sub-spacing"));
+        assert!(!plugin_subtitle_style_requires_ass_override(
+            "sub-line-spacing"
+        ));
+        assert!(!plugin_subtitle_style_requires_ass_override("sub-delay"));
+    }
+
+    #[test]
+    fn subtitle_spacing_writes_only_stable_mpv_property() {
+        assert_eq!(
+            plugin_mpv_property_write_targets("sub-line-spacing"),
+            &[] as &[&str]
+        );
+        assert_eq!(
+            plugin_mpv_property_write_targets("sub-spacing"),
+            &["sub-spacing"]
         );
     }
 
