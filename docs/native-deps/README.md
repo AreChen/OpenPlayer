@@ -21,3 +21,9 @@ The Windows release manifest intentionally points at the `mpv-dev-lgpl` artifact
 from `zhongfly/mpv-winbuild`. Upstream documents this artifact as an
 LGPLv2.1-compatible libmpv build, which is a better fit for OpenPlayer's MIT
 application code than the default GPL mpv build.
+
+Linux packages depend on the distribution's `libmpv2` package instead of
+bundling a private copy. macOS release automation currently bundles Homebrew
+`mpv` dylibs into the DMG; Homebrew's mpv formula carries GPL/LGPL licensing, so
+macOS runtime licensing should be reviewed before treating signed macOS releases
+as permissive-only binary distributions.
