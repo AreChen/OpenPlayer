@@ -61,9 +61,40 @@ type MpvSnapshot = {
   tracks: MpvTrack[];
 };
 
+type MpvLoadOptions = Record<string, string>;
+
 type MpvCaptureArtifact = {
   path: string;
   copiedToClipboard: boolean;
+};
+
+type MpvWallTileRequest = {
+  id: string;
+  url: string;
+  title?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  muted?: boolean;
+};
+
+type MpvWallTileLayout = {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type MpvWallTileSnapshot = {
+  id: string;
+  url: string;
+  title: string | null;
+  status: string;
+  latencySeconds: number | null;
+  bitrateBps: number | null;
+  message: string | null;
 };
 
 type PlatformSupport = {
@@ -102,6 +133,10 @@ type ThemePluginSummary = {
   id: string;
   name: string;
   version: string;
+  apiVersion: string;
+  minHostVersion: string | null;
+  author: string | null;
+  updateUrl: string | null;
   description: string | null;
   enabled: boolean;
   packageKind: "legacyManifest" | "manifestFile" | "directory" | "opplugin";
@@ -116,6 +151,7 @@ type ThemePluginSummary = {
   capabilities: PluginCapabilitySummary[];
   settings: PluginSettingDefinition[];
   actions: PluginActionDefinition[];
+  views: PluginViewDefinition[];
 };
 
 type PluginCapabilitySummary = {
@@ -184,7 +220,8 @@ type PluginActionCommand =
   | "player.toggleSpeed"
   | "window.toggleFullscreen"
   | "window.toggleAlwaysOnTop"
-  | "app.openSettings";
+  | "app.openSettings"
+  | `plugin.${string}`;
 
 type PluginActionDefinition = {
   id: string;
@@ -199,9 +236,25 @@ type PluginActionDefinition = {
   args: Record<string, unknown>;
 };
 
+type PluginViewDefinition = {
+  id: string;
+  title: string;
+  entry: string;
+  description: string | null;
+  titleI18n: Record<string, string>;
+  descriptionI18n: Record<string, string>;
+};
+
 type PluginActionInstance = {
   plugin: ThemePluginSummary;
   action: PluginActionDefinition;
+};
+
+type PluginViewHtml = {
+  pluginId: string;
+  viewId: string;
+  title: string;
+  html: string;
 };
 
 type PluginRuntimeSource = {
@@ -219,6 +272,21 @@ type PluginRuntimeWorkerState = {
   worker: Worker;
   objectUrl: string;
   permissions: Set<string>;
+  pendingHooks: Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void; timeout: number }>;
+  nextHookId: number;
+};
+
+type PluginMediaOpenInput = {
+  path: string;
+  name: string;
+  source: "file" | "stream" | "history" | "playlist";
+  loadOptions: MpvLoadOptions;
+};
+
+type PluginMediaOpenResult = {
+  path: string;
+  name: string;
+  loadOptions: MpvLoadOptions;
 };
 
 type AppearanceState = {
@@ -336,8 +404,14 @@ type AlwaysOnTopFeedback = {
   enabled: boolean;
 };
 type CaptureFeedback = {
-  icon: "camera" | "record";
+  icon: "camera" | "record" | "info";
   message: string;
+};
+type ActivePluginView = {
+  pluginId: string;
+  viewId: string;
+  title: string;
+  html: string;
 };
 
 type ResizeDirection = "East" | "North" | "NorthEast" | "NorthWest" | "South" | "SouthEast" | "SouthWest" | "West";
@@ -1281,8 +1355,326 @@ function runtimeBooleanArg(args: Record<string, unknown>, key: string) {
   return args[key] === true;
 }
 
+function runtimeNumberArg(args: Record<string, unknown>, key: string) {
+  const value = args[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+const supportedPluginLoadOptionKeys = new Set(["demuxer", "demuxer-lavf-format"]);
+const PLUGIN_HOOK_TIMEOUT_MS = 750;
+const PLUGIN_COMMAND_HOOK_TIMEOUT_MS = 10_000;
+const MAX_PLUGIN_NETWORK_RESPONSE_CHARS = 1024 * 1024;
+const MAX_PLUGIN_NETWORK_TIMEOUT_MS = 30_000;
+const MAX_PLUGIN_WALL_TILES = 16;
+const supportedPluginNetworkMethods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]);
+const PLUGIN_VIEW_BRIDGE_ID = "openplayer-plugin-view";
+
+function isPluginRuntimeActionCommand(command: string): command is `plugin.${string}` {
+  return command.startsWith("plugin.");
+}
+
+function normalizePluginNetworkHeaders(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  const headers: Record<string, string> = {};
+  for (const [rawKey, rawValue] of Object.entries(value as Record<string, unknown>).slice(0, 32)) {
+    const key = rawKey.trim();
+    if (!/^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}$/.test(key) || typeof rawValue !== "string") {
+      continue;
+    }
+    const headerValue = rawValue.trim();
+    if (!headerValue || headerValue.length > 1024 || /[\r\n]/.test(headerValue)) {
+      continue;
+    }
+    headers[key] = headerValue;
+  }
+  return headers;
+}
+
+function pluginNetworkUrl(value: unknown) {
+  if (typeof value !== "string" || value.length > 2048 || /\s/.test(value)) {
+    return null;
+  }
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function pluginWallTiles(value: unknown, frame: HTMLIFrameElement | null): MpvWallTileRequest[] {
+  if (!Array.isArray(value)) {
+    throw new Error("player.wall.open requires a tiles array");
+  }
+  const frameRect = pluginWallFrameRect(frame);
+  return value.slice(0, MAX_PLUGIN_WALL_TILES).map((item, index) => pluginWallTile(item, index, frameRect));
+}
+
+function pluginWallLayouts(value: unknown, frame: HTMLIFrameElement | null): MpvWallTileLayout[] {
+  if (!Array.isArray(value)) {
+    throw new Error("player.wall.layout requires a tiles array");
+  }
+  const frameRect = pluginWallFrameRect(frame);
+  return value.slice(0, MAX_PLUGIN_WALL_TILES).map((item, index) => {
+    const record = runtimeArgsRecord(item);
+    const id = runtimeStringArg(record, "id") ?? `tile-${index + 1}`;
+    const x = clampPluginWallNumber(record.x, 0);
+    const y = clampPluginWallNumber(record.y, 0);
+    const width = clampPluginWallNumber(record.width, 1);
+    const height = clampPluginWallNumber(record.height, 1);
+    const tile = pluginWallTileFromFrame(id, x, y, width, height, frameRect);
+    return {
+      id: tile.id,
+      x: tile.x,
+      y: tile.y,
+      width: tile.width,
+      height: tile.height,
+    };
+  });
+}
+
+function pluginWallFrameRect(frame: HTMLIFrameElement | null) {
+  if (!frame) {
+    throw new Error("plugin view frame is unavailable");
+  }
+  const rect = frame.getBoundingClientRect();
+  const viewportWidth = Math.max(1, window.innerWidth);
+  const viewportHeight = Math.max(1, window.innerHeight);
+  if (rect.width <= 0 || rect.height <= 0) {
+    throw new Error("plugin view frame has no visible area");
+  }
+  return { rect, viewportWidth, viewportHeight };
+}
+
+function pluginWallTile(
+  value: unknown,
+  index: number,
+  frame: { rect: DOMRect; viewportWidth: number; viewportHeight: number },
+): MpvWallTileRequest {
+  const record = runtimeArgsRecord(value);
+  const url = runtimeStringArg(record, "url");
+  if (!url) {
+    throw new Error("player.wall tile requires a url");
+  }
+  const id = runtimeStringArg(record, "id") ?? `tile-${index + 1}`;
+  const x = clampPluginWallNumber(record.x, 0);
+  const y = clampPluginWallNumber(record.y, 0);
+  const width = clampPluginWallNumber(record.width, 1);
+  const height = clampPluginWallNumber(record.height, 1);
+  const tile = pluginWallTileFromFrame(id, x, y, width, height, frame);
+  return {
+    id: tile.id,
+    url,
+    title: runtimeStringArg(record, "title") ?? undefined,
+    x: tile.x,
+    y: tile.y,
+    width: tile.width,
+    height: tile.height,
+    muted: record.muted !== false,
+  };
+}
+
+function pluginWallTileFromFrame(
+  id: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  frame: { rect: DOMRect; viewportWidth: number; viewportHeight: number },
+) {
+  return {
+    id,
+    x: (frame.rect.left + x * frame.rect.width) / frame.viewportWidth,
+    y: (frame.rect.top + y * frame.rect.height) / frame.viewportHeight,
+    width: (width * frame.rect.width) / frame.viewportWidth,
+    height: (height * frame.rect.height) / frame.viewportHeight,
+  };
+}
+
+function clampPluginWallNumber(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : fallback;
+}
+
+async function runPluginNetworkRequest(args: Record<string, unknown>) {
+  const url = pluginNetworkUrl(args.url);
+  if (!url) {
+    throw new Error("network.request requires an http or https url");
+  }
+  const method = (runtimeStringArg(args, "method") ?? "GET").toUpperCase();
+  if (!supportedPluginNetworkMethods.has(method)) {
+    throw new Error(`network.request method is unsupported: ${method}`);
+  }
+  const timeoutMs = Math.min(MAX_PLUGIN_NETWORK_TIMEOUT_MS, Math.max(1000, runtimeNumberArg(args, "timeoutMs") ?? 15_000));
+  const headers = normalizePluginNetworkHeaders(args.headers);
+  let body: BodyInit | undefined;
+  if (method !== "GET" && method !== "HEAD" && typeof args.body === "string") {
+    if (args.body.length > 256 * 1024) {
+      throw new Error("network.request body is too large");
+    }
+    body = args.body;
+  }
+
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { method, headers, body, signal: controller.signal });
+    const text = await response.text();
+    if (text.length > MAX_PLUGIN_NETWORK_RESPONSE_CHARS) {
+      throw new Error("network.request response is too large");
+    }
+    return {
+      url: response.url,
+      status: response.status,
+      ok: response.ok,
+      headers: Object.fromEntries(response.headers.entries()),
+      text,
+    };
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+function normalizePluginLoadOptions(value: unknown): MpvLoadOptions {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  const options: MpvLoadOptions = {};
+  for (const [rawKey, rawValue] of Object.entries(value as Record<string, unknown>)) {
+    const key = rawKey.trim().toLowerCase();
+    if (!supportedPluginLoadOptionKeys.has(key) || typeof rawValue !== "string") {
+      continue;
+    }
+    const optionValue = rawValue.trim();
+    if (!optionValue || optionValue.length > 128 || optionValue.includes(",") || optionValue.includes("=")) {
+      continue;
+    }
+    options[key] = optionValue;
+  }
+  return options;
+}
+
+function isMediaStreamPath(path: string) {
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(path);
+}
+
 function pluginRuntimeSignature(source: PluginRuntimeSource) {
   return `${source.pluginId}:${source.version}:${source.entry}:${source.script}`;
+}
+
+function buildPluginViewDocument(html: string, plugin: ThemePluginSummary, locale: string, theme: ThemeTokens) {
+  const bridge = `
+<script id="${PLUGIN_VIEW_BRIDGE_ID}">
+(() => {
+  "use strict";
+  const pluginId = ${JSON.stringify(plugin.id)};
+  const pending = new Map();
+  let nextRequestId = 1;
+  const requestHost = (command, args = {}) => {
+    if (typeof command !== "string" || !command.trim()) {
+      return Promise.reject(new Error("OpenPlayer plugin command is required"));
+    }
+    const requestId = nextRequestId++;
+    window.parent.postMessage({ type: "openplayer:viewRequest", pluginId, requestId, command, args }, "*");
+    return new Promise((resolve, reject) => {
+      pending.set(requestId, { resolve, reject });
+    });
+  };
+  window.addEventListener("message", (event) => {
+    const message = event.data || {};
+    if (message.type !== "openplayer:viewResponse" || message.pluginId !== pluginId) {
+      return;
+    }
+    const pendingRequest = pending.get(message.requestId);
+    if (!pendingRequest) {
+      return;
+    }
+    pending.delete(message.requestId);
+    if (message.ok) {
+      pendingRequest.resolve(message.result);
+    } else {
+      pendingRequest.reject(new Error(String(message.error || "OpenPlayer plugin request failed")));
+    }
+  });
+  window.openplayer = Object.freeze({
+    sdkVersion: "1.0.0",
+    locale: ${JSON.stringify(locale)},
+    theme: Object.freeze(${JSON.stringify(theme)}),
+    request: requestHost,
+    storage: Object.freeze({
+      get(key) {
+        return requestHost("plugin.storage.get", { key });
+      },
+      list() {
+        return requestHost("plugin.storage.list");
+      },
+      set(key, value) {
+        return requestHost("plugin.storage.set", { key, value });
+      },
+      remove(key) {
+        return requestHost("plugin.storage.remove", { key });
+      },
+    }),
+    network: Object.freeze({
+      request(args) {
+        return requestHost("network.request", args);
+      },
+    }),
+    player: Object.freeze({
+      wall: Object.freeze({
+        open(tiles) {
+          return requestHost("player.wall.open", { tiles });
+        },
+        layout(tiles) {
+          return requestHost("player.wall.layout", { tiles });
+        },
+        snapshot() {
+          return requestHost("player.wall.snapshot");
+        },
+        setVisible(visible) {
+          return requestHost("player.wall.setVisible", { visible });
+        },
+        close() {
+          return requestHost("player.wall.close");
+        },
+      }),
+    }),
+    ui: Object.freeze({
+      toast(message, options = {}) {
+        return requestHost("ui.toast", { ...options, message });
+      },
+      openSettings(section) {
+        return requestHost("ui.openSettings", { section });
+      },
+      closeView() {
+        return requestHost("ui.closePluginView");
+      },
+    }),
+  });
+  window.dispatchEvent(new CustomEvent("openplayer:ready", { detail: window.openplayer }));
+})();
+</script>`;
+  const style = `
+<style>
+:root {
+  --op-surface: ${theme.surface};
+  --op-panel: ${theme.panel};
+  --op-panel-strong: ${theme.panelStrong};
+  --op-text: ${theme.text};
+  --op-muted: ${theme.muted};
+  --op-faint: ${theme.faint};
+  --op-accent: ${theme.accent};
+  --op-danger: ${theme.danger};
+  --op-line: ${theme.line};
+  --op-control: ${theme.control};
+}
+</style>`;
+  const injection = `${style}\n${bridge}`;
+  if (/<\/head>/i.test(html)) {
+    return html.replace(/<\/head>/i, `${injection}\n</head>`);
+  }
+  return `${injection}\n${html}`;
 }
 
 function buildPluginWorkerSource(source: PluginRuntimeSource) {
@@ -1293,8 +1685,20 @@ function buildPluginWorkerSource(source: PluginRuntimeSource) {
 (() => {
   const readyHandlers = [];
   const eventHandlers = [];
+  const beforeOpenMediaHandlers = [];
+  const commandHandlers = new Map();
   const pending = new Map();
   let nextRequestId = 1;
+  const requestHost = (command, args = {}) => {
+    if (typeof command !== "string" || !command.trim()) {
+      return Promise.reject(new Error("OpenPlayer plugin command is required"));
+    }
+    const requestId = nextRequestId++;
+    globalThis.postMessage({ type: "openplayer:request", requestId, command, args });
+    return new Promise((resolve, reject) => {
+      pending.set(requestId, { resolve, reject });
+    });
+  };
   const disabledApi = () => {
     throw new Error("This browser API is disabled in the OpenPlayer plugin worker sandbox");
   };
@@ -1306,16 +1710,8 @@ function buildPluginWorkerSource(source: PluginRuntimeSource) {
   globalThis.SharedWorker = undefined;
   globalThis.importScripts = disabledApi;
   globalThis.openplayer = Object.freeze({
-    request(command, args = {}) {
-      if (typeof command !== "string" || !command.trim()) {
-        return Promise.reject(new Error("OpenPlayer plugin command is required"));
-      }
-      const requestId = nextRequestId++;
-      globalThis.postMessage({ type: "openplayer:request", requestId, command, args });
-      return new Promise((resolve, reject) => {
-        pending.set(requestId, { resolve, reject });
-      });
-    },
+    sdkVersion: "1.0.0",
+    request: requestHost,
     onReady(handler) {
       if (typeof handler === "function") {
         readyHandlers.push(handler);
@@ -1326,6 +1722,195 @@ function buildPluginWorkerSource(source: PluginRuntimeSource) {
         eventHandlers.push(handler);
       }
     },
+    onBeforeOpenMedia(handler) {
+      if (typeof handler === "function") {
+        beforeOpenMediaHandlers.push(handler);
+      }
+    },
+    registerCommand(command, handler) {
+      if (typeof command === "string" && command.startsWith("plugin.") && typeof handler === "function") {
+        commandHandlers.set(command, handler);
+      }
+    },
+    commands: Object.freeze({
+      register(command, handler) {
+        if (typeof command === "string" && command.startsWith("plugin.") && typeof handler === "function") {
+          commandHandlers.set(command, handler);
+        }
+      },
+    }),
+    media: Object.freeze({
+      onBeforeOpen(handler) {
+        if (typeof handler === "function") {
+          beforeOpenMediaHandlers.push(handler);
+        }
+      },
+      openStream(url, options = {}) {
+        return requestHost("player.openStream", { ...options, url });
+      },
+      openStreamDialog() {
+        return requestHost("player.openStreamDialog");
+      },
+      current() {
+        return requestHost("player.currentMedia");
+      },
+      snapshot() {
+        return requestHost("player.snapshot");
+      },
+    }),
+    player: Object.freeze({
+      play() {
+        return requestHost("player.play");
+      },
+      pause() {
+        return requestHost("player.pause");
+      },
+      togglePlayback() {
+        return requestHost("player.togglePlayback");
+      },
+      stop() {
+        return requestHost("player.stop");
+      },
+      seek(args) {
+        return requestHost("player.seek", args);
+      },
+      frameStep() {
+        return requestHost("player.frameStep");
+      },
+      frameBackStep() {
+        return requestHost("player.frameBackStep");
+      },
+      setVolume(volume, options = {}) {
+        return requestHost("player.setVolume", { ...options, volume });
+      },
+      setSpeed(speed) {
+        return requestHost("player.setSpeed", { speed });
+      },
+      setLoopMode(mode) {
+        return requestHost("player.setLoopMode", { mode });
+      },
+      setVideoFill(enabled) {
+        return requestHost("player.setVideoFill", { enabled });
+      },
+      setSubtitleDelay(delay) {
+        return requestHost("player.setSubtitleDelay", { delay });
+      },
+      selectTrack(kind, trackId) {
+        return requestHost("player.selectTrack", { kind, trackId });
+      },
+      wall: Object.freeze({
+        open(tiles) {
+          return requestHost("player.wall.open", { tiles });
+        },
+        layout(tiles) {
+          return requestHost("player.wall.layout", { tiles });
+        },
+        snapshot() {
+          return requestHost("player.wall.snapshot");
+        },
+        setVisible(visible) {
+          return requestHost("player.wall.setVisible", { visible });
+        },
+        close() {
+          return requestHost("player.wall.close");
+        },
+      }),
+    }),
+    capture: Object.freeze({
+      screenshot(args = {}) {
+        return requestHost("player.captureScreenshot", args);
+      },
+      startRecording(args = {}) {
+        return requestHost("player.startRecording", args);
+      },
+      stopRecording(args = {}) {
+        return requestHost("player.stopRecording", args);
+      },
+      toggleRecording(args = {}) {
+        return requestHost("player.toggleRecording", args);
+      },
+      recordingState() {
+        return requestHost("player.recordingState");
+      },
+    }),
+    storage: Object.freeze({
+      get(key) {
+        return requestHost("plugin.storage.get", { key });
+      },
+      list() {
+        return requestHost("plugin.storage.list");
+      },
+      set(key, value) {
+        return requestHost("plugin.storage.set", { key, value });
+      },
+      remove(key) {
+        return requestHost("plugin.storage.remove", { key });
+      },
+    }),
+    network: Object.freeze({
+      request(args) {
+        return requestHost("network.request", args);
+      },
+    }),
+    ui: Object.freeze({
+      toast(message, options = {}) {
+        return requestHost("ui.toast", { ...options, message });
+      },
+      openSettings(section) {
+        return requestHost("ui.openSettings", { section });
+      },
+      openPanel(panel) {
+        return requestHost("ui.openPanel", { panel });
+      },
+      openView(viewId) {
+        return requestHost("ui.openPluginView", { viewId });
+      },
+      closeView() {
+        return requestHost("ui.closePluginView");
+      },
+    }),
+    playlist: Object.freeze({
+      current() {
+        return requestHost("playlist.current");
+      },
+      playIndex(index) {
+        return requestHost("playlist.playIndex", { index });
+      },
+      clear() {
+        return requestHost("playlist.clear");
+      },
+      openMediaFiles() {
+        return requestHost("playlist.openMediaFiles");
+      },
+      appendMediaFiles() {
+        return requestHost("playlist.appendMediaFiles");
+      },
+    }),
+    filesystem: Object.freeze({
+      pickMedia(options = {}) {
+        return requestHost("filesystem.pickMedia", options);
+      },
+      pickDirectory() {
+        return requestHost("filesystem.pickDirectory");
+      },
+      revealPath(path) {
+        return requestHost("filesystem.revealPath", { path });
+      },
+      openDirectory(path) {
+        return requestHost("filesystem.openDirectory", { path });
+      },
+    }),
+    subtitle: Object.freeze({
+      pickExternal() {
+        return requestHost("subtitle.pickExternal");
+      },
+      setDelay(delay) {
+        return requestHost("player.setSubtitleDelay", { delay });
+      },
+      selectTrack(trackId) {
+        return requestHost("player.selectTrack", { kind: "subtitle", trackId });
+      },
+    }),
   });
   globalThis.onmessage = (event) => {
     const message = event.data || {};
@@ -1342,6 +1927,37 @@ function buildPluginWorkerSource(source: PluginRuntimeSource) {
       }
       return;
     }
+    if (message.type === "openplayer:hook") {
+      const hookId = message.hookId;
+      const hook = message.hook;
+      Promise.resolve().then(async () => {
+        let result = null;
+        if (hook === "media.opening") {
+          for (const handler of beforeOpenMediaHandlers) {
+            const nextResult = await handler(message.payload);
+            if (nextResult && typeof nextResult === "object") {
+              result = { ...(result || {}), ...nextResult };
+            }
+          }
+        } else if (hook === "plugin.command") {
+          const command = message.payload && message.payload.command;
+          const handler = typeof command === "string" ? commandHandlers.get(command) : null;
+          if (!handler) {
+            throw new Error("Plugin command is not registered: " + String(command || ""));
+          }
+          result = await handler(message.payload && message.payload.args ? message.payload.args : {}, message.payload || {});
+        }
+        globalThis.postMessage({ type: "openplayer:hookResponse", hookId, ok: true, result });
+      }).catch((error) => {
+        globalThis.postMessage({
+          type: "openplayer:hookResponse",
+          hookId,
+          ok: false,
+          error: String(error && error.message ? error.message : error),
+        });
+      });
+      return;
+    }
     if (message.type === "openplayer:event") {
       for (const handler of eventHandlers) {
         try {
@@ -1352,10 +1968,10 @@ function buildPluginWorkerSource(source: PluginRuntimeSource) {
       }
     }
   };
-  globalThis.__openplayerPluginReady = () => {
+  globalThis.__openplayerPluginReady = async () => {
     for (const handler of readyHandlers) {
       try {
-        handler();
+        await handler();
       } catch (error) {
         globalThis.postMessage({ type: "openplayer:error", message: String(error && error.message ? error.message : error) });
       }
@@ -1369,8 +1985,19 @@ ${pluginScript}
   globalThis.postMessage({ type: "openplayer:error", message: String(error && error.message ? error.message : error) });
 }
 try {
-  globalThis.__openplayerPluginReady();
-} finally {
+  Promise.resolve()
+    .then(() => globalThis.__openplayerPluginReady())
+    .then(() => {
+      globalThis.postMessage({ type: "openplayer:ready" });
+    })
+    .catch((error) => {
+      globalThis.postMessage({ type: "openplayer:error", message: String(error && error.message ? error.message : error) });
+    })
+    .finally(() => {
+      delete globalThis.__openplayerPluginReady;
+    });
+} catch (error) {
+  globalThis.postMessage({ type: "openplayer:error", message: String(error && error.message ? error.message : error) });
   delete globalThis.__openplayerPluginReady;
 }
 //# sourceURL=openplayer-plugin-${source.pluginId.replace(/[^a-z0-9.-]/gi, "_")}.js
@@ -1378,6 +2005,9 @@ try {
 }
 
 function pluginActionCommandRequiresMedia(command: PluginActionCommand) {
+  if (isPluginRuntimeActionCommand(command)) {
+    return false;
+  }
   return [
     "player.captureScreenshot",
     "player.startRecording",
@@ -1565,6 +2195,7 @@ function App() {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [isNetworkStreamDialogOpen, setIsNetworkStreamDialogOpen] = useState(false);
+  const [activePluginView, setActivePluginView] = useState<ActivePluginView | null>(null);
   const [networkStreamUrl, setNetworkStreamUrl] = useState("");
   const [networkStreamError, setNetworkStreamError] = useState<string | null>(null);
   const [platformSupport, setPlatformSupport] = useState<PlatformSupport | null>(null);
@@ -1607,7 +2238,8 @@ function App() {
   const playbackSettingsRef = useRef<PlaybackSettings>(DEFAULT_PLAYBACK_SETTINGS);
   const previousAudibleVolumeRef = useRef(DEFAULT_PLAYBACK_SETTINGS.volume / 100);
   const pluginRuntimeWorkersRef = useRef<Map<string, PluginRuntimeWorkerState>>(new Map());
-  const pluginRuntimeCommandHandlerRef = useRef<(command: string, args: unknown, permissions: Set<string>) => Promise<unknown>>(async () => {
+  const pluginViewFrameRef = useRef<HTMLIFrameElement | null>(null);
+  const pluginRuntimeCommandHandlerRef = useRef<(command: string, args: unknown, permissions: Set<string>, pluginId: string) => Promise<unknown>>(async () => {
     throw new Error("plugin runtime is not ready");
   });
   const droppedPathsHandlerRef = useRef<(paths: string[]) => void>(() => undefined);
@@ -1622,7 +2254,16 @@ function App() {
   const activeTheme = activeThemeFromAppearance(appearanceState);
   const appearanceStyle = themeStyleVariables(appearanceState);
   const isMediaPanelOpen = mediaPanelMode !== null;
-  const isChromePinned = !media || isPlaylistOpen || isMediaPanelOpen || isPickerOpen || playbackError !== null || contextMenu !== null || isSettingsOpen || isNetworkStreamDialogOpen;
+  const isChromePinned =
+    !media ||
+    isPlaylistOpen ||
+    isMediaPanelOpen ||
+    isPickerOpen ||
+    playbackError !== null ||
+    contextMenu !== null ||
+    isSettingsOpen ||
+    isNetworkStreamDialogOpen ||
+    activePluginView !== null;
   pluginRuntimeCommandHandlerRef.current = executePluginRuntimeCommand;
 
   useEffect(() => {
@@ -1765,6 +2406,45 @@ function App() {
   }, [appearanceState?.plugins.map((plugin) => `${plugin.id}:${plugin.enabled}:${plugin.runtime}:${plugin.version}`).join("|")]);
 
   useEffect(() => () => terminateAllPluginRuntimeWorkers(), []);
+
+  useEffect(() => {
+    function handlePluginViewMessage(event: MessageEvent) {
+      const frame = pluginViewFrameRef.current;
+      if (!activePluginView || !frame?.contentWindow || event.source !== frame.contentWindow) {
+        return;
+      }
+      const record = event.data && typeof event.data === "object" ? (event.data as Record<string, unknown>) : null;
+      if (!record || record.type !== "openplayer:viewRequest" || record.pluginId !== activePluginView.pluginId) {
+        return;
+      }
+      const requestId = typeof record.requestId === "number" ? record.requestId : null;
+      const command = typeof record.command === "string" ? record.command : "";
+      if (requestId === null || !command) {
+        return;
+      }
+      const plugin = appearanceState?.plugins.find((candidate) => candidate.id === activePluginView.pluginId && candidate.enabled);
+      const permissions = new Set(plugin?.permissions ?? []);
+      pluginRuntimeCommandHandlerRef.current(command, record.args, permissions, activePluginView.pluginId)
+        .then((result) => {
+          frame.contentWindow?.postMessage({ type: "openplayer:viewResponse", pluginId: activePluginView.pluginId, requestId, ok: true, result: result ?? null }, "*");
+        })
+        .catch((error: unknown) => {
+          frame.contentWindow?.postMessage(
+            {
+              type: "openplayer:viewResponse",
+              pluginId: activePluginView.pluginId,
+              requestId,
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "*",
+          );
+        });
+    }
+
+    window.addEventListener("message", handlePluginViewMessage);
+    return () => window.removeEventListener("message", handlePluginViewMessage);
+  }, [activePluginView?.pluginId, activePluginView?.viewId, appearanceState?.plugins]);
 
   useEffect(() => {
     if (!media) {
@@ -2319,8 +2999,15 @@ function App() {
     rememberPlaybackProgress(snapshot.path, snapshotPosition, snapshotDuration, forceHistoryWrite);
     setCurrentTime(snapshotPosition);
     anchorDisplayClock(snapshotPosition, nextIsPlaying, snapshotDuration, snapshotSpeed);
+    broadcastPluginRuntimeEvent("playback.snapshot", {
+      ...snapshot,
+      position: snapshotPosition,
+      duration: snapshotDuration,
+      playing: nextIsPlaying,
+    });
 
     if (snapshot.ended || snapshot.status === "ended") {
+      broadcastPluginRuntimeEvent("playback.ended", { path: snapshot.path });
       handlePlaybackEnd(snapshot.path);
     } else if (handledEndedPathRef.current === snapshot.path) {
       handledEndedPathRef.current = null;
@@ -2370,7 +3057,24 @@ function App() {
     setPlaybackError(message);
   }
 
-  async function openMpvPath(path: string) {
+  async function preparePluginMediaOpen(item: MediaItem, source: PluginMediaOpenInput["source"], loadOptions: MpvLoadOptions = {}) {
+    const prepared = await runMediaOpeningHooks({
+      path: item.path,
+      name: item.name,
+      source,
+      loadOptions,
+    });
+    return {
+      item: {
+        ...item,
+        path: prepared.path,
+        name: prepared.name,
+      },
+      loadOptions: prepared.loadOptions,
+    };
+  }
+
+  async function openMpvPath(path: string, loadOptions: MpvLoadOptions = {}) {
     invalidatePendingSnapshots();
     handledEndedPathRef.current = null;
     setLoadedMediaPath(null);
@@ -2380,6 +3084,7 @@ function App() {
       path,
       resumePosition: rememberedPosition > 0 ? rememberedPosition : null,
       initialVolume: savedSettings.volume,
+      loadOptions,
     });
     setRecordingState(INACTIVE_RECORDING_STATE);
     activeSnapshot = await applyStoredPlaybackSettings(activeSnapshot, savedSettings);
@@ -2387,6 +3092,7 @@ function App() {
     activeSnapshot = await applyStoredPluginMpvSettings(activeSnapshot);
     pendingSeekRef.current = null;
     setPlaybackError(null);
+    broadcastPluginRuntimeEvent("media.loaded", { path: activeSnapshot.path, snapshot: activeSnapshot });
     applyCommandSnapshot(activeSnapshot);
   }
 
@@ -3065,7 +3771,9 @@ function App() {
     setQueue(nextQueue);
     setCurrentIndex(0);
     setIsPlaylistOpen(nextQueue.length > 1);
-    await openMpvPath(nextQueue[0].path);
+    const prepared = await preparePluginMediaOpen(nextQueue[0], "file");
+    setQueue((current) => current.map((item, index) => (index === 0 ? prepared.item : item)));
+    await openMpvPath(prepared.item.path, prepared.loadOptions);
   }
 
   async function appendMediaPaths(paths: string[]) {
@@ -3086,11 +3794,13 @@ function App() {
     setCurrentIndex(shouldStartPlayback ? 0 : currentIndex ?? 0);
     setIsPlaylistOpen(nextQueue.length > 1);
     if (shouldStartPlayback) {
-      await openMpvPath(nextQueue[0].path);
+      const prepared = await preparePluginMediaOpen(nextQueue[0], "file");
+      setQueue((current) => current.map((item, index) => (index === 0 ? prepared.item : item)));
+      await openMpvPath(prepared.item.path, prepared.loadOptions);
     }
   }
 
-  function playQueueIndex(index: number) {
+  async function openQueueIndex(index: number) {
     const item = queue[index];
     if (!item) {
       return;
@@ -3098,7 +3808,13 @@ function App() {
 
     handledEndedPathRef.current = null;
     setCurrentIndex(index);
-    openMpvPath(item.path).catch(reportPlaybackError);
+    const prepared = await preparePluginMediaOpen(item, "playlist");
+    setQueue((current) => current.map((candidate, candidateIndex) => (candidateIndex === index ? prepared.item : candidate)));
+    await openMpvPath(prepared.item.path, prepared.loadOptions);
+  }
+
+  function playQueueIndex(index: number) {
+    openQueueIndex(index).catch(reportPlaybackError);
   }
 
   function chooseQueueItem(index: number) {
@@ -3148,7 +3864,12 @@ function App() {
     setQueue([item]);
     setCurrentIndex(0);
     setIsPlaylistOpen(false);
-    openMpvPath(entry.path).catch(reportPlaybackError);
+    preparePluginMediaOpen(item, "history")
+      .then(async (prepared) => {
+        setQueue([prepared.item]);
+        await openMpvPath(prepared.item.path, prepared.loadOptions);
+      })
+      .catch(reportPlaybackError);
   }
 
   function clearPlaybackHistory() {
@@ -3176,6 +3897,7 @@ function App() {
         setTracks([]);
         setLoadedMediaPath(null);
         setMediaPanelMode(null);
+        broadcastPluginRuntimeEvent("playback.stopped", { path: media.path });
       })
       .catch(reportPlaybackError);
   }
@@ -3254,6 +3976,11 @@ function App() {
   }
 
   function terminatePluginRuntimeWorker(workerState: PluginRuntimeWorkerState) {
+    for (const pendingHook of workerState.pendingHooks.values()) {
+      window.clearTimeout(pendingHook.timeout);
+      pendingHook.reject(new Error("plugin runtime worker stopped"));
+    }
+    workerState.pendingHooks.clear();
     workerState.worker.terminate();
     URL.revokeObjectURL(workerState.objectUrl);
   }
@@ -3291,6 +4018,8 @@ function App() {
       worker,
       objectUrl,
       permissions: new Set(source.permissions),
+      pendingHooks: new Map(),
+      nextHookId: 1,
     };
 
     worker.onmessage = (event) => handlePluginRuntimeMessage(workerState, event.data);
@@ -3307,8 +4036,34 @@ function App() {
     if (type === "openplayer:loaded") {
       return;
     }
+    if (type === "openplayer:ready") {
+      workerState.worker.postMessage({
+        type: "openplayer:event",
+        event: "app.ready",
+        payload: pluginRuntimeHostState(),
+      });
+      return;
+    }
     if (type === "openplayer:error") {
       console.warn(`Plugin runtime error in ${workerState.pluginId}`, record.message);
+      return;
+    }
+    if (type === "openplayer:hookResponse") {
+      const hookId = typeof record.hookId === "number" ? record.hookId : null;
+      if (hookId === null) {
+        return;
+      }
+      const pendingHook = workerState.pendingHooks.get(hookId);
+      if (!pendingHook) {
+        return;
+      }
+      window.clearTimeout(pendingHook.timeout);
+      workerState.pendingHooks.delete(hookId);
+      if (record.ok === true) {
+        pendingHook.resolve(record.result);
+      } else {
+        pendingHook.reject(new Error(String(record.error || "OpenPlayer plugin hook failed")));
+      }
       return;
     }
     if (type !== "openplayer:request") {
@@ -3321,7 +4076,7 @@ function App() {
       return;
     }
 
-    pluginRuntimeCommandHandlerRef.current(command, record.args, workerState.permissions)
+    pluginRuntimeCommandHandlerRef.current(command, record.args, workerState.permissions, workerState.pluginId)
       .then((result) => {
         workerState.worker.postMessage({ type: "openplayer:response", requestId, ok: true, result: result ?? null });
       })
@@ -3335,12 +4090,101 @@ function App() {
       });
   }
 
+  function pluginRuntimeHostState() {
+    return {
+      version: appVersion,
+      locale,
+      media,
+      queue,
+      currentIndex,
+      playback: {
+        playing: isPlaying,
+        position: currentTime,
+        duration,
+        speed: playbackSpeed,
+        volume: Math.round(volumeLevel * 100),
+        loopMode,
+        timeDisplayMode,
+      },
+    };
+  }
+
+  function broadcastPluginRuntimeEvent(event: string, payload: unknown) {
+    for (const workerState of pluginRuntimeWorkersRef.current.values()) {
+      workerState.worker.postMessage({ type: "openplayer:event", event, payload });
+    }
+  }
+
+  function dispatchPluginRuntimeHook(workerState: PluginRuntimeWorkerState, hook: string, payload: unknown, timeoutMs = PLUGIN_HOOK_TIMEOUT_MS) {
+    return new Promise<unknown>((resolve, reject) => {
+      const hookId = workerState.nextHookId++;
+      const timeout = window.setTimeout(() => {
+        workerState.pendingHooks.delete(hookId);
+        reject(new Error(`plugin hook timed out: ${hook}`));
+      }, timeoutMs);
+      workerState.pendingHooks.set(hookId, { resolve, reject, timeout });
+      workerState.worker.postMessage({ type: "openplayer:hook", hookId, hook, payload });
+    });
+  }
+
+  function normalizePluginMediaOpenResult(base: PluginMediaOpenResult, result: unknown, permissions: Set<string>) {
+    if (!result || typeof result !== "object" || Array.isArray(result)) {
+      return base;
+    }
+
+    const record = result as Record<string, unknown>;
+    const candidatePath = typeof record.path === "string" && record.path.trim() ? record.path.trim() : base.path;
+    const nextPath = candidatePath === base.path || permissions.has("media.openStream") ? candidatePath : base.path;
+    const nextName = typeof record.name === "string" && record.name.trim() ? record.name.trim().slice(0, 256) : base.name;
+    const nextLoadOptions = permissions.has("mpv.loadOptions") ? normalizePluginLoadOptions(record.loadOptions) : {};
+    return {
+      path: nextPath,
+      name: nextName,
+      loadOptions: {
+        ...base.loadOptions,
+        ...nextLoadOptions,
+      },
+    };
+  }
+
+  async function runMediaOpeningHooks(input: PluginMediaOpenInput): Promise<PluginMediaOpenResult> {
+    let result: PluginMediaOpenResult = {
+      path: input.path,
+      name: input.name,
+      loadOptions: { ...input.loadOptions },
+    };
+    const hookPayload = {
+      ...input,
+      isStream: isMediaStreamPath(input.path),
+    };
+    broadcastPluginRuntimeEvent("media.opening", hookPayload);
+    for (const workerState of pluginRuntimeWorkersRef.current.values()) {
+      try {
+        const hookResult = await dispatchPluginRuntimeHook(workerState, "media.opening", {
+          ...hookPayload,
+          path: result.path,
+          name: result.name,
+          loadOptions: result.loadOptions,
+        });
+        result = normalizePluginMediaOpenResult(result, hookResult, workerState.permissions);
+      } catch (error) {
+        console.warn(`Plugin media.opening hook failed in ${workerState.pluginId}`, error);
+      }
+    }
+    return result;
+  }
+
   function isPluginActionDisabled(action: PluginActionDefinition) {
     return (action.requiresMedia || pluginActionCommandRequiresMedia(action.command)) && !media;
   }
 
   function executePluginAction({ plugin, action }: PluginActionInstance) {
     if (isPluginActionDisabled(action)) {
+      return;
+    }
+
+    if (isPluginRuntimeActionCommand(action.command)) {
+      executePluginRuntimeAction({ plugin, action }).catch(reportPlaybackError);
       return;
     }
 
@@ -3397,6 +4241,57 @@ function App() {
         openSettingsDialog();
         return;
     }
+  }
+
+  async function executePluginRuntimeAction({ plugin, action }: PluginActionInstance) {
+    const workerState = pluginRuntimeWorkersRef.current.get(plugin.id);
+    if (!workerState) {
+      throw new Error(`plugin runtime is unavailable: ${plugin.id}`);
+    }
+    await dispatchPluginRuntimeHook(workerState, "plugin.command", {
+      plugin: {
+        id: plugin.id,
+        name: plugin.name,
+        version: plugin.version,
+      },
+      action: {
+        id: action.id,
+        label: action.label,
+        placement: action.placement,
+      },
+      command: action.command,
+      args: action.args,
+    }, PLUGIN_COMMAND_HOOK_TIMEOUT_MS);
+  }
+
+  async function openPluginView(pluginId: string, viewId: string) {
+    const plugin = appearanceState?.plugins.find((candidate) => candidate.id === pluginId && candidate.enabled);
+    if (!plugin) {
+      throw new Error(`plugin is unavailable: ${pluginId}`);
+    }
+    const view = plugin.views.find((candidate) => candidate.id === viewId);
+    if (!view) {
+      throw new Error(`plugin view is unavailable: ${pluginId}.${viewId}`);
+    }
+    const viewHtml = await invoke<PluginViewHtml>("appearance_plugin_view_html", { pluginId, viewId });
+    setContextMenu(null);
+    setIsPlaylistOpen(false);
+    setMediaPanelMode(null);
+    setIsNetworkStreamDialogOpen(false);
+    setIsSettingsOpen(false);
+    setActivePluginView({
+      pluginId: viewHtml.pluginId,
+      viewId: viewHtml.viewId,
+      title: localizedPluginText(view.title, view.titleI18n, locale),
+      html: viewHtml.html,
+    });
+  }
+
+  function closePluginView() {
+    invoke("mpv_wall_close").catch((error: unknown) => {
+      console.warn("Failed to close plugin native wall", error);
+    });
+    setActivePluginView(null);
   }
 
   async function openPluginStream(action: PluginActionDefinition) {
@@ -3469,7 +4364,7 @@ function App() {
       });
   }
 
-  async function openRuntimeStream(url: string, name: string | null = null) {
+  async function openRuntimeStream(url: string, name: string | null = null, loadOptions: MpvLoadOptions = {}) {
     if (platformSupport && !platformSupport.mpvEmbedVideo) {
       setPlaybackError(platformUnsupportedPlaybackMessage(platformSupport, t));
       return;
@@ -3480,16 +4375,246 @@ function App() {
       name: streamNameFromUrl(url, name),
       path: url,
     };
+    const prepared = await preparePluginMediaOpen(item, "stream", loadOptions);
     setPlaybackError(null);
-    setQueue([item]);
+    setQueue([prepared.item]);
     setCurrentIndex(0);
     setIsPlaylistOpen(false);
-    await openMpvPath(url);
+    await openMpvPath(prepared.item.path, prepared.loadOptions);
   }
 
-  async function executePluginRuntimeCommand(command: string, args: unknown, permissions: Set<string>) {
+  async function executePluginRuntimeCommand(command: string, args: unknown, permissions: Set<string>, pluginId: string) {
     const record = runtimeArgsRecord(args);
     switch (command) {
+      case "plugin.getSettings": {
+        const plugin = appearanceState?.plugins.find((candidate) => candidate.id === pluginId);
+        return Object.fromEntries((plugin?.settings ?? []).map((setting) => [setting.id, setting.value]));
+      }
+      case "plugin.storage.get": {
+        const key = runtimeStringArg(record, "key");
+        if (!key) {
+          throw new Error("plugin storage get requires a key");
+        }
+        return await invoke("appearance_plugin_kv_get", { pluginId, key });
+      }
+      case "plugin.storage.list":
+        return await invoke("appearance_plugin_kv_list", { pluginId });
+      case "plugin.storage.set": {
+        const key = runtimeStringArg(record, "key");
+        if (!key) {
+          throw new Error("plugin storage set requires a key");
+        }
+        await invoke("appearance_plugin_kv_set", { pluginId, key, value: record.value ?? null });
+        return null;
+      }
+      case "plugin.storage.remove": {
+        const key = runtimeStringArg(record, "key");
+        if (!key) {
+          throw new Error("plugin storage remove requires a key");
+        }
+        return await invoke("appearance_plugin_kv_remove", { pluginId, key });
+      }
+      case "network.request": {
+        if (!permissions.has("network.request")) {
+          throw new Error("plugin runtime command requires network.request");
+        }
+        return await runPluginNetworkRequest(record);
+      }
+      case "player.wall.open": {
+        if (!permissions.has("mpv.wall")) {
+          throw new Error("plugin runtime command requires mpv.wall");
+        }
+        return await invoke<MpvWallTileSnapshot[]>("mpv_wall_open", { tiles: pluginWallTiles(record.tiles, pluginViewFrameRef.current) });
+      }
+      case "player.wall.layout": {
+        if (!permissions.has("mpv.wall")) {
+          throw new Error("plugin runtime command requires mpv.wall");
+        }
+        return await invoke<MpvWallTileSnapshot[]>("mpv_wall_layout", { tiles: pluginWallLayouts(record.tiles, pluginViewFrameRef.current) });
+      }
+      case "player.wall.snapshot": {
+        if (!permissions.has("mpv.wall")) {
+          throw new Error("plugin runtime command requires mpv.wall");
+        }
+        return await invoke<MpvWallTileSnapshot[]>("mpv_wall_snapshot");
+      }
+      case "player.wall.setVisible": {
+        if (!permissions.has("mpv.wall")) {
+          throw new Error("plugin runtime command requires mpv.wall");
+        }
+        await invoke("mpv_wall_set_visible", { visible: record.visible !== false });
+        return null;
+      }
+      case "player.wall.close": {
+        if (!permissions.has("mpv.wall")) {
+          throw new Error("plugin runtime command requires mpv.wall");
+        }
+        await invoke("mpv_wall_close");
+        return null;
+      }
+      case "ui.toast": {
+        const message = runtimeStringArg(record, "message");
+        if (!message) {
+          throw new Error("ui.toast requires a message");
+        }
+        const icon = runtimeStringArg(record, "icon");
+        showCaptureFeedback(icon === "camera" || icon === "record" ? icon : "info", message.slice(0, 180));
+        return null;
+      }
+      case "ui.openSettings": {
+        const section = runtimeStringArg(record, "section");
+        if (section === "plugins" || section === "playback" || section === "shortcuts" || section === "about" || section === "appearance") {
+          setSettingsSection(section);
+        }
+        setIsSettingsOpen(true);
+        setContextMenu(null);
+        setMediaPanelMode(null);
+        return null;
+      }
+      case "ui.openPanel": {
+        const panel = runtimeStringArg(record, "panel");
+        if (panel === "playlist") {
+          setMediaPanelMode(null);
+          setIsPlaylistOpen(true);
+          return null;
+        }
+        if (panel === "tracks" || panel === "speed" || panel === "loop") {
+          setIsPlaylistOpen(false);
+          setMediaPanelMode(panel);
+          return null;
+        }
+        throw new Error("ui.openPanel requires panel playlist, tracks, speed, or loop");
+      }
+      case "ui.openPluginView": {
+        const viewId = runtimeStringArg(record, "viewId");
+        if (!viewId) {
+          throw new Error("ui.openPluginView requires a viewId");
+        }
+        await openPluginView(pluginId, viewId);
+        return null;
+      }
+      case "ui.closePluginView":
+        closePluginView();
+        return null;
+      case "playlist.current":
+        return { media, queue, currentIndex };
+      case "playlist.playIndex": {
+        const index = runtimeNumberArg(record, "index");
+        if (index === null || !Number.isInteger(index) || index < 0 || index >= queue.length) {
+          throw new Error("playlist.playIndex requires a valid index");
+        }
+        await openQueueIndex(index);
+        return null;
+      }
+      case "playlist.clear":
+        stopPlayback();
+        setQueue([]);
+        setCurrentIndex(null);
+        setIsPlaylistOpen(false);
+        return null;
+      case "filesystem.pickMedia": {
+        if (!permissions.has("filesystem.pick")) {
+          throw new Error("plugin runtime command requires filesystem.pick");
+        }
+        if (isPickerOpen) {
+          throw new Error("file picker is already open");
+        }
+        setIsPickerOpen(true);
+        try {
+          const selection = await open({
+            multiple: record.multiple !== false,
+            filters: [{ name: t.dialog.mediaFiles, extensions: playableExtensions }],
+          });
+          return typeof selection === "string" ? [selection] : Array.isArray(selection) ? selection : [];
+        } finally {
+          setIsPickerOpen(false);
+          focusOverlayWindow();
+        }
+      }
+      case "filesystem.pickDirectory": {
+        if (!permissions.has("filesystem.pick")) {
+          throw new Error("plugin runtime command requires filesystem.pick");
+        }
+        if (isPickerOpen) {
+          throw new Error("file picker is already open");
+        }
+        setIsPickerOpen(true);
+        try {
+          const selection = await open({ directory: true, multiple: false });
+          return typeof selection === "string" ? selection : null;
+        } finally {
+          setIsPickerOpen(false);
+          focusOverlayWindow();
+        }
+      }
+      case "filesystem.revealPath": {
+        if (!permissions.has("filesystem.reveal")) {
+          throw new Error("plugin runtime command requires filesystem.reveal");
+        }
+        const path = runtimeStringArg(record, "path");
+        if (!path) {
+          throw new Error("filesystem.revealPath requires a path");
+        }
+        await invoke("window_reveal_path", { path });
+        return null;
+      }
+      case "filesystem.openDirectory": {
+        if (!permissions.has("filesystem.reveal")) {
+          throw new Error("plugin runtime command requires filesystem.reveal");
+        }
+        const path = runtimeStringArg(record, "path");
+        if (!path) {
+          throw new Error("filesystem.openDirectory requires a path");
+        }
+        await invoke("window_open_directory", { path });
+        return null;
+      }
+      case "playlist.openMediaFiles": {
+        const paths = (await executePluginRuntimeCommand("filesystem.pickMedia", { multiple: true }, permissions, pluginId)) as string[];
+        await replaceQueueWithMediaPaths(paths);
+        return { paths };
+      }
+      case "playlist.appendMediaFiles": {
+        const paths = (await executePluginRuntimeCommand("filesystem.pickMedia", { multiple: true }, permissions, pluginId)) as string[];
+        await appendMediaPaths(paths);
+        return { paths };
+      }
+      case "subtitle.pickExternal": {
+        if (!media) {
+          throw new Error("subtitle.pickExternal requires loaded media");
+        }
+        if (!permissions.has("filesystem.pick")) {
+          throw new Error("plugin runtime command requires filesystem.pick");
+        }
+        if (isPickerOpen) {
+          throw new Error("file picker is already open");
+        }
+        setIsPickerOpen(true);
+        try {
+          const selection = await open({
+            multiple: false,
+            filters: [{ name: t.dialog.subtitle, extensions: subtitleExtensions }],
+          });
+          if (typeof selection !== "string") {
+            return null;
+          }
+          invalidatePendingSnapshots();
+          const snapshot = await invoke<MpvSnapshot>("mpv_embed_add_subtitle", { path: selection });
+          applyCommandSnapshot(snapshot);
+          const selectedSubtitle = snapshot.tracks.find((track) => track.kind === "sub" && track.selected);
+          persistMediaPlaybackSettings(media.path, { subtitleTrackId: selectedSubtitle?.id ?? null });
+          return snapshot;
+        } finally {
+          setIsPickerOpen(false);
+          focusOverlayWindow();
+        }
+      }
+      case "player.currentMedia":
+        return { media, queue, currentIndex };
+      case "player.snapshot": {
+        const snapshot = await invoke<MpvSnapshot | null>("mpv_embed_snapshot");
+        return snapshot;
+      }
       case "player.openMedia":
         openNativeMediaFiles();
         return null;
@@ -3501,7 +4626,7 @@ function App() {
         if (!url) {
           throw new Error("plugin runtime stream command is missing a url");
         }
-        await openRuntimeStream(url, runtimeStringArg(record, "name"));
+        await openRuntimeStream(url, runtimeStringArg(record, "name"), permissions.has("mpv.loadOptions") ? normalizePluginLoadOptions(record.loadOptions) : {});
         return { path: url };
       }
       case "player.openStreamDialog": {
@@ -3510,6 +4635,120 @@ function App() {
         }
         openNetworkStreamDialog();
         return null;
+      }
+      case "player.play": {
+        if (!media) {
+          throw new Error("player.play requires loaded media");
+        }
+        invalidatePendingSnapshots();
+        const snapshot = await invoke<MpvSnapshot>("mpv_embed_play");
+        applyCommandSnapshot(snapshot);
+        return snapshot;
+      }
+      case "player.pause": {
+        if (!media) {
+          throw new Error("player.pause requires loaded media");
+        }
+        invalidatePendingSnapshots();
+        const snapshot = await invoke<MpvSnapshot>("mpv_embed_pause");
+        applyCommandSnapshot(snapshot);
+        return snapshot;
+      }
+      case "player.seek": {
+        if (!media) {
+          throw new Error("player.seek requires loaded media");
+        }
+        const absolutePosition = runtimeNumberArg(record, "position");
+        const delta = runtimeNumberArg(record, "delta");
+        const target = seekTarget(absolutePosition ?? displayTime + (delta ?? 0));
+        pendingSeekRef.current = { target, startedAt: performance.now() };
+        setCurrentTime(target);
+        anchorDisplayClock(target, false);
+        invalidatePendingSnapshots();
+        const snapshot = await invoke<MpvSnapshot>("mpv_embed_seek", { position: target });
+        applyCommandSnapshot(snapshot);
+        return snapshot;
+      }
+      case "player.frameStep": {
+        if (!media) {
+          throw new Error("player.frameStep requires loaded media");
+        }
+        pendingSeekRef.current = null;
+        invalidatePendingSnapshots();
+        const snapshot = await invoke<MpvSnapshot>("mpv_embed_frame_step");
+        applyCommandSnapshot(snapshot);
+        return snapshot;
+      }
+      case "player.frameBackStep": {
+        if (!media) {
+          throw new Error("player.frameBackStep requires loaded media");
+        }
+        pendingSeekRef.current = null;
+        invalidatePendingSnapshots();
+        const snapshot = await invoke<MpvSnapshot>("mpv_embed_frame_back_step");
+        applyCommandSnapshot(snapshot);
+        return snapshot;
+      }
+      case "player.setVolume": {
+        const volume = runtimeNumberArg(record, "volume");
+        if (volume === null) {
+          throw new Error("player.setVolume requires a volume");
+        }
+        setVolume(volume / 100, { feedback: runtimeBooleanArg(record, "feedback") });
+        return { volume: Math.min(100, Math.max(0, volume)) };
+      }
+      case "player.setSpeed": {
+        const speed = runtimeNumberArg(record, "speed");
+        if (speed === null) {
+          throw new Error("player.setSpeed requires a speed");
+        }
+        const nextSpeed = clampPlaybackSpeed(speed);
+        setPlaybackSpeed(nextSpeed);
+        return { speed: nextSpeed };
+      }
+      case "player.setLoopMode": {
+        const mode = runtimeStringArg(record, "mode");
+        const nextMode = normalizeLoopMode(mode);
+        setLoopMode(nextMode);
+        return { loopMode: nextMode };
+      }
+      case "player.setVideoFill": {
+        const enabled = runtimeBooleanArg(record, "enabled");
+        setVideoFillMode(enabled);
+        return { videoFill: enabled };
+      }
+      case "player.setSubtitleDelay": {
+        if (!media) {
+          throw new Error("player.setSubtitleDelay requires loaded media");
+        }
+        const delay = runtimeNumberArg(record, "delay");
+        if (delay === null) {
+          throw new Error("player.setSubtitleDelay requires a delay");
+        }
+        const nextDelay = clampSubtitleDelay(delay);
+        setSubtitleDelay(nextDelay);
+        return { subtitleDelay: nextDelay };
+      }
+      case "player.selectTrack": {
+        if (!media) {
+          throw new Error("player.selectTrack requires loaded media");
+        }
+        const kind = runtimeStringArg(record, "kind");
+        if (kind !== "audio" && kind !== "video" && kind !== "subtitle") {
+          throw new Error("player.selectTrack requires kind audio, video, or subtitle");
+        }
+        const rawTrackId = record.trackId;
+        const trackId = rawTrackId === null ? null : runtimeNumberArg(record, "trackId");
+        if (rawTrackId !== null && trackId === null) {
+          throw new Error("player.selectTrack requires numeric trackId or null");
+        }
+        invalidatePendingSnapshots();
+        const snapshot = await invoke<MpvSnapshot>("mpv_embed_select_track", { kind, trackId });
+        applyCommandSnapshot(snapshot);
+        if (kind === "subtitle" && media) {
+          persistMediaPlaybackSettings(media.path, { subtitleTrackId: trackId });
+        }
+        return snapshot;
       }
       case "player.captureScreenshot": {
         if (!permissions.has("mpv.capture")) {
@@ -4053,6 +5292,11 @@ function App() {
   const isChromeHidden = Boolean(media) && !isChromeVisible && !isChromePinned;
   const hardwareDecodingLabel = hardwareDecodingMode === "hardware" ? t.hardware.hardware : t.hardware.software;
   const hardwareDecodingToggleLabel = hardwareDecodingMode === "hardware" ? t.hardware.switchToSoftware : t.hardware.switchToHardware;
+  const activePluginViewPlugin = activePluginView ? appearanceState?.plugins.find((plugin) => plugin.id === activePluginView.pluginId) ?? null : null;
+  const activePluginViewDocument =
+    activePluginView && activePluginViewPlugin && activeTheme
+      ? buildPluginViewDocument(activePluginView.html, activePluginViewPlugin, locale, activeTheme.tokens)
+      : null;
   const contextMenuItems: Array<
     | { type: "item"; id: string; label: string; icon: IconName; shortcut?: string | null; disabled?: boolean; onSelect: () => void }
     | { type: "separator"; id: string }
@@ -4448,6 +5692,11 @@ function App() {
                     </small>
                   </div>
                   <div className="plugin-row-actions">
+                    {plugin.updateUrl && (
+                      <button className="settings-reset plugin-update-link" type="button" onClick={() => void openExternalUrl(plugin.updateUrl)}>
+                        {t.settings.plugins.update}
+                      </button>
+                    )}
                     <label className="plugin-toggle">
                       <input type="checkbox" checked={plugin.enabled} onChange={(event) => setThemePluginEnabled(plugin.id, event.currentTarget.checked)} />
                       <span>{plugin.enabled ? t.settings.plugins.enabled : t.settings.plugins.disabled}</span>
@@ -4463,10 +5712,21 @@ function App() {
                   </div>
                 </div>
                 <div className="plugin-detail-grid">
-                  <span>{t.settings.plugins.themeCount(plugin.themeCount)}</span>
-                  <span>{t.settings.plugins.capabilityCount(plugin.capabilityCount)}</span>
-                  <span>{t.settings.plugins.settingCount(plugin.settingCount)}</span>
-                  <span>{t.settings.plugins.actionCount(plugin.actionCount)}</span>
+                  {[
+                    t.settings.plugins.themeCount(plugin.themeCount),
+                    t.settings.plugins.capabilityCount(plugin.capabilityCount),
+                    t.settings.plugins.settingCount(plugin.settingCount),
+                    t.settings.plugins.actionCount(plugin.actionCount),
+                    t.settings.plugins.apiVersion(plugin.apiVersion),
+                    plugin.minHostVersion ? t.settings.plugins.minHostVersion(plugin.minHostVersion) : null,
+                    plugin.author ? t.settings.plugins.author(plugin.author) : null,
+                  ]
+                    .filter((label): label is string => Boolean(label))
+                    .map((label) => (
+                      <span key={label} title={label}>
+                        {label}
+                      </span>
+                    ))}
                 </div>
                 {pluginDescription && <p className="plugin-description">{pluginDescription}</p>}
                 {plugin.installPath && (
@@ -5272,6 +6532,38 @@ function App() {
                 ),
               )}
             </div>
+          )}
+
+          {activePluginView && activePluginViewDocument && (
+            <section className="plugin-view-shell" aria-label={activePluginView.title} onContextMenu={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
+              <header
+                className="plugin-view-header"
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  if (event.button !== 0 || (event.target as HTMLElement).closest("[data-plugin-view-close]")) {
+                    return;
+                  }
+                  event.preventDefault();
+                  startMainWindowDrag();
+                }}
+              >
+                <div>
+                  <span>OpenPlayer Plugin</span>
+                  <h2>{activePluginView.title}</h2>
+                </div>
+                <button type="button" aria-label={t.controls.close} data-plugin-view-close="true" onClick={closePluginView}>
+                  <Icon name="close" />
+                </button>
+              </header>
+              <iframe
+                ref={pluginViewFrameRef}
+                className="plugin-view-frame"
+                title={activePluginView.title}
+                sandbox="allow-scripts allow-forms allow-modals"
+                style={{ backgroundColor: "transparent" }}
+                srcDoc={activePluginViewDocument}
+              />
+            </section>
           )}
 
           {isNetworkStreamDialogOpen && renderNetworkStreamDialog()}

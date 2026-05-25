@@ -44,6 +44,9 @@ manifest.
   through permissioned host commands.
 - Execute optional `webviewJs` runtime scripts in a Web Worker sandbox with no
   DOM, Tauri API, local filesystem access, or direct host privileges.
+- Send playback and media lifecycle events to runtime plugins.
+- Let runtime plugins participate in `media.opening` and return safe mpv
+  `loadfile` options such as HLS demuxer hints before playback starts.
 
 ## Package Format
 
@@ -74,6 +77,10 @@ from the Plugins settings page.
   "id": "dev.openplayer.subtitle.styler",
   "name": "Subtitle Styler",
   "version": "1.0.0",
+  "apiVersion": "1",
+  "minHostVersion": "1.3.2",
+  "author": "OpenPlayer Team",
+  "updateUrl": "https://github.com/AreChen/openplayer-plugins/releases",
   "description": "Subtitle typography controls for OpenPlayer.",
   "entry": "manifest",
   "runtime": {
@@ -168,6 +175,10 @@ Theme plugins remain supported:
   "id": "dev.openplayer.theme.ocean",
   "name": "Ocean Theme Pack",
   "version": "1.0.0",
+  "apiVersion": "1",
+  "minHostVersion": "1.3.2",
+  "author": "OpenPlayer Team",
+  "updateUrl": "https://github.com/AreChen/openplayer-plugins/releases",
   "description": "Ocean themes for OpenPlayer.",
   "entry": "manifest",
   "contributes": {
@@ -224,17 +235,81 @@ Inside the worker, plugins use the injected `openplayer` bridge:
 
 ```js
 openplayer.onReady(async () => {
-  await openplayer.request("player.captureScreenshot", { openFolder: false });
+  const launchCount = (await openplayer.storage.get("launch.count")) ?? 0;
+  await openplayer.storage.set("launch.count", Number(launchCount) + 1);
+});
+
+openplayer.onEvent((event, payload) => {
+  if (event === "playback.snapshot") {
+    console.log(payload.position, payload.duration);
+  }
+});
+
+openplayer.media.onBeforeOpen((media) => {
+  if (/^https?:\/\//i.test(media.path) && /\.m3u8(?:[?#]|$)/i.test(media.path)) {
+    return {
+      loadOptions: {
+        demuxer: "+lavf",
+        "demuxer-lavf-format": "hls"
+      }
+    };
+  }
+  return null;
+});
+
+openplayer.commands.register("plugin.open-network-stream", async () => {
+  await openplayer.media.openStreamDialog();
 });
 ```
 
 Supported worker bridge requests match the built-in action command allowlist.
 Permissioned requests such as `player.captureScreenshot` and `player.openStream`
 are rejected unless the plugin manifest declares the required permission.
+Low-risk requests include `plugin.getSettings`, `plugin.storage.*`,
+`player.currentMedia`, `player.snapshot`, `player.play`, `player.pause`,
+`player.seek`, `player.frameStep`, `player.frameBackStep`, `player.setVolume`,
+`player.setSpeed`, `player.setLoopMode`, `player.setVideoFill`,
+`player.setSubtitleDelay`, `player.selectTrack`, `ui.*`, `playlist.current`,
+`playlist.playIndex`, and `playlist.clear`.
+`network.request` requires `network.request`. `filesystem.pickMedia`,
+`filesystem.pickDirectory`, `playlist.openMediaFiles`,
+`playlist.appendMediaFiles`, and `subtitle.pickExternal` require
+`filesystem.pick`. `filesystem.revealPath` and `filesystem.openDirectory`
+require `filesystem.reveal`.
+`player.wall.open`, `player.wall.layout`, `player.wall.snapshot`,
+`player.wall.setVisible`, and `player.wall.close` require `mpv.wall` and are
+intended for native multi-stream views that need protocols the WebView cannot
+decode directly, such as RTSP and RTMP. `layout` accepts viewport-relative tile
+rectangles and is safe to call from debounced or throttled resize handlers.
+`setVisible(false)` temporarily hides the native wall so plugin-owned dialogs can
+receive pointer input above native video child windows.
+WebRTC/WHEP plugins should render browser video tiles inside their custom view
+and use `network.request` for WHEP HTTP signaling when they need host-mediated
+requests.
+`plugin.storage.get`, `plugin.storage.set`, `plugin.storage.remove`, and
+`plugin.storage.list` provide redb-backed plugin-private JSON storage. Storage
+keys are namespaced by plugin ID and removed when the plugin is uninstalled.
 `player.openStreamDialog` is available to declarative actions and opens the
 host-owned network stream dialog.
 Capture requests such as `player.startRecording`, `player.stopRecording`,
 `player.toggleRecording`, and `player.recordingState` require `mpv.capture`.
+Changing `path` from `onBeforeOpenMedia` requires `media.openStream`.
+Returning `loadOptions` from `onBeforeOpenMedia` requires `mpv.loadOptions`.
+Only `demuxer` and `demuxer-lavf-format` are accepted at this stage.
+
+Declarative actions may also use plugin-owned commands with the `plugin.*`
+prefix, such as `plugin.open-network-stream`. Those actions are routed to the
+same plugin's `webviewJs` runtime through `openplayer.registerCommand`.
+Runtime commands can open plugin-owned custom views with
+`openplayer.ui.openView("view-id")`. Custom views are static HTML files inside
+the installed plugin package and receive a smaller `openplayer` bridge for
+settings, plugin storage, host-mediated HTTP(S) requests, toasts, and closing
+the view. View bridges also expose `openplayer.player.wall` for plugins that
+render a custom control surface above native mpv wall tiles.
+
+For authoring TypeScript plugins, use the `@openplayer/plugin-sdk` types from
+the official `openplayer-plugins` repository. Runtime plugins do not need to
+bundle the SDK; OpenPlayer injects the `openplayer` global.
 
 ## Contributions
 
@@ -252,8 +327,12 @@ capability kinds:
 Supported permission declarations:
 
 - `mpv.subtitleStyle`
+- `mpv.loadOptions`
 - `mpv.capture`
+- `mpv.wall`
 - `media.openStream`
+- `filesystem.pick`
+- `filesystem.reveal`
 - `network.request`
 - `ai.transcribe`
 - `ai.translate`
@@ -301,8 +380,25 @@ The current UI renders `pluginSettings` centrally and renders
 `subtitleSettings` inside the track/subtitle panel. Other placements are accepted
 as stable manifest slots for future UI rendering.
 
-`contributes.actions` adds declarative buttons or menu items. Actions do not run
-plugin code; they invoke a small allowlist of built-in OpenPlayer commands.
+`contributes.actions` adds declarative buttons or menu items. Actions can invoke
+a small allowlist of built-in OpenPlayer commands, or a plugin-owned
+`plugin.*` command registered by the same `webviewJs` runtime.
+
+`contributes.views` adds static HTML plugin views:
+
+```json
+{
+  "id": "wall",
+  "title": "Multi-Stream Wall",
+  "titleI18n": {
+    "zh-CN": "多路流媒体墙"
+  },
+  "entry": "view/index.html"
+}
+```
+
+The entry must be a safe relative package path. OpenPlayer reads the HTML from
+the installed plugin package and mounts it in an iframe with an injected bridge.
 
 Supported action placements:
 
@@ -335,6 +431,7 @@ Supported action commands:
 - `window.toggleFullscreen`
 - `window.toggleAlwaysOnTop`
 - `app.openSettings`
+- `plugin.*`
 
 Supported action icons:
 
@@ -379,11 +476,19 @@ Action arguments:
 - `player.openStreamDialog` opens OpenPlayer's network stream dialog with recent
   RTSP, RTMP, and HTTP(S) streams. It requires the plugin to declare
   `media.openStream`.
+- `plugin.*` commands are routed to `openplayer.registerCommand` in the same
+  plugin runtime. The action `args` object is passed through unchanged after a
+  small size check.
 
 ## Validation Rules
 
 - Plugin IDs must be dotted lowercase identifiers.
 - Versions must use `major.minor.patch`.
+- `apiVersion` defaults to `1`; unknown plugin API versions are rejected.
+- `minHostVersion`, when present, must use `major.minor.patch` and cannot be
+  newer than the running OpenPlayer version.
+- `author`, when present, must be non-empty.
+- `updateUrl`, when present, must be an HTTP(S) URL.
 - A plugin must contribute at least one theme, capability, setting, or action.
 - Unknown manifest fields are rejected.
 - Setting defaults must match their declared type.

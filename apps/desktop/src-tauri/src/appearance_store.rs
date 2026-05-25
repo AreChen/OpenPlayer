@@ -19,6 +19,8 @@ const THEME_MANIFESTS: TableDefinition<&str, &str> = TableDefinition::new("theme
 const PLUGIN_MANIFESTS: TableDefinition<&str, &str> = TableDefinition::new("plugin_manifests");
 const PLUGIN_ENABLEMENT: TableDefinition<&str, &str> = TableDefinition::new("plugin_enablement");
 const PLUGIN_SETTINGS: TableDefinition<&str, &str> = TableDefinition::new("plugin_settings");
+const PLUGIN_RUNTIME_STORAGE: TableDefinition<&str, &str> =
+    TableDefinition::new("plugin_runtime_storage");
 const PLUGIN_INSTALLS: TableDefinition<&str, &str> = TableDefinition::new("plugin_installs");
 const ACTIVE_THEME_KEY: &str = "activeThemeId";
 const ACCENT_OVERRIDE_KEY: &str = "accentOverride";
@@ -31,6 +33,10 @@ const PLUGIN_PACKAGE_EXTENSION: &str = "opplugin";
 const MAX_PLUGIN_PACKAGE_UNCOMPRESSED_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_PLUGIN_PACKAGE_FILES: usize = 1024;
 const MAX_PLUGIN_RUNTIME_SCRIPT_BYTES: u64 = 1024 * 1024;
+const MAX_PLUGIN_VIEW_HTML_BYTES: u64 = 2 * 1024 * 1024;
+const MAX_PLUGIN_RUNTIME_STORAGE_KEY_BYTES: usize = 128;
+const MAX_PLUGIN_RUNTIME_STORAGE_VALUE_BYTES: usize = 64 * 1024;
+const SUPPORTED_PLUGIN_API_VERSION: &str = "1";
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -79,6 +85,11 @@ struct PluginManifest {
     id: String,
     name: String,
     version: String,
+    #[serde(default = "default_plugin_api_version")]
+    api_version: String,
+    min_host_version: Option<String>,
+    author: Option<String>,
+    update_url: Option<String>,
     description: Option<String>,
     entry: ThemePluginEntry,
     #[serde(default)]
@@ -97,6 +108,8 @@ struct PluginContributions {
     settings: Vec<PluginSettingManifest>,
     #[serde(default)]
     actions: Vec<PluginActionManifest>,
+    #[serde(default)]
+    views: Vec<PluginViewManifest>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -190,6 +203,19 @@ struct PluginActionManifest {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PluginViewManifest {
+    id: String,
+    title: String,
+    entry: String,
+    description: Option<String>,
+    #[serde(default)]
+    title_i18n: HashMap<String, String>,
+    #[serde(default)]
+    description_i18n: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PluginSettingOption {
     value: String,
     label: String,
@@ -215,6 +241,10 @@ pub struct ThemePluginSummary {
     id: String,
     name: String,
     version: String,
+    api_version: String,
+    min_host_version: Option<String>,
+    author: Option<String>,
+    update_url: Option<String>,
     description: Option<String>,
     enabled: bool,
     package_kind: String,
@@ -229,6 +259,7 @@ pub struct ThemePluginSummary {
     capabilities: Vec<PluginCapabilitySummary>,
     settings: Vec<PluginSettingSummary>,
     actions: Vec<PluginActionSummary>,
+    views: Vec<PluginViewSummary>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -279,6 +310,17 @@ pub struct PluginActionSummary {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct PluginViewSummary {
+    id: String,
+    title: String,
+    entry: String,
+    description: Option<String>,
+    title_i18n: HashMap<String, String>,
+    description_i18n: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct PluginRuntimeSource {
     plugin_id: String,
     name: String,
@@ -286,6 +328,15 @@ pub struct PluginRuntimeSource {
     entry: String,
     script: String,
     permissions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginViewHtml {
+    plugin_id: String,
+    view_id: String,
+    title: String,
+    html: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -399,6 +450,9 @@ impl AppearanceStore {
                 .open_table(PLUGIN_SETTINGS)
                 .map_err(|error| format!("failed to open plugin settings table: {error}"))?;
             transaction
+                .open_table(PLUGIN_RUNTIME_STORAGE)
+                .map_err(|error| format!("failed to open plugin runtime storage table: {error}"))?;
+            transaction
                 .open_table(PLUGIN_INSTALLS)
                 .map_err(|error| format!("failed to open plugin installs table: {error}"))?;
         }
@@ -444,12 +498,17 @@ impl AppearanceStore {
             let setting_count = settings.len();
             let capabilities = plugin_capability_summaries(&manifest);
             let actions = plugin_action_summaries(&manifest);
+            let views = plugin_view_summaries(&manifest);
             let permissions = plugin_permissions(&manifest);
             let install = plugin_install_from_table(&plugin_installs, &manifest.id)?;
             plugins.push(ThemePluginSummary {
                 id: manifest.id,
                 name: manifest.name,
                 version: manifest.version,
+                api_version: manifest.api_version,
+                min_host_version: manifest.min_host_version,
+                author: manifest.author,
+                update_url: manifest.update_url,
                 description: manifest.description,
                 enabled,
                 package_kind: install
@@ -467,6 +526,7 @@ impl AppearanceStore {
                 capabilities,
                 settings,
                 actions,
+                views,
             });
         }
         plugins.sort_by(|left, right| left.name.cmp(&right.name).then(left.id.cmp(&right.id)));
@@ -846,6 +906,19 @@ impl AppearanceStore {
                     .map_err(|error| format!("failed to remove plugin setting: {error}"))?;
             }
 
+            let mut plugin_runtime_storage = transaction
+                .open_table(PLUGIN_RUNTIME_STORAGE)
+                .map_err(|error| format!("failed to open plugin runtime storage table: {error}"))?;
+            let stale_storage_keys =
+                plugin_runtime_storage_keys_for_plugin(&plugin_runtime_storage, plugin_id)?;
+            for key in stale_storage_keys {
+                plugin_runtime_storage
+                    .remove(key.as_str())
+                    .map_err(|error| {
+                        format!("failed to remove plugin runtime storage value: {error}")
+                    })?;
+            }
+
             if active_theme_belongs_to_plugin {
                 let mut settings = transaction.open_table(SETTINGS_KV).map_err(|error| {
                     format!("failed to open appearance settings table: {error}")
@@ -950,6 +1023,39 @@ impl AppearanceStore {
         Ok(runtime_sources)
     }
 
+    fn plugin_view_html(&self, plugin_id: &str, view_id: &str) -> Result<PluginViewHtml, String> {
+        let plugin_id = plugin_id.trim();
+        let view_id = view_id.trim();
+        validate_dotted_identifier("plugin id", plugin_id, true)?;
+        validate_dotted_identifier("plugin view id", view_id, false)?;
+
+        let manifest = self.plugin_manifest(plugin_id)?;
+        let view = manifest
+            .contributes
+            .views
+            .iter()
+            .find(|view| view.id == view_id)
+            .ok_or_else(|| format!("unknown plugin view: {plugin_id}.{view_id}"))?;
+        let install = self
+            .plugin_install_record(plugin_id)?
+            .ok_or_else(|| format!("plugin {plugin_id} is not installed"))?;
+        let html_path = resolve_plugin_package_file_path(&install.install_path, &view.entry)?;
+        let metadata = fs::metadata(&html_path)
+            .map_err(|error| format!("failed to inspect plugin view HTML: {error}"))?;
+        if metadata.len() > MAX_PLUGIN_VIEW_HTML_BYTES {
+            return Err(format!("plugin view HTML is too large: {}", view.entry));
+        }
+        let html = fs::read_to_string(&html_path)
+            .map_err(|error| format!("failed to read plugin view HTML: {error}"))?;
+
+        Ok(PluginViewHtml {
+            plugin_id: manifest.id,
+            view_id: view.id.clone(),
+            title: view.title.clone(),
+            html,
+        })
+    }
+
     fn set_plugin_enabled(
         &mut self,
         plugin_id: &str,
@@ -1038,6 +1144,123 @@ impl AppearanceStore {
             .commit()
             .map_err(|error| format!("failed to commit plugin setting: {error}"))?;
         self.state()
+    }
+
+    fn plugin_runtime_storage_value(
+        &self,
+        plugin_id: &str,
+        key: &str,
+    ) -> Result<Option<Value>, String> {
+        let plugin_id = plugin_id.trim();
+        let key = validate_plugin_runtime_storage_key(key)?;
+        self.plugin_manifest(plugin_id)?;
+
+        let storage_key = plugin_runtime_storage_key(plugin_id, key);
+        let transaction = self
+            .database
+            .begin_read()
+            .map_err(|error| format!("failed to read plugin runtime storage: {error}"))?;
+        let storage = transaction
+            .open_table(PLUGIN_RUNTIME_STORAGE)
+            .map_err(|error| format!("failed to open plugin runtime storage table: {error}"))?;
+        storage
+            .get(storage_key.as_str())
+            .map_err(|error| format!("failed to read plugin runtime storage value: {error}"))?
+            .map(|value| decode_plugin_runtime_storage_value(value.value()))
+            .transpose()
+    }
+
+    fn plugin_runtime_storage_values(
+        &self,
+        plugin_id: &str,
+    ) -> Result<HashMap<String, Value>, String> {
+        let plugin_id = plugin_id.trim();
+        let prefix = plugin_runtime_storage_prefix(plugin_id);
+        let transaction = self
+            .database
+            .begin_read()
+            .map_err(|error| format!("failed to list plugin runtime storage: {error}"))?;
+        let storage = transaction
+            .open_table(PLUGIN_RUNTIME_STORAGE)
+            .map_err(|error| format!("failed to open plugin runtime storage table: {error}"))?;
+        let mut values = HashMap::new();
+        for item in storage
+            .iter()
+            .map_err(|error| format!("failed to scan plugin runtime storage: {error}"))?
+        {
+            let (key, value) =
+                item.map_err(|error| format!("failed to read plugin runtime storage: {error}"))?;
+            if let Some(item_key) = key.value().strip_prefix(&prefix) {
+                values.insert(
+                    item_key.to_string(),
+                    decode_plugin_runtime_storage_value(value.value())?,
+                );
+            }
+        }
+        Ok(values)
+    }
+
+    fn set_plugin_runtime_storage_value(
+        &mut self,
+        plugin_id: &str,
+        key: &str,
+        value: Value,
+    ) -> Result<(), String> {
+        let plugin_id = plugin_id.trim();
+        let key = validate_plugin_runtime_storage_key(key)?;
+        self.plugin_manifest(plugin_id)?;
+        let encoded = serde_json::to_string(&value)
+            .map_err(|error| format!("failed to encode plugin runtime storage value: {error}"))?;
+        if encoded.len() > MAX_PLUGIN_RUNTIME_STORAGE_VALUE_BYTES {
+            return Err("plugin runtime storage value is too large".to_string());
+        }
+
+        let storage_key = plugin_runtime_storage_key(plugin_id, key);
+        let transaction = self
+            .database
+            .begin_write()
+            .map_err(|error| format!("failed to write plugin runtime storage: {error}"))?;
+        {
+            let mut storage = transaction
+                .open_table(PLUGIN_RUNTIME_STORAGE)
+                .map_err(|error| format!("failed to open plugin runtime storage table: {error}"))?;
+            storage
+                .insert(storage_key.as_str(), encoded.as_str())
+                .map_err(|error| {
+                    format!("failed to store plugin runtime storage value: {error}")
+                })?;
+        }
+        transaction
+            .commit()
+            .map_err(|error| format!("failed to commit plugin runtime storage: {error}"))
+    }
+
+    fn remove_plugin_runtime_storage_value(
+        &mut self,
+        plugin_id: &str,
+        key: &str,
+    ) -> Result<bool, String> {
+        let plugin_id = plugin_id.trim();
+        let key = validate_plugin_runtime_storage_key(key)?;
+        self.plugin_manifest(plugin_id)?;
+        let storage_key = plugin_runtime_storage_key(plugin_id, key);
+        let transaction = self
+            .database
+            .begin_write()
+            .map_err(|error| format!("failed to remove plugin runtime storage: {error}"))?;
+        let removed = {
+            let mut storage = transaction
+                .open_table(PLUGIN_RUNTIME_STORAGE)
+                .map_err(|error| format!("failed to open plugin runtime storage table: {error}"))?;
+            storage
+                .remove(storage_key.as_str())
+                .map_err(|error| format!("failed to remove plugin runtime storage value: {error}"))?
+                .is_some()
+        };
+        transaction
+            .commit()
+            .map_err(|error| format!("failed to commit plugin runtime storage removal: {error}"))?;
+        Ok(removed)
     }
 
     fn plugin_manifest(&self, plugin_id: &str) -> Result<PluginManifest, String> {
@@ -1146,6 +1369,31 @@ fn validate_plugin_manifest(manifest: &PluginManifest) -> Result<(), String> {
     validate_non_empty("plugin version", &manifest.version)?;
     validate_dotted_identifier("plugin id", &manifest.id, true)?;
     validate_simple_semver("plugin version", &manifest.version)?;
+    validate_non_empty("plugin apiVersion", &manifest.api_version)?;
+    if manifest.api_version != SUPPORTED_PLUGIN_API_VERSION {
+        return Err(format!(
+            "unsupported plugin apiVersion: {}",
+            manifest.api_version
+        ));
+    }
+    if let Some(min_host_version) = manifest.min_host_version.as_deref() {
+        validate_simple_semver("plugin minHostVersion", min_host_version)?;
+        if compare_simple_semver(min_host_version, env!("CARGO_PKG_VERSION"))?.is_gt() {
+            return Err(format!(
+                "plugin {} requires OpenPlayer {min_host_version} or newer",
+                manifest.id
+            ));
+        }
+    }
+    if let Some(author) = manifest.author.as_deref() {
+        validate_non_empty("plugin author", author)?;
+        if author.len() > 128 {
+            return Err("plugin author is too long".to_string());
+        }
+    }
+    if let Some(update_url) = manifest.update_url.as_deref() {
+        validate_http_url("plugin updateUrl", update_url)?;
+    }
     if let Some(description) = manifest.description.as_deref() {
         validate_non_empty("plugin description", description)?;
     }
@@ -1154,9 +1402,11 @@ fn validate_plugin_manifest(manifest: &PluginManifest) -> Result<(), String> {
         && manifest.contributes.capabilities.is_empty()
         && manifest.contributes.settings.is_empty()
         && manifest.contributes.actions.is_empty()
+        && manifest.contributes.views.is_empty()
     {
         return Err(
-            "plugin must contribute at least one theme, capability, setting, or action".to_string(),
+            "plugin must contribute at least one theme, capability, setting, action, or view"
+                .to_string(),
         );
     }
 
@@ -1190,6 +1440,14 @@ fn validate_plugin_manifest(manifest: &PluginManifest) -> Result<(), String> {
         validate_plugin_action(action, &permissions)?;
         if !action_ids.insert(action.id.as_str()) {
             return Err(format!("duplicate action id: {}", action.id));
+        }
+    }
+
+    let mut view_ids = HashSet::new();
+    for view in &manifest.contributes.views {
+        validate_plugin_view(view)?;
+        if !view_ids.insert(view.id.as_str()) {
+            return Err(format!("duplicate view id: {}", view.id));
         }
     }
 
@@ -1345,6 +1603,19 @@ fn validate_plugin_action(
     Ok(())
 }
 
+fn validate_plugin_view(view: &PluginViewManifest) -> Result<(), String> {
+    validate_non_empty("plugin view id", &view.id)?;
+    validate_non_empty("plugin view title", &view.title)?;
+    validate_dotted_identifier("plugin view id", &view.id, false)?;
+    validate_relative_plugin_entry(&view.entry)?;
+    if let Some(description) = view.description.as_deref() {
+        validate_non_empty("plugin view description", description)?;
+    }
+    validate_localized_text_map("plugin view titleI18n", &view.title_i18n, 128)?;
+    validate_localized_text_map("plugin view descriptionI18n", &view.description_i18n, 512)?;
+    Ok(())
+}
+
 fn validate_setting_number_bounds(setting: &PluginSettingManifest) -> Result<(), String> {
     if let Some(min) = setting.min
         && !min.is_finite()
@@ -1468,6 +1739,10 @@ fn default_plugin_action_args() -> Value {
     serde_json::json!({})
 }
 
+fn default_plugin_api_version() -> String {
+    SUPPORTED_PLUGIN_API_VERSION.to_string()
+}
+
 fn validate_plugin_action_args(action: &PluginActionManifest) -> Result<(), String> {
     let Some(args) = action.args.as_object() else {
         return Err(format!(
@@ -1475,6 +1750,15 @@ fn validate_plugin_action_args(action: &PluginActionManifest) -> Result<(), Stri
             action.id
         ));
     };
+
+    if is_plugin_runtime_action_command(&action.command) {
+        let serialized = serde_json::to_string(args)
+            .map_err(|error| format!("plugin action {} args are invalid: {error}", action.id))?;
+        if serialized.len() > 4096 {
+            return Err(format!("plugin action {} args are too large", action.id));
+        }
+        return Ok(());
+    }
 
     match action.command.as_str() {
         "player.captureScreenshot" => {
@@ -1646,8 +1930,12 @@ fn is_supported_plugin_permission(permission: &str) -> bool {
     matches!(
         permission,
         "mpv.subtitleStyle"
+            | "mpv.loadOptions"
             | "mpv.capture"
+            | "mpv.wall"
             | "media.openStream"
+            | "filesystem.pick"
+            | "filesystem.reveal"
             | "network.request"
             | "ai.transcribe"
             | "ai.translate"
@@ -1690,26 +1978,33 @@ fn is_supported_action_placement(placement: &str) -> bool {
 }
 
 fn is_supported_plugin_action_command(command: &str) -> bool {
-    matches!(
-        command,
-        "player.openMedia"
-            | "player.openStream"
-            | "player.openStreamDialog"
-            | "player.captureScreenshot"
-            | "player.startRecording"
-            | "player.stopRecording"
-            | "player.toggleRecording"
-            | "player.togglePlayback"
-            | "player.stop"
-            | "player.restart"
-            | "player.togglePlaylist"
-            | "player.toggleTracks"
-            | "player.toggleLoop"
-            | "player.toggleSpeed"
-            | "window.toggleFullscreen"
-            | "window.toggleAlwaysOnTop"
-            | "app.openSettings"
-    )
+    is_plugin_runtime_action_command(command)
+        || matches!(
+            command,
+            "player.openMedia"
+                | "player.openStream"
+                | "player.openStreamDialog"
+                | "player.captureScreenshot"
+                | "player.startRecording"
+                | "player.stopRecording"
+                | "player.toggleRecording"
+                | "player.togglePlayback"
+                | "player.stop"
+                | "player.restart"
+                | "player.togglePlaylist"
+                | "player.toggleTracks"
+                | "player.toggleLoop"
+                | "player.toggleSpeed"
+                | "window.toggleFullscreen"
+                | "window.toggleAlwaysOnTop"
+                | "app.openSettings"
+        )
+}
+
+fn is_plugin_runtime_action_command(command: &str) -> bool {
+    command.len() <= 96
+        && command.starts_with("plugin.")
+        && validate_dotted_identifier("plugin action command", command, true).is_ok()
 }
 
 fn plugin_action_required_permission(command: &str) -> Option<&'static str> {
@@ -1867,6 +2162,45 @@ fn validate_simple_semver(label: &str, value: &str) -> Result<(), String> {
     }
 }
 
+fn parse_simple_semver(value: &str) -> Result<[u64; 3], String> {
+    let parts: Vec<&str> = value.split('.').collect();
+    if parts.len() != 3 {
+        return Err(format!("invalid semver: {value}"));
+    }
+    let major = parts[0]
+        .parse::<u64>()
+        .map_err(|_| format!("invalid semver: {value}"))?;
+    let minor = parts[1]
+        .parse::<u64>()
+        .map_err(|_| format!("invalid semver: {value}"))?;
+    let patch = parts[2]
+        .parse::<u64>()
+        .map_err(|_| format!("invalid semver: {value}"))?;
+    Ok([major, minor, patch])
+}
+
+fn compare_simple_semver(left: &str, right: &str) -> Result<std::cmp::Ordering, String> {
+    Ok(parse_simple_semver(left)?.cmp(&parse_simple_semver(right)?))
+}
+
+fn validate_http_url(label: &str, value: &str) -> Result<(), String> {
+    let trimmed = value.trim();
+    validate_non_empty(label, trimmed)?;
+    if trimmed.len() > 2048 || trimmed.chars().any(char::is_whitespace) {
+        return Err(format!("{label} is invalid"));
+    }
+    let Some((scheme, rest)) = trimmed.split_once("://") else {
+        return Err(format!("{label} must use http or https"));
+    };
+    if !matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https") {
+        return Err(format!("{label} must use http or https"));
+    }
+    if rest.trim_matches('/').is_empty() {
+        return Err(format!("{label} must include a host"));
+    }
+    Ok(())
+}
+
 fn validate_color_token(token: &str, value: &str) -> Result<(), String> {
     let value = value.trim();
     if is_hex_color(value) || is_rgba_color(value) {
@@ -1995,6 +2329,22 @@ fn plugin_action_summaries(manifest: &PluginManifest) -> Vec<PluginActionSummary
         .collect()
 }
 
+fn plugin_view_summaries(manifest: &PluginManifest) -> Vec<PluginViewSummary> {
+    manifest
+        .contributes
+        .views
+        .iter()
+        .map(|view| PluginViewSummary {
+            id: view.id.clone(),
+            title: view.title.clone(),
+            entry: view.entry.clone(),
+            description: view.description.clone(),
+            title_i18n: view.title_i18n.clone(),
+            description_i18n: view.description_i18n.clone(),
+        })
+        .collect()
+}
+
 fn plugin_permissions(manifest: &PluginManifest) -> Vec<String> {
     let mut permissions: Vec<String> = manifest
         .contributes
@@ -2025,6 +2375,30 @@ fn plugin_setting_key(plugin_id: &str, setting_id: &str) -> String {
     format!("{plugin_id}::{setting_id}")
 }
 
+fn plugin_runtime_storage_prefix(plugin_id: &str) -> String {
+    format!("{plugin_id}::")
+}
+
+fn plugin_runtime_storage_key(plugin_id: &str, key: &str) -> String {
+    format!("{}{key}", plugin_runtime_storage_prefix(plugin_id))
+}
+
+fn validate_plugin_runtime_storage_key(key: &str) -> Result<&str, String> {
+    let key = key.trim();
+    if key.is_empty()
+        || key.len() > MAX_PLUGIN_RUNTIME_STORAGE_KEY_BYTES
+        || key.starts_with('.')
+        || key.ends_with('.')
+        || key.contains("..")
+        || !key
+            .chars()
+            .all(|char| char.is_ascii_alphanumeric() || matches!(char, '.' | '_' | '-'))
+    {
+        return Err(format!("plugin runtime storage key is invalid: {key}"));
+    }
+    Ok(key)
+}
+
 fn plugin_setting_keys_for_plugin(
     table: &redb::Table<'_, &str, &str>,
     plugin_id: &str,
@@ -2043,8 +2417,32 @@ fn plugin_setting_keys_for_plugin(
     Ok(keys)
 }
 
+fn plugin_runtime_storage_keys_for_plugin(
+    table: &redb::Table<'_, &str, &str>,
+    plugin_id: &str,
+) -> Result<Vec<String>, String> {
+    let prefix = plugin_runtime_storage_prefix(plugin_id);
+    let mut keys = Vec::new();
+    for item in table
+        .iter()
+        .map_err(|error| format!("failed to scan plugin runtime storage: {error}"))?
+    {
+        let (key, _) =
+            item.map_err(|error| format!("failed to read plugin runtime storage: {error}"))?;
+        if key.value().starts_with(&prefix) {
+            keys.push(key.value().to_string());
+        }
+    }
+    Ok(keys)
+}
+
 fn decode_plugin_setting_value(value: &str) -> Result<Value, String> {
     serde_json::from_str(value).map_err(|error| format!("failed to decode plugin setting: {error}"))
+}
+
+fn decode_plugin_runtime_storage_value(value: &str) -> Result<Value, String> {
+    serde_json::from_str(value)
+        .map_err(|error| format!("failed to decode plugin runtime storage value: {error}"))
 }
 
 fn runtime_kind_label(kind: &PluginRuntimeKind) -> &'static str {
@@ -2284,20 +2682,28 @@ fn remove_installed_plugin_directory(
 }
 
 fn resolve_plugin_runtime_script_path(install_path: &str, entry: &str) -> Result<PathBuf, String> {
+    let script = resolve_plugin_package_file_path(install_path, entry)?;
+    if !script.is_file() {
+        return Err(format!("plugin runtime script is not a file: {entry}"));
+    }
+    Ok(script)
+}
+
+fn resolve_plugin_package_file_path(install_path: &str, entry: &str) -> Result<PathBuf, String> {
     validate_relative_plugin_entry(entry)?;
     let install_root = PathBuf::from(install_path);
     let root = fs::canonicalize(&install_root)
         .map_err(|error| format!("failed to resolve plugin install path: {error}"))?;
     let candidate = install_root.join(entry);
-    let script = fs::canonicalize(&candidate)
-        .map_err(|error| format!("failed to resolve plugin runtime script: {error}"))?;
-    if !script.starts_with(&root) {
-        return Err("plugin runtime script is outside the installed plugin directory".to_string());
+    let file = fs::canonicalize(&candidate)
+        .map_err(|error| format!("failed to resolve plugin package file: {error}"))?;
+    if !file.starts_with(&root) {
+        return Err("plugin package file is outside the installed plugin directory".to_string());
     }
-    if !script.is_file() {
-        return Err(format!("plugin runtime script is not a file: {entry}"));
+    if !file.is_file() {
+        return Err(format!("plugin package entry is not a file: {entry}"));
     }
-    Ok(script)
+    Ok(file)
 }
 
 #[tauri::command]
@@ -2395,6 +2801,15 @@ pub fn appearance_plugin_runtime_sources(
 }
 
 #[tauri::command]
+pub fn appearance_plugin_view_html(
+    state: State<'_, AppearanceStoreState>,
+    plugin_id: String,
+    view_id: String,
+) -> Result<PluginViewHtml, String> {
+    state.with_store(|store| store.plugin_view_html(&plugin_id, &view_id))
+}
+
+#[tauri::command]
 pub fn appearance_uninstall_plugin(
     state: State<'_, AppearanceStoreState>,
     plugin_id: String,
@@ -2419,6 +2834,42 @@ pub fn appearance_set_plugin_setting(
     value: Value,
 ) -> Result<AppearanceState, String> {
     state.with_store(|store| store.set_plugin_setting(&plugin_id, &setting_id, value))
+}
+
+#[tauri::command]
+pub fn appearance_plugin_kv_get(
+    state: State<'_, AppearanceStoreState>,
+    plugin_id: String,
+    key: String,
+) -> Result<Option<Value>, String> {
+    state.with_store(|store| store.plugin_runtime_storage_value(&plugin_id, &key))
+}
+
+#[tauri::command]
+pub fn appearance_plugin_kv_list(
+    state: State<'_, AppearanceStoreState>,
+    plugin_id: String,
+) -> Result<HashMap<String, Value>, String> {
+    state.with_store(|store| store.plugin_runtime_storage_values(&plugin_id))
+}
+
+#[tauri::command]
+pub fn appearance_plugin_kv_set(
+    state: State<'_, AppearanceStoreState>,
+    plugin_id: String,
+    key: String,
+    value: Value,
+) -> Result<(), String> {
+    state.with_store(|store| store.set_plugin_runtime_storage_value(&plugin_id, &key, value))
+}
+
+#[tauri::command]
+pub fn appearance_plugin_kv_remove(
+    state: State<'_, AppearanceStoreState>,
+    plugin_id: String,
+    key: String,
+) -> Result<bool, String> {
+    state.with_store(|store| store.remove_plugin_runtime_storage_value(&plugin_id, &key))
 }
 
 #[tauri::command]
@@ -2616,6 +3067,50 @@ mod tests {
                 "placement": "contextMenu",
                 "command": "app.openSettings",
                 "icon": "plugin"
+              }
+            ]
+          }
+        }"##
+    }
+
+    fn view_plugin_json() -> &'static str {
+        r##"{
+          "id": "dev.openplayer.view.wall",
+          "name": "View Wall",
+          "version": "1.0.0",
+          "entry": "manifest",
+          "runtime": {
+            "kind": "webviewJs",
+            "entry": "runtime/plugin.js",
+            "sandbox": "openplayer-worker"
+          },
+          "contributes": {
+            "capabilities": [
+              {
+                "id": "stream-wall",
+                "name": "Stream Wall",
+                "kind": "streamSource",
+                "permissions": ["network.request"]
+              }
+            ],
+            "actions": [
+              {
+                "id": "open-wall",
+                "label": "Open Wall",
+                "placement": "contextMenu",
+                "command": "plugin.open-wall",
+                "icon": "stream"
+              }
+            ],
+            "views": [
+              {
+                "id": "wall",
+                "title": "Stream Wall",
+                "entry": "views/wall.html",
+                "description": "A custom plugin view.",
+                "titleI18n": {
+                  "zh-CN": "流媒体墙"
+                }
               }
             ]
           }
@@ -3279,6 +3774,65 @@ mod tests {
     }
 
     #[test]
+    fn plugin_runtime_storage_is_isolated_and_persistent() {
+        let (mut store, directory) = temp_store();
+        store
+            .import_theme_plugin_json(webview_runtime_plugin_json())
+            .expect("runtime plugin should import");
+        store
+            .set_plugin_runtime_storage_value(
+                "dev.openplayer.runtime.worker",
+                "history.last",
+                serde_json::json!({ "url": "https://example.com/live.m3u8" }),
+            )
+            .expect("runtime storage value should persist");
+        assert_eq!(
+            store
+                .plugin_runtime_storage_value("dev.openplayer.runtime.worker", "history.last")
+                .expect("runtime storage should be readable"),
+            Some(serde_json::json!({ "url": "https://example.com/live.m3u8" }))
+        );
+        drop(store);
+
+        let reopened =
+            AppearanceStore::open(directory.join("settings.redb")).expect("store should reopen");
+        let values = reopened
+            .plugin_runtime_storage_values("dev.openplayer.runtime.worker")
+            .expect("runtime storage list should be readable");
+        let _ = std::fs::remove_dir_all(&directory);
+
+        assert_eq!(
+            values.get("history.last"),
+            Some(&serde_json::json!({ "url": "https://example.com/live.m3u8" }))
+        );
+    }
+
+    #[test]
+    fn plugin_runtime_storage_is_removed_with_plugin() {
+        let (mut store, directory) = temp_store();
+        store
+            .import_theme_plugin_json(webview_runtime_plugin_json())
+            .expect("runtime plugin should import");
+        store
+            .set_plugin_runtime_storage_value(
+                "dev.openplayer.runtime.worker",
+                "state",
+                serde_json::json!("enabled"),
+            )
+            .expect("runtime storage value should persist");
+
+        store
+            .uninstall_plugin("dev.openplayer.runtime.worker")
+            .expect("plugin uninstall should succeed");
+        let values = store
+            .plugin_runtime_storage_values("dev.openplayer.runtime.worker")
+            .expect("runtime storage scan should succeed after uninstall");
+        let _ = std::fs::remove_dir_all(&directory);
+
+        assert!(values.is_empty());
+    }
+
+    #[test]
     fn rejects_plugin_setting_values_outside_schema() {
         let (mut store, directory) = temp_store();
         store
@@ -3361,6 +3915,203 @@ mod tests {
         assert_eq!(sources[0].entry, "dist/plugin.js");
         assert!(sources[0].script.contains("player.captureScreenshot"));
         assert_eq!(sources[0].permissions, vec!["mpv.capture"]);
+    }
+
+    #[test]
+    fn accepts_plugin_load_options_permission_for_runtime_hooks() {
+        assert!(is_supported_plugin_permission("mpv.loadOptions"));
+    }
+
+    #[test]
+    fn accepts_phase_two_plugin_sdk_permissions() {
+        assert!(is_supported_plugin_permission("mpv.wall"));
+        assert!(is_supported_plugin_permission("network.request"));
+        assert!(is_supported_plugin_permission("filesystem.pick"));
+        assert!(is_supported_plugin_permission("filesystem.reveal"));
+    }
+
+    #[test]
+    fn imports_runtime_owned_plugin_action_commands() {
+        let (mut store, directory) = temp_store();
+        let runtime_action = webview_runtime_plugin_json().replace(
+            r#""command": "app.openSettings""#,
+            r#""command": "plugin.show-info", "args": { "target": "runtime" }"#,
+        );
+
+        let state = store
+            .import_theme_plugin_json(&runtime_action)
+            .expect("plugin-owned runtime action should import");
+        let _ = std::fs::remove_dir_all(&directory);
+
+        let plugin = state
+            .plugins
+            .iter()
+            .find(|plugin| plugin.id == "dev.openplayer.runtime.worker")
+            .expect("runtime plugin should be listed");
+        assert_eq!(plugin.actions[0].command, "plugin.show-info");
+        assert_eq!(
+            plugin.actions[0].args,
+            serde_json::json!({ "target": "runtime" })
+        );
+    }
+
+    #[test]
+    fn rejects_malformed_runtime_owned_plugin_action_commands() {
+        let (mut store, directory) = temp_store();
+        let invalid = webview_runtime_plugin_json().replace(
+            r#""command": "app.openSettings""#,
+            r#""command": "plugin.ShowInfo""#,
+        );
+
+        let error = store
+            .import_theme_plugin_json(&invalid)
+            .expect_err("malformed plugin-owned runtime action should be rejected");
+        let _ = std::fs::remove_dir_all(&directory);
+
+        assert!(error.contains("unsupported plugin action command"));
+    }
+
+    #[test]
+    fn imports_plugin_sdk_metadata_author_and_update_url() {
+        let (mut store, directory) = temp_store();
+        let manifest = webview_runtime_plugin_json().replace(
+            r#""version": "1.0.0","#,
+            r#""version": "1.0.0",
+          "apiVersion": "1",
+          "minHostVersion": "1.3.0",
+          "author": "OpenPlayer Team",
+          "updateUrl": "https://github.com/AreChen/openplayer-plugins/releases","#,
+        );
+
+        let state = store
+            .import_theme_plugin_json(&manifest)
+            .expect("plugin SDK metadata should import");
+        let _ = std::fs::remove_dir_all(&directory);
+
+        let plugin = state
+            .plugins
+            .iter()
+            .find(|plugin| plugin.id == "dev.openplayer.runtime.worker")
+            .expect("runtime plugin should be listed");
+        assert_eq!(plugin.api_version, "1");
+        assert_eq!(plugin.min_host_version.as_deref(), Some("1.3.0"));
+        assert_eq!(plugin.author.as_deref(), Some("OpenPlayer Team"));
+        assert_eq!(
+            plugin.update_url.as_deref(),
+            Some("https://github.com/AreChen/openplayer-plugins/releases")
+        );
+    }
+
+    #[test]
+    fn imports_plugin_custom_view_contributions() {
+        let (mut store, directory) = temp_store();
+
+        let state = store
+            .import_theme_plugin_json(view_plugin_json())
+            .expect("plugin views should import");
+        let plugin = state
+            .plugins
+            .iter()
+            .find(|plugin| plugin.id == "dev.openplayer.view.wall")
+            .expect("plugin summary should include the view plugin");
+        let _ = std::fs::remove_dir_all(&directory);
+
+        assert_eq!(plugin.views.len(), 1);
+        assert_eq!(plugin.views[0].id, "wall");
+        assert_eq!(plugin.views[0].entry, "views/wall.html");
+        assert_eq!(
+            plugin.views[0].title_i18n.get("zh-CN").map(String::as_str),
+            Some("流媒体墙")
+        );
+    }
+
+    #[test]
+    fn reads_installed_plugin_view_html_from_safe_package_path() {
+        let (mut store, directory) = temp_store();
+        let source_directory = directory.join("view-source");
+        std::fs::create_dir_all(source_directory.join("runtime"))
+            .expect("runtime directory should be created");
+        std::fs::create_dir_all(source_directory.join("views"))
+            .expect("view directory should be created");
+        std::fs::write(source_directory.join("manifest.json"), view_plugin_json())
+            .expect("manifest should be written");
+        std::fs::write(
+            source_directory.join("runtime").join("plugin.js"),
+            "\"use strict\";",
+        )
+        .expect("runtime should be written");
+        std::fs::write(
+            source_directory.join("views").join("wall.html"),
+            "<!doctype html><title>Wall</title>",
+        )
+        .expect("view HTML should be written");
+
+        store
+            .import_plugin_directory_path(&source_directory)
+            .expect("view plugin directory should import");
+        let view = store
+            .plugin_view_html("dev.openplayer.view.wall", "wall")
+            .expect("installed view HTML should be readable");
+        let _ = std::fs::remove_dir_all(&directory);
+
+        assert_eq!(view.plugin_id, "dev.openplayer.view.wall");
+        assert_eq!(view.view_id, "wall");
+        assert_eq!(view.title, "Stream Wall");
+        assert!(view.html.contains("<title>Wall</title>"));
+    }
+
+    #[test]
+    fn rejects_plugin_custom_view_unsafe_entry_paths() {
+        let (mut store, directory) = temp_store();
+        let invalid = view_plugin_json().replace(
+            "\"entry\": \"views/wall.html\"",
+            "\"entry\": \"../wall.html\"",
+        );
+
+        let error = store
+            .import_theme_plugin_json(&invalid)
+            .expect_err("unsafe plugin view paths should be rejected");
+        let _ = std::fs::remove_dir_all(&directory);
+
+        assert!(error.contains("relative package path"));
+    }
+
+    #[test]
+    fn rejects_unsupported_plugin_sdk_metadata() {
+        let (mut store, directory) = temp_store();
+        let unsupported_api = webview_runtime_plugin_json().replace(
+            r#""version": "1.0.0","#,
+            r#""version": "1.0.0", "apiVersion": "99","#,
+        );
+        assert!(
+            store
+                .import_theme_plugin_json(&unsupported_api)
+                .expect_err("unsupported plugin API version should be rejected")
+                .contains("unsupported plugin apiVersion")
+        );
+
+        let future_host = webview_runtime_plugin_json().replace(
+            r#""version": "1.0.0","#,
+            r#""version": "1.0.0", "minHostVersion": "99.0.0","#,
+        );
+        assert!(
+            store
+                .import_theme_plugin_json(&future_host)
+                .expect_err("future host requirement should be rejected")
+                .contains("requires OpenPlayer 99.0.0")
+        );
+
+        let invalid_url = webview_runtime_plugin_json().replace(
+            r#""version": "1.0.0","#,
+            r#""version": "1.0.0", "updateUrl": "file:///unsafe","#,
+        );
+        assert!(
+            store
+                .import_theme_plugin_json(&invalid_url)
+                .expect_err("unsafe update URL should be rejected")
+                .contains("plugin updateUrl must use http or https")
+        );
+        let _ = std::fs::remove_dir_all(&directory);
     }
 
     #[test]

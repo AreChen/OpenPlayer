@@ -75,23 +75,27 @@ mod shell_preview;
 
 use appearance_store::{
     AppearanceStoreState, appearance_import_plugin_directory, appearance_import_plugin_manifest,
-    appearance_import_plugin_package, appearance_import_theme_plugin,
-    appearance_plugin_runtime_sources, appearance_reset, appearance_set_accent_override,
-    appearance_set_plugin_enabled, appearance_set_plugin_setting, appearance_set_theme,
-    appearance_state, appearance_uninstall_plugin, preferences_set_incognito_mode,
-    preferences_set_language_mode, preferences_set_quiet_keyboard_controls, preferences_state,
+    appearance_import_plugin_package, appearance_import_theme_plugin, appearance_plugin_kv_get,
+    appearance_plugin_kv_list, appearance_plugin_kv_remove, appearance_plugin_kv_set,
+    appearance_plugin_runtime_sources, appearance_plugin_view_html, appearance_reset,
+    appearance_set_accent_override, appearance_set_plugin_enabled, appearance_set_plugin_setting,
+    appearance_set_theme, appearance_state, appearance_uninstall_plugin,
+    preferences_set_incognito_mode, preferences_set_language_mode,
+    preferences_set_quiet_keyboard_controls, preferences_state,
 };
 use media_paths::{
     StartupMediaState, media_files_from_paths, media_files_in_directory, startup_media_paths,
 };
 #[cfg(feature = "mpv-embed")]
 use mpv_embed::{
-    MpvEmbedSnapshot, MpvEmbedState, mpv_embed_add_subtitle, mpv_embed_capture_screenshot,
-    mpv_embed_frame_back_step, mpv_embed_frame_step, mpv_embed_pause, mpv_embed_play,
-    mpv_embed_recording_state, mpv_embed_seek, mpv_embed_select_track, mpv_embed_set_hwdec,
-    mpv_embed_set_loop_file, mpv_embed_set_plugin_property, mpv_embed_set_speed,
-    mpv_embed_set_subtitle_delay, mpv_embed_set_video_fill, mpv_embed_set_volume,
-    mpv_embed_snapshot, mpv_embed_start_recording, mpv_embed_stop, mpv_embed_stop_recording,
+    MpvEmbedSnapshot, MpvEmbedState, MpvLoadOptions, MpvWallState, mpv_embed_add_subtitle,
+    mpv_embed_capture_screenshot, mpv_embed_frame_back_step, mpv_embed_frame_step, mpv_embed_pause,
+    mpv_embed_play, mpv_embed_recording_state, mpv_embed_seek, mpv_embed_select_track,
+    mpv_embed_set_hwdec, mpv_embed_set_loop_file, mpv_embed_set_plugin_property,
+    mpv_embed_set_speed, mpv_embed_set_subtitle_delay, mpv_embed_set_video_fill,
+    mpv_embed_set_volume, mpv_embed_snapshot, mpv_embed_start_recording, mpv_embed_stop,
+    mpv_embed_stop_recording, mpv_wall_close, mpv_wall_layout, mpv_wall_open, mpv_wall_set_visible,
+    mpv_wall_snapshot,
 };
 use platform_support::{platform_support, prepare_platform_runtime};
 use playback_store::{
@@ -1161,6 +1165,7 @@ fn mpv_overlay_open_path(
     path: String,
     resume_position: Option<f64>,
     initial_volume: Option<f64>,
+    load_options: Option<MpvLoadOptions>,
 ) -> Result<MpvEmbedSnapshot, String> {
     #[cfg(target_os = "macos")]
     {
@@ -1170,6 +1175,7 @@ fn mpv_overlay_open_path(
             path,
             resume_position,
             initial_volume,
+            load_options,
         );
     }
 
@@ -1177,7 +1183,14 @@ fn mpv_overlay_open_path(
     {
         let main = main_window(&app)?;
         sync_overlay_to_main(&app);
-        mpv_embed::open_path_for_window(&main, state.inner(), path, resume_position, initial_volume)
+        mpv_embed::open_path_for_window(
+            &main,
+            state.inner(),
+            path,
+            resume_position,
+            initial_volume,
+            load_options,
+        )
     }
 }
 
@@ -1187,16 +1200,28 @@ fn open_path_for_main_window_on_main_thread(
     path: String,
     resume_position: Option<f64>,
     initial_volume: Option<f64>,
+    load_options: Option<MpvLoadOptions>,
 ) -> Result<MpvEmbedSnapshot, String> {
     if objc2::MainThreadMarker::new().is_some() {
-        return open_path_for_main_window_now(&app, path, resume_position, initial_volume);
+        return open_path_for_main_window_now(
+            &app,
+            path,
+            resume_position,
+            initial_volume,
+            load_options,
+        );
     }
 
     let (sender, receiver) = std::sync::mpsc::sync_channel(1);
     let app_for_open = app.clone();
     app.run_on_main_thread(move || {
-        let result =
-            open_path_for_main_window_now(&app_for_open, path, resume_position, initial_volume);
+        let result = open_path_for_main_window_now(
+            &app_for_open,
+            path,
+            resume_position,
+            initial_volume,
+            load_options,
+        );
         let _ = sender.send(result);
     })
     .map_err(|error| format!("failed to schedule macOS mpv AppKit host setup: {error}"))?;
@@ -1212,11 +1237,19 @@ fn open_path_for_main_window_now(
     path: String,
     resume_position: Option<f64>,
     initial_volume: Option<f64>,
+    load_options: Option<MpvLoadOptions>,
 ) -> Result<MpvEmbedSnapshot, String> {
     let main = main_window(app)?;
     sync_overlay_to_main(app);
     let state = app.state::<MpvEmbedState>();
-    mpv_embed::open_path_for_window(&main, state.inner(), path, resume_position, initial_volume)
+    mpv_embed::open_path_for_window(
+        &main,
+        state.inner(),
+        path,
+        resume_position,
+        initial_volume,
+        load_options,
+    )
 }
 
 #[cfg(not(feature = "mpv-embed"))]
@@ -1261,8 +1294,13 @@ pub fn run() {
             appearance_import_plugin_directory,
             appearance_import_theme_plugin,
             appearance_plugin_runtime_sources,
+            appearance_plugin_view_html,
             appearance_set_plugin_enabled,
             appearance_set_plugin_setting,
+            appearance_plugin_kv_get,
+            appearance_plugin_kv_list,
+            appearance_plugin_kv_set,
+            appearance_plugin_kv_remove,
             appearance_uninstall_plugin,
             appearance_reset,
             preferences_state,
@@ -1295,6 +1333,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(WindowState::default())
         .manage(MpvEmbedState::default())
+        .manage(MpvWallState::default())
         .manage(StartupMediaState::from_args(std::env::args_os()))
         .setup(|app| {
             app.manage(AppearanceStoreState::open(app.handle()));
@@ -1332,7 +1371,6 @@ pub fn run() {
                             | WindowEvent::ScaleFactorChanged { .. }
                     ) {
                         sync_overlay_to_main_without_focus(&app_handle);
-                        sync_mpv_video_host(&app_handle);
                         schedule_mpv_video_host_sync(&app_handle);
                     }
                     if matches!(event, WindowEvent::Focused(true)) {
@@ -1383,6 +1421,11 @@ pub fn run() {
             mpv_embed_set_volume,
             mpv_embed_snapshot,
             mpv_embed_stop,
+            mpv_wall_open,
+            mpv_wall_layout,
+            mpv_wall_snapshot,
+            mpv_wall_close,
+            mpv_wall_set_visible,
             media_files_from_paths,
             media_files_in_directory,
             startup_media_paths,
@@ -1395,8 +1438,13 @@ pub fn run() {
             appearance_import_plugin_directory,
             appearance_import_theme_plugin,
             appearance_plugin_runtime_sources,
+            appearance_plugin_view_html,
             appearance_set_plugin_enabled,
             appearance_set_plugin_setting,
+            appearance_plugin_kv_get,
+            appearance_plugin_kv_list,
+            appearance_plugin_kv_set,
+            appearance_plugin_kv_remove,
             appearance_uninstall_plugin,
             appearance_reset,
             preferences_state,
