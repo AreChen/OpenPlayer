@@ -1,13 +1,15 @@
 use std::{
     borrow::Cow,
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     ffi::{CStr, CString},
     fs,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::Mutex,
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+#[cfg(windows)]
+use std::{collections::BTreeSet, sync::Arc};
 #[cfg(target_os = "macos")]
 use std::{
     ffi::{c_char, c_void},
@@ -20,7 +22,9 @@ use objc2::MainThreadMarker;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tauri::{AppHandle, Manager, State, WebviewWindow, Window};
+#[cfg(windows)]
+use tauri::WebviewWindow;
+use tauri::{AppHandle, Manager, State, Window};
 #[cfg(windows)]
 use windows_sys::Win32::{
     Foundation::{HWND, RECT},
@@ -1143,8 +1147,8 @@ fn wall_set_visible(app: &AppHandle, state: &MpvWallState, visible: bool) -> Res
 }
 
 #[cfg(not(windows))]
-fn wall_close(state: &MpvWallState) -> Result<(), String> {
-    let _ = state;
+fn wall_close(app: &AppHandle, state: &MpvWallState) -> Result<(), String> {
+    let _ = (app, state);
     Ok(())
 }
 
