@@ -1,3 +1,5 @@
+use std::ffi::c_void;
+
 use super::super::*;
 
 impl MpvVideoHost {
