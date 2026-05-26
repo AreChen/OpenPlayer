@@ -1,0 +1,127 @@
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(236, 231, 221, 0.1);
+  padding: 18px 18px 16px 20px;
+}
+
+.settings-kicker {
+  display: block;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 720;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.settings-header h2,
+.settings-panel-heading h3 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.settings-header h2 {
+  font-size: 1.35rem;
+  line-height: 1.1;
+}
+
+.settings-close,
+.settings-reset,
+.shortcut-clear {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.settings-close {
+  width: 34px;
+  height: 34px;
+  background: rgba(236, 231, 221, 0.08);
+  color: var(--muted);
+}
+
+.settings-close:hover,
+.shortcut-clear:hover:not(:disabled) {
+  background: rgba(236, 231, 221, 0.14);
+  color: var(--text);
+}
+
+.settings-layout {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.settings-nav {
+  min-height: 0;
+  overflow: auto;
+  border-right: 1px solid rgba(236, 231, 221, 0.1);
+  padding: 14px;
+}
+
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  gap: 9px;
+  padding: 10px 11px;
+}
+
+.settings-nav-item--active,
+.settings-nav-item:hover {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.settings-panel {
+  min-width: 0;
+  overflow: auto;
+  padding: 16px 18px 18px;
+}
+
+.settings-panel-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.settings-panel-heading h3 {
+  font-size: 1rem;
+}
+
+.settings-panel-heading span,
+.shortcut-meta small {
+  color: var(--faint);
+  font-size: 0.76rem;
+}
+
+.settings-heading-actions,
+.plugin-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.settings-reset {
+  min-height: 32px;
+  background: rgba(236, 231, 221, 0.08);
+  color: var(--muted);
+  padding: 0 10px;
+}
+
+.settings-reset:hover {
+  background: var(--accent-soft);
+  color: var(--text);
+}

@@ -1,0 +1,123 @@
+.about-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.about-hero,
+.about-update-card {
+  display: grid;
+  border: 1px solid rgba(236, 231, 221, 0.1);
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, var(--accent-soft), rgba(255, 255, 255, 0.024) 52%),
+    rgba(255, 255, 255, 0.025);
+}
+
+.about-hero {
+  grid-template-columns: 74px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+}
+
+.about-hero img {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34);
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.about-hero strong {
+  display: block;
+  color: var(--text);
+  font-size: 1.16rem;
+}
+
+.about-hero p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.about-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.about-meta div {
+  display: grid;
+  gap: 5px;
+  min-height: 68px;
+  border: 1px solid rgba(236, 231, 221, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 12px;
+}
+
+.about-meta dt {
+  color: var(--faint);
+  font-size: 0.72rem;
+}
+
+.about-meta dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 720;
+}
+
+.about-update-card {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+}
+
+.about-update-card > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.about-update-card strong {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.about-update-card small {
+  color: var(--faint);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.about-actions,
+.about-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.about-links {
+  justify-content: flex-start;
+}
+
+.about-links button {
+  min-height: 32px;
+  border: 1px solid rgba(236, 231, 221, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 12px;
+}
+
+.about-links button:hover {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--text);
+}

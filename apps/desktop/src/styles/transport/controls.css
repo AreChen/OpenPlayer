@@ -1,0 +1,93 @@
+.control-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.control-strip button {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 34px;
+  border-radius: 9px;
+  color: var(--accent);
+}
+
+.open-media-button .icon {
+  transform: translateY(-1px);
+}
+
+.control-strip .speed-toggle {
+  flex-basis: 54px;
+  width: 54px;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 720;
+  font-variant-numeric: tabular-nums;
+}
+
+.control-strip .decode-toggle {
+  display: flex;
+  flex-basis: 58px;
+  width: 58px;
+  gap: 5px;
+  font-size: 0.7rem;
+  font-weight: 760;
+}
+
+.decode-toggle--software {
+  opacity: 0.82;
+}
+
+.control-strip button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.control-strip .plugin-action-button--compact span {
+  display: none;
+}
+
+.control-strip button:hover:not(:disabled),
+.playlist-toggle--open,
+.tracks-toggle--open,
+.loop-toggle--open {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.control-strip .control-primary {
+  background: var(--accent-muted);
+  color: var(--accent);
+}
+
+.volume-control {
+  display: flex;
+  align-items: center;
+  flex: 1 1 150px;
+  min-width: 0;
+  max-width: 190px;
+  gap: 8px;
+  color: var(--accent);
+}
+
+.control-strip .volume-mute-button {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+
+.volume-control--muted {
+  color: var(--muted);
+}
+
+.volume-control input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.playlist-toggle {
+  justify-self: end;
+}

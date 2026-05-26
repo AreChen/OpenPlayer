@@ -1,0 +1,54 @@
+.app-shell {
+  min-height: 100vh;
+  padding: 0;
+  background: transparent;
+}
+
+.video-host-surface {
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  background: #000;
+}
+
+.window-shell {
+  width: 100%;
+  height: 100vh;
+  min-height: 420px;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+}
+
+.stage {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+}
+
+.stage--loaded {
+  background: transparent;
+}
+
+.media-view {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  object-fit: contain;
+}
+
+.drag-region {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  /* Non-zero alpha keeps Windows transparent WebView hit-testing on the overlay instead of the mpv host. */
+  background: rgba(0, 0, 0, 0.004);
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-drag: none;
+  touch-action: none;
+}

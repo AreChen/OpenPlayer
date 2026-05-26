@@ -1,0 +1,6 @@
+@import "./settings/layout.css";
+@import "./settings/appearance.css";
+@import "./settings/plugins.css";
+@import "./settings/playback.css";
+@import "./settings/shortcuts.css";
+@import "./settings/about.css";

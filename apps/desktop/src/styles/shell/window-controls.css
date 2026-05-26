@@ -1,0 +1,51 @@
+.window-controls {
+  position: absolute;
+  top: 10px;
+  right: 24px;
+  z-index: 40;
+  display: flex;
+  overflow: hidden;
+  border-radius: 9px;
+  background: rgba(8, 10, 12, 0.46);
+  opacity: 0.72;
+  pointer-events: auto;
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+
+.window-controls:hover,
+.transport:hover {
+  opacity: 1;
+}
+
+.window-controls button,
+.control-strip button {
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.window-controls button {
+  width: 38px;
+  height: 30px;
+  color: var(--accent);
+}
+
+.window-controls button:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.window-controls .window-control-close:hover {
+  background: #7f2f28;
+  color: #f1d9d3;
+}
+
+.icon {
+  width: 17px;
+  height: 17px;
+}

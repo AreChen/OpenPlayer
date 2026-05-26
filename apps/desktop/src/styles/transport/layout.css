@@ -1,0 +1,66 @@
+.transport {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  left: 24px;
+  z-index: 30;
+  display: grid;
+  gap: 12px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(8, 10, 12, 0.3), var(--panel-strong));
+  padding: 12px 14px;
+  opacity: 0.86;
+  pointer-events: auto;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.stage--chrome-hidden .window-controls,
+.stage--chrome-hidden .transport {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.stage--chrome-hidden .window-controls {
+  transform: translateY(-8px);
+}
+
+.stage--chrome-hidden .transport {
+  transform: translateY(16px);
+}
+
+.transport-row {
+  display: grid;
+  grid-template-columns: minmax(6.5ch, auto) 26px minmax(0, 1fr) 26px minmax(6.5ch, auto);
+  align-items: center;
+  gap: 8px;
+}
+
+.transport-time {
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.transport-time--toggle {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  padding: 0;
+}
+
+.transport-time--toggle:disabled {
+  cursor: default;
+}
+
+.transport-time--toggle:not(:disabled):hover {
+  color: var(--accent-ring);
+}
+
+.transport-time:last-child {
+  justify-self: start;
+  text-align: left;
+}

@@ -1,26 +1,22 @@
 use redb::TableDefinition;
 
-mod commands;
+pub(crate) mod commands;
 mod database;
 mod manifest;
 mod package;
+mod plugin_imports;
+mod plugin_settings;
+mod preferences;
 mod records;
+mod runtime;
+mod state;
 mod store;
 #[cfg(test)]
 mod tests;
+mod theme_settings;
 mod themes;
 mod types;
 
-pub use commands::{
-    appearance_import_plugin_directory, appearance_import_plugin_manifest,
-    appearance_import_plugin_package, appearance_import_theme_plugin, appearance_plugin_kv_get,
-    appearance_plugin_kv_list, appearance_plugin_kv_remove, appearance_plugin_kv_set,
-    appearance_plugin_runtime_sources, appearance_plugin_view_html, appearance_reset,
-    appearance_set_accent_override, appearance_set_plugin_enabled, appearance_set_plugin_setting,
-    appearance_set_theme, appearance_state, appearance_uninstall_plugin,
-    preferences_set_incognito_mode, preferences_set_language_mode,
-    preferences_set_quiet_keyboard_controls, preferences_state,
-};
 pub use store::AppearanceStoreState;
 
 const SETTINGS_KV: TableDefinition<&str, &str> = TableDefinition::new("settings_kv");

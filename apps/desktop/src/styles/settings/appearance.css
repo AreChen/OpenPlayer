@@ -1,0 +1,223 @@
+.theme-grid,
+.plugin-list {
+  display: grid;
+  gap: 10px;
+}
+
+.theme-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.theme-card {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 82px;
+  border: 1px solid rgba(236, 231, 221, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 10px;
+  text-align: left;
+}
+
+.theme-card:hover:not(:disabled),
+.theme-card--active {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.theme-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.theme-preview {
+  display: grid;
+  grid-template-rows: 1fr 4px 12px;
+  height: 58px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: var(--theme-surface);
+  padding: 8px;
+  gap: 5px;
+}
+
+.theme-preview span:nth-child(1) {
+  border-radius: 6px;
+  background: var(--theme-panel);
+}
+
+.theme-preview span:nth-child(2) {
+  border-radius: 999px;
+  background: var(--theme-accent);
+}
+
+.theme-preview span:nth-child(3) {
+  width: 62%;
+  border-radius: 999px;
+  background: var(--theme-muted);
+}
+
+.theme-card-meta {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.theme-card-meta strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theme-card-meta small,
+.plugin-meta small,
+.plugin-empty {
+  color: var(--faint);
+  font-size: 0.74rem;
+}
+
+.appearance-section {
+  display: grid;
+  gap: 9px;
+  margin-top: 16px;
+}
+
+.appearance-section header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.appearance-section h4 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.appearance-section header span {
+  color: var(--faint);
+  font-size: 0.74rem;
+}
+
+.accent-picker {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  align-items: center;
+  min-height: 58px;
+  overflow: hidden;
+  border-radius: 10px;
+  background:
+    linear-gradient(90deg, rgba(9, 11, 13, 0.1), rgba(9, 11, 13, 0.02)),
+    linear-gradient(100deg, rgba(120, 213, 179, 0.86), rgba(147, 180, 255, 0.88) 46%, rgba(215, 131, 114, 0.9));
+  padding: 10px 12px;
+  cursor: pointer;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.accent-picker > span:first-child {
+  display: grid;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.accent-picker strong {
+  color: #fff;
+  font-size: 0.86rem;
+}
+
+.accent-picker small {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.accent-picker-preview {
+  justify-self: end;
+  width: 38px;
+  height: 38px;
+  border: 2px solid rgba(255, 255, 255, 0.76);
+  border-radius: 9px;
+  background: var(--picked-accent);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.24),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.16);
+  pointer-events: none;
+}
+
+.accent-picker input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.accent-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.accent-default,
+.accent-swatch {
+  border: 1px solid rgba(236, 231, 221, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.accent-default {
+  min-height: 34px;
+  padding: 0 12px;
+}
+
+.accent-swatch {
+  width: 34px;
+  height: 34px;
+  background: var(--swatch);
+}
+
+.accent-default:hover,
+.accent-default.accent-swatch--active,
+.accent-swatch:hover,
+.accent-swatch--active {
+  border-color: var(--accent-ring);
+  color: var(--text);
+}
+
+.language-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.language-option {
+  min-height: 36px;
+  border: 1px solid rgba(236, 231, 221, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 12px;
+}
+
+.language-option:hover,
+.language-option--active {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--text);
+}

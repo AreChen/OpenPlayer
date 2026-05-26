@@ -1,0 +1,75 @@
+.shortcut-list {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid rgba(236, 231, 221, 0.1);
+  border-radius: 10px;
+}
+
+.shortcut-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, auto);
+  align-items: center;
+  gap: 14px;
+  min-height: 58px;
+  border-bottom: 1px solid rgba(236, 231, 221, 0.08);
+  background: rgba(255, 255, 255, 0.025);
+  padding: 10px 12px;
+}
+
+.shortcut-row:last-child {
+  border-bottom: 0;
+}
+
+.shortcut-row:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.shortcut-meta {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.shortcut-meta span {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.91rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shortcut-editor {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.shortcut-capture {
+  min-width: 112px;
+  height: 34px;
+  border: 1px solid rgba(236, 231, 221, 0.12);
+  border-radius: 8px;
+  background: rgba(10, 12, 14, 0.72);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 10px;
+}
+
+.shortcut-capture:hover,
+.shortcut-capture--recording {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.shortcut-clear {
+  width: 34px;
+  height: 34px;
+  background: transparent;
+  color: var(--faint);
+}
+
+.shortcut-clear:disabled {
+  cursor: not-allowed;
+  opacity: 0.32;
+}

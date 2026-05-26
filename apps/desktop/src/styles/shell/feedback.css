@@ -1,0 +1,122 @@
+.drop-overlay {
+  position: absolute;
+  inset: 24px;
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 72%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 52%, transparent);
+  color: var(--accent);
+  pointer-events: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 18px 60px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(10px);
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.drop-overlay .icon {
+  width: 30px;
+  height: 30px;
+}
+
+.playback-error {
+  position: absolute;
+  top: 50px;
+  left: 50%;
+  z-index: 15;
+  max-width: min(520px, calc(100% - 40px));
+  transform: translateX(-50%);
+  border-radius: 10px;
+  background: rgba(64, 28, 24, 0.9);
+  color: #f1d9d3;
+  padding: 10px 12px;
+  line-height: 1.4;
+}
+
+.volume-feedback {
+  position: absolute;
+  top: 10px;
+  left: 24px;
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  min-width: 104px;
+  height: 30px;
+  gap: 10px;
+  border-radius: 9px;
+  background: rgba(8, 10, 12, 0.48);
+  color: var(--accent);
+  padding: 0 12px;
+  pointer-events: none;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(12px);
+  font-size: 0.84rem;
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+}
+
+.volume-feedback .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.always-on-top-feedback {
+  left: 24px;
+  min-width: 128px;
+}
+
+.volume-feedback + .always-on-top-feedback {
+  top: 48px;
+}
+
+.capture-feedback {
+  top: 10px;
+  min-width: 136px;
+  max-width: min(520px, calc(100vw - 48px));
+}
+
+.always-on-top-feedback + .capture-feedback {
+  top: 48px;
+}
+
+.capture-feedback span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recording-indicator {
+  position: absolute;
+  top: 10px;
+  left: 24px;
+  z-index: 34;
+  display: flex;
+  align-items: center;
+  height: 30px;
+  gap: 9px;
+  border: 1px solid rgba(225, 89, 89, 0.3);
+  border-radius: 9px;
+  background: rgba(28, 10, 10, 0.42);
+  color: #ff8f8f;
+  padding: 0 12px;
+  pointer-events: none;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(12px);
+  font-size: 0.78rem;
+  font-weight: 780;
+  letter-spacing: 0.04em;
+}
+
+.recording-indicator .icon {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+}
+
+.capture-feedback + .recording-indicator {
+  top: 48px;
+}

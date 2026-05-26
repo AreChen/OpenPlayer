@@ -1,0 +1,142 @@
+@media (max-width: 640px) {
+  .window-controls {
+    top: 8px;
+    right: 8px;
+  }
+
+  .volume-feedback {
+    left: 8px;
+  }
+
+  .audio-visualizer-grid {
+    top: 8px;
+    left: 8px;
+    right: 8px;
+  }
+
+  .audio-visualizer-copy {
+    max-width: calc(100vw - 16px);
+  }
+
+  .audio-visualizer-copy span {
+    font-size: 0.95rem;
+  }
+
+  .transport {
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+  }
+
+  .control-strip {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(32px, 1fr));
+  }
+
+  .control-strip button,
+  .control-strip .speed-toggle {
+    width: 100%;
+  }
+
+  .volume-control {
+    max-width: none;
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .media-panel {
+    right: 8px;
+    bottom: 116px;
+    width: calc(100vw - 16px);
+    max-height: min(520px, calc(100vh - 136px));
+  }
+
+  .media-panel--speed,
+  .media-panel--tracks,
+  .media-panel--loop {
+    width: calc(100vw - 16px);
+  }
+
+  .playlist-drawer {
+    right: 8px;
+    bottom: 116px;
+    width: calc(100vw - 16px);
+  }
+
+  .settings-backdrop {
+    align-items: end;
+    padding: 10px;
+  }
+
+  .settings-dialog {
+    width: 100%;
+    height: min(640px, calc(100vh - 20px));
+  }
+
+  .settings-layout {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .settings-nav {
+    display: flex;
+    border-right: 0;
+    border-bottom: 1px solid rgba(236, 231, 221, 0.1);
+    padding: 10px;
+  }
+
+  .settings-nav-item {
+    width: auto;
+  }
+
+  .theme-grid,
+  .plugin-row,
+  .plugin-row-header,
+  .plugin-detail-grid,
+  .plugin-install-path,
+  .preference-row,
+  .shell-preview-card-header,
+  .accent-picker,
+  .about-hero,
+  .about-update-card {
+    grid-template-columns: 1fr;
+  }
+
+  .about-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .shell-preview-actions {
+    justify-content: stretch;
+  }
+
+  .settings-panel-heading {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-heading-actions,
+  .plugin-row-actions {
+    justify-content: stretch;
+  }
+
+  .shell-preview-actions button,
+  .settings-heading-actions button,
+  .plugin-row-actions button,
+  .about-actions button {
+    flex: 1;
+  }
+
+  .shortcut-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .shortcut-editor {
+    justify-content: stretch;
+  }
+
+  .shortcut-capture {
+    flex: 1;
+  }
+
+}
