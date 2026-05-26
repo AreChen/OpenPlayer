@@ -59,6 +59,7 @@ use constants::*;
 use macos_ffi::*;
 use media::*;
 use player::*;
+#[cfg(windows)]
 use player_events::*;
 use player_normalization::*;
 #[cfg(test)]
@@ -70,9 +71,12 @@ pub(crate) use types::*;
 use video_host::*;
 use video_output::*;
 use wall::*;
+#[cfg(windows)]
 use wall_hosts::*;
 use wall_normalization::*;
+#[cfg(any(windows, test))]
 use wall_startup::*;
+#[cfg(any(windows, test))]
 use wall_status::*;
 
 #[cfg(test)]

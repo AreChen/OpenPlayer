@@ -7,7 +7,9 @@ mod macos_render;
 mod platform;
 
 pub(super) use errors::mpv_error_message;
-pub(super) use factory::{create_embed_player, create_embed_player_without_logs};
+pub(super) use factory::create_embed_player;
+#[cfg(windows)]
+pub(super) use factory::create_embed_player_without_logs;
 #[cfg(test)]
 pub(super) use locale::prepare_libmpv_numeric_locale;
 #[cfg(test)]

@@ -5,9 +5,9 @@ use std::{collections::BTreeSet, sync::Arc};
 
 #[cfg(target_os = "macos")]
 use super::MacosMpvRenderContext;
-use super::{
-    MpvRecordingSession, MpvVideoHost, MpvWallTileRect, MpvWallTileSnapshot, VideoHostRect,
-};
+use super::{MpvRecordingSession, MpvVideoHost, MpvWallTileSnapshot};
+#[cfg(windows)]
+use super::{MpvWallTileRect, VideoHostRect};
 
 #[derive(Default)]
 pub struct MpvEmbedState {

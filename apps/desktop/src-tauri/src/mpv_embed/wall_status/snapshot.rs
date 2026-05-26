@@ -1,5 +1,7 @@
 use super::super::*;
+#[cfg(windows)]
 use super::metrics::{read_wall_bitrate, read_wall_bool_property, read_wall_buffer};
+#[cfg(windows)]
 use super::osd::update_wall_osd;
 
 pub(in crate::mpv_embed) fn wall_initial_snapshots(
