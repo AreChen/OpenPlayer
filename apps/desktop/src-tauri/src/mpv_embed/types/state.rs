@@ -1,13 +1,16 @@
-use std::{collections::BTreeMap, sync::Mutex, time::Instant};
+use std::{sync::Mutex, time::Instant};
 
 #[cfg(windows)]
-use std::{collections::BTreeSet, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 #[cfg(target_os = "macos")]
 use super::MacosMpvRenderContext;
-use super::{MpvRecordingSession, MpvVideoHost, MpvWallTileSnapshot};
+use super::{MpvRecordingSession, MpvVideoHost};
 #[cfg(windows)]
-use super::{MpvWallTileRect, VideoHostRect};
+use super::{MpvWallTileRect, MpvWallTileSnapshot, VideoHostRect};
 
 #[derive(Default)]
 pub struct MpvEmbedState {

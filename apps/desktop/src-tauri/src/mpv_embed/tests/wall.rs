@@ -21,7 +21,10 @@ fn wall_tile_requests_accept_rtsp_rtmp_http_and_hls_streams() {
             muted: Some(true),
         };
 
-        assert_eq!(normalize_wall_tile_request(tile).unwrap().url, url);
+        let normalized = normalize_wall_tile_request(tile).unwrap();
+        assert_eq!(normalized.url, url);
+        assert_eq!(normalized.rect.width, 0.5);
+        assert!(normalized.muted);
     }
 }
 
@@ -39,6 +42,23 @@ fn wall_tile_fraction_layout_maps_to_parent_pixels() {
             height: 270,
         }
     );
+}
+
+#[test]
+fn wall_tile_layouts_normalize_ids_and_rectangles() {
+    let layouts = normalize_wall_tile_layouts(vec![MpvWallTileLayout {
+        id: "camera-1".to_string(),
+        x: 0.1,
+        y: 0.2,
+        width: 0.3,
+        height: 0.4,
+    }])
+    .unwrap();
+
+    assert_eq!(layouts.len(), 1);
+    assert_eq!(layouts[0].id, "camera-1");
+    assert_eq!(layouts[0].rect.x, 0.1);
+    assert_eq!(layouts[0].rect.height, 0.4);
 }
 
 #[test]
