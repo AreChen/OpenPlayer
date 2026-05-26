@@ -300,6 +300,7 @@ pub struct MpvWallTileSnapshot {
     title: Option<String>,
     status: String,
     latency_seconds: Option<f64>,
+    buffer_seconds: Option<f64>,
     bitrate_bps: Option<f64>,
     message: Option<String>,
 }
@@ -1535,6 +1536,7 @@ fn wall_tile_status_snapshot(
         title: tile.title.clone(),
         status: status.to_string(),
         latency_seconds: None,
+        buffer_seconds: None,
         bitrate_bps: None,
         message,
     }
@@ -1553,6 +1555,7 @@ impl MpvWallPlayer {
             title: self.title.clone(),
             status: status.to_string(),
             latency_seconds: None,
+            buffer_seconds: None,
             bitrate_bps: None,
             message,
         }
@@ -1607,7 +1610,7 @@ fn read_finite_mpv_property(mpv: &libmpv2::Mpv, property: &str) -> Option<f64> {
 }
 
 #[cfg(windows)]
-fn read_wall_latency(mpv: &libmpv2::Mpv) -> Option<f64> {
+fn read_wall_buffer(mpv: &libmpv2::Mpv) -> Option<f64> {
     read_finite_mpv_property(mpv, "demuxer-cache-duration")
         .or_else(|| read_finite_mpv_property(mpv, "demuxer-cache-state/cache-duration"))
         .or_else(|| read_finite_mpv_property(mpv, "cache-duration"))
@@ -1633,14 +1636,21 @@ fn read_wall_bitrate(mpv: &libmpv2::Mpv) -> Option<f64> {
 fn configure_wall_osd(mpv: &libmpv2::Mpv) {
     let _ = mpv.set_property("osd-align-x", "left");
     let _ = mpv.set_property("osd-align-y", "top");
-    let _ = mpv.set_property("osd-margin-x", 14);
+    let _ = mpv.set_property("osd-margin-x", 12);
     let _ = mpv.set_property("osd-margin-y", 12);
-    let _ = mpv.set_property("osd-font-size", 22);
+    let _ = mpv.set_property("osd-font-size", 18);
+    let _ = mpv.set_property("osd-bold", true);
+    let _ = mpv.set_property("osd-color", "#f1c66b");
+    let _ = mpv.set_property("osd-border-color", "#120f08");
+    let _ = mpv.set_property("osd-border-size", 1.8);
+    let _ = mpv.set_property("osd-shadow-color", "#000000");
+    let _ = mpv.set_property("osd-shadow-offset", 1.0);
+    let _ = mpv.set_property("osd-back-color", "#99000000");
 }
 
 #[cfg(any(windows, test))]
-fn format_wall_latency_millis(latency_seconds: Option<f64>) -> String {
-    latency_seconds
+fn format_wall_buffer_millis(buffer_seconds: Option<f64>) -> String {
+    buffer_seconds
         .filter(|value| value.is_finite() && *value >= 0.0)
         .map(|value| format!("{} ms", (value * 1000.0).round() as i64))
         .unwrap_or_else(|| "-- ms".to_string())
@@ -1660,10 +1670,10 @@ fn format_wall_bitrate(bits_per_second: Option<f64>) -> String {
 }
 
 #[cfg(windows)]
-fn update_wall_osd(mpv: &libmpv2::Mpv, latency_seconds: Option<f64>, bitrate_bps: Option<f64>) {
+fn update_wall_osd(mpv: &libmpv2::Mpv, buffer_seconds: Option<f64>, bitrate_bps: Option<f64>) {
     let text = format!(
-        "{} · {}",
-        format_wall_latency_millis(latency_seconds),
+        "BUF {} · {}",
+        format_wall_buffer_millis(buffer_seconds),
         format_wall_bitrate(bitrate_bps)
     );
     let _ = mpv.command("show-text", &[text.as_str(), "1500", "1"]);
@@ -1692,16 +1702,17 @@ fn wall_player_snapshot(player: &MpvWallPlayer) -> MpvWallTileSnapshot {
         read_wall_bool_property(player.mpv.as_ref(), "pause"),
         read_wall_bool_property(player.mpv.as_ref(), "idle-active"),
     );
-    let latency_seconds = read_wall_latency(player.mpv.as_ref());
+    let buffer_seconds = read_wall_buffer(player.mpv.as_ref());
     let bitrate_bps = read_wall_bitrate(player.mpv.as_ref());
-    update_wall_osd(player.mpv.as_ref(), latency_seconds, bitrate_bps);
+    update_wall_osd(player.mpv.as_ref(), buffer_seconds, bitrate_bps);
 
     MpvWallTileSnapshot {
         id: player.id.clone(),
         url: player.url.clone(),
         title: player.title.clone(),
         status: status.to_string(),
-        latency_seconds,
+        latency_seconds: None,
+        buffer_seconds,
         bitrate_bps,
         message: None,
     }
@@ -4460,10 +4471,10 @@ mod tests {
     }
 
     #[test]
-    fn wall_osd_formats_latency_in_milliseconds() {
-        assert_eq!(format_wall_latency_millis(Some(0.021)), "21 ms");
-        assert_eq!(format_wall_latency_millis(Some(1.234)), "1234 ms");
-        assert_eq!(format_wall_latency_millis(None), "-- ms");
+    fn wall_osd_formats_buffer_in_milliseconds() {
+        assert_eq!(format_wall_buffer_millis(Some(0.021)), "21 ms");
+        assert_eq!(format_wall_buffer_millis(Some(1.234)), "1234 ms");
+        assert_eq!(format_wall_buffer_millis(None), "-- ms");
     }
 
     #[test]

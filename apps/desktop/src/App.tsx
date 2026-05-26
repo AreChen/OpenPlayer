@@ -93,6 +93,7 @@ type MpvWallTileSnapshot = {
   title: string | null;
   status: string;
   latencySeconds: number | null;
+  bufferSeconds: number | null;
   bitrateBps: number | null;
   message: string | null;
 };
@@ -1363,10 +1364,9 @@ function runtimeNumberArg(args: Record<string, unknown>, key: string) {
 const supportedPluginLoadOptionKeys = new Set(["demuxer", "demuxer-lavf-format"]);
 const PLUGIN_HOOK_TIMEOUT_MS = 750;
 const PLUGIN_COMMAND_HOOK_TIMEOUT_MS = 10_000;
-const MAX_PLUGIN_NETWORK_RESPONSE_CHARS = 1024 * 1024;
 const MAX_PLUGIN_NETWORK_TIMEOUT_MS = 30_000;
 const MAX_PLUGIN_WALL_TILES = 16;
-const supportedPluginNetworkMethods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]);
+const supportedPluginNetworkMethods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
 const PLUGIN_VIEW_BRIDGE_ID = "openplayer-plugin-view";
 
 function isPluginRuntimeActionCommand(command: string): command is `plugin.${string}` {
@@ -1516,24 +1516,19 @@ async function runPluginNetworkRequest(args: Record<string, unknown>) {
     body = args.body;
   }
 
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, { method, headers, body, signal: controller.signal });
-    const text = await response.text();
-    if (text.length > MAX_PLUGIN_NETWORK_RESPONSE_CHARS) {
-      throw new Error("network.request response is too large");
-    }
-    return {
-      url: response.url,
-      status: response.status,
-      ok: response.ok,
-      headers: Object.fromEntries(response.headers.entries()),
-      text,
-    };
-  } finally {
-    window.clearTimeout(timeout);
+  const response = await invoke("plugin_network_request", {
+    args: {
+      url,
+      method,
+      headers,
+      body,
+      timeoutMs,
+    },
+  });
+  if (!response || typeof response !== "object") {
+    throw new Error("network.request returned an invalid response");
   }
+  return response;
 }
 
 function normalizePluginLoadOptions(value: unknown): MpvLoadOptions {
@@ -2508,6 +2503,31 @@ function App() {
       clearManualResizeDrag();
       setNativeResizeCursor(null);
       setResizeFeedback(null);
+    };
+  }, [media?.id, isChromePinned]);
+
+  useEffect(() => {
+    const handleWindowPointerExit = (event: MouseEvent | PointerEvent) => {
+      const relatedTarget = event.relatedTarget;
+      if (relatedTarget instanceof Node && document.documentElement.contains(relatedTarget)) {
+        return;
+      }
+      hideChromeForPointerExit();
+    };
+
+    const handleWindowBlur = () => {
+      hideChromeForPointerExit();
+    };
+
+    window.addEventListener("mouseout", handleWindowPointerExit);
+    window.addEventListener("pointerout", handleWindowPointerExit);
+    window.addEventListener("blur", handleWindowBlur);
+    document.documentElement.addEventListener("mouseleave", handleWindowBlur);
+    return () => {
+      window.removeEventListener("mouseout", handleWindowPointerExit);
+      window.removeEventListener("pointerout", handleWindowPointerExit);
+      window.removeEventListener("blur", handleWindowBlur);
+      document.documentElement.removeEventListener("mouseleave", handleWindowBlur);
     };
   }, [media?.id, isChromePinned]);
 
@@ -3559,7 +3579,7 @@ function App() {
     }
   }
 
-  function handleShellPointerLeave() {
+  function hideChromeForPointerExit() {
     clearChromeHideTimer();
     if (!manualResizeDragRef.current) {
       setNativeResizeCursor(null);
@@ -3568,6 +3588,10 @@ function App() {
     if (media && !isChromePinned) {
       setIsChromeVisible(false);
     }
+  }
+
+  function handleShellPointerLeave() {
+    hideChromeForPointerExit();
   }
 
   function handleShellWheel(event: ReactWheelEvent<HTMLElement>) {
@@ -6549,7 +6573,6 @@ function App() {
               >
                 <div>
                   <span>OpenPlayer Plugin</span>
-                  <h2>{activePluginView.title}</h2>
                 </div>
                 <button type="button" aria-label={t.controls.close} data-plugin-view-close="true" onClick={closePluginView}>
                   <Icon name="close" />

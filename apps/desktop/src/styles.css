@@ -1447,7 +1447,7 @@ input:focus-visible {
   justify-content: space-between;
   border-bottom: 1px solid var(--line);
   background: color-mix(in srgb, var(--panel-strong) 78%, #050607);
-  padding: 12px 14px;
+  padding: 9px 14px;
 }
 
 .plugin-view-header div {
@@ -1461,15 +1461,6 @@ input:focus-visible {
   font-weight: 800;
   letter-spacing: 0;
   text-transform: uppercase;
-}
-
-.plugin-view-header h2 {
-  overflow: hidden;
-  margin: 1px 0 0;
-  color: var(--text);
-  font-size: 1rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .plugin-view-header button {
