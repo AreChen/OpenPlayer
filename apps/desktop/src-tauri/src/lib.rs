@@ -298,13 +298,14 @@ async fn plugin_network_request(
         .map_err(|error| format!("network.request client setup failed: {error}"))?
         .request(method.clone(), url)
         .headers(headers);
-    if method != reqwest::Method::GET && method != reqwest::Method::HEAD {
-        if let Some(body) = args.body {
-            if body.len() > MAX_PLUGIN_NETWORK_BODY_BYTES {
-                return Err("network.request body is too large".to_string());
-            }
-            request = request.body(body);
+    if method != reqwest::Method::GET
+        && method != reqwest::Method::HEAD
+        && let Some(body) = args.body
+    {
+        if body.len() > MAX_PLUGIN_NETWORK_BODY_BYTES {
+            return Err("network.request body is too large".to_string());
         }
+        request = request.body(body);
     }
 
     let response = request
@@ -323,10 +324,10 @@ async fn plugin_network_request(
                 .map(|header_value| (key.as_str().to_string(), header_value.to_string()))
         })
         .collect::<HashMap<_, _>>();
-    if let Some(length) = response.content_length() {
-        if length as usize > MAX_PLUGIN_NETWORK_RESPONSE_BYTES {
-            return Err("network.request response is too large".to_string());
-        }
+    if let Some(length) = response.content_length()
+        && length as usize > MAX_PLUGIN_NETWORK_RESPONSE_BYTES
+    {
+        return Err("network.request response is too large".to_string());
     }
     let bytes = response
         .bytes()

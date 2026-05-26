@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 
 const config = JSON.parse(await readFile(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8"));
 const windowsConfigUrl = new URL("../src-tauri/tauri.windows.conf.json", import.meta.url);
@@ -39,8 +39,28 @@ const tauriCargoToml = await readFile(new URL("../src-tauri/Cargo.toml", import.
 const tauriBuildScript = await readFile(new URL("../src-tauri/build.rs", import.meta.url), "utf8");
 const nsisHooksUrl = new URL("../src-tauri/nsis-hooks.nsh", import.meta.url);
 const nsisHooksSource = existsSync(nsisHooksUrl) ? await readFile(nsisHooksUrl, "utf8") : "";
-const mpvEmbedUrl = new URL("../src-tauri/src/mpv_embed.rs", import.meta.url);
-const mpvEmbedSource = existsSync(mpvEmbedUrl) ? await readFile(mpvEmbedUrl, "utf8") : "";
+const mpvEmbedFileUrl = new URL("../src-tauri/src/mpv_embed.rs", import.meta.url);
+const mpvEmbedDirUrl = new URL("../src-tauri/src/mpv_embed/", import.meta.url);
+const mpvEmbedSource = existsSync(mpvEmbedFileUrl)
+  ? await readFile(mpvEmbedFileUrl, "utf8")
+  : existsSync(mpvEmbedDirUrl)
+    ? (
+        await Promise.all(
+          (await readdir(mpvEmbedDirUrl, { withFileTypes: true }))
+            .filter((entry) => entry.isFile() && entry.name.endsWith(".rs"))
+            .sort((left, right) => {
+              if (left.name === "mod.rs") {
+                return -1;
+              }
+              if (right.name === "mod.rs") {
+                return 1;
+              }
+              return left.name.localeCompare(right.name);
+            })
+            .map((entry) => readFile(new URL(entry.name, mpvEmbedDirUrl), "utf8")),
+        )
+      ).join("\n")
+    : "";
 const macosGlViewUrl = new URL("../src-tauri/src/macos_mpv_gl_view.m", import.meta.url);
 const macosGlViewSource = existsSync(macosGlViewUrl) ? await readFile(macosGlViewUrl, "utf8") : "";
 const mpvRenderFiles = [
@@ -639,7 +659,7 @@ assert.match(mpvEmbedSource, /RawWindowHandle::AppKit[\s\S]*ns_view/, "mpv nativ
 assert.match(mpvEmbedSource, /openplayer_mpv_gl_view_create[\s\S]*create_macos_render_context/, "macOS mpv embedding must create an AppKit render view before wiring libmpv rendering");
 assert.match(mpvEmbedSource, /mpv_render_context_create[\s\S]*mpv_render_context_set_update_callback/, "macOS mpv embedding must use libmpv's render API instead of relying on unsupported --wid window nesting");
 assert.match(mpvEmbedSource, /openplayer_mpv_gl_view_resize/, "macOS mpv render view must resize with the Tauri video host");
-assert.match(mpvEmbedSource, /#\[cfg\(target_os = "macos"\)\]\s*fn platform_video_output_config[\s\S]*vo:\s*Some\("libmpv"\.to_string\(\)\)/, "macOS mpv embedding must use vo=libmpv so mpv does not create its own Cocoa window");
+assert.match(mpvEmbedSource, /#\[cfg\(target_os = "macos"\)\]\s*(?:pub\(super\)\s+)?fn platform_video_output_config[\s\S]*vo:\s*Some\("libmpv"\.to_string\(\)\)/, "macOS mpv embedding must use vo=libmpv so mpv does not create its own Cocoa window");
 assert.match(mpvEmbedSource, /#\[cfg\(target_os = "macos"\)\][\s\S]*video-timing-offset"[\s\S]*"0"/, "macOS libmpv render path must avoid blocking AppKit on mpv frame timing");
 assert.match(macosGlViewSource, /NSOpenGLView[\s\S]*MPV_RENDER_PARAM_OPENGL_FBO[\s\S]*mpv_render_context_render/, "macOS AppKit host must render libmpv frames into an OpenGL child view");
 assert.match(macosGlViewSource, /dispatch_async\(dispatch_get_main_queue\(\)/, "macOS mpv render updates must schedule drawing on the AppKit main thread");
@@ -654,8 +674,8 @@ assert.match(mpvEmbedSource, /mpv_embed_set_video_fill[\s\S]*set_property\("pans
 assert.match(mpvEmbedSource, /mpv_embed_capture_screenshot[\s\S]*screenshot-to-file/, "mpv embed backend must expose screenshot capture through mpv");
 assert.match(mpvEmbedSource, /mpv_embed_start_recording[\s\S]*stream-record[\s\S]*mpv_embed_stop_recording/, "mpv embed backend must expose native stream recording through mpv");
 assert.match(mpvEmbedSource, /validate_media_stream_url/, "mpv embed backend must allow safe stream URLs for mpv playback");
-assert.match(mpvEmbedSource, /fn window_mpv_wid/, "mpv native video host must map raw platform handles to mpv wid values");
-assert.match(mpvEmbedSource, /fn wid\(&self\) -> i64/, "mpv native video host must expose a platform-owned mpv wid boundary");
+assert.match(mpvEmbedSource, /(?:pub\(super\)\s+)?fn window_mpv_wid/, "mpv native video host must map raw platform handles to mpv wid values");
+assert.match(mpvEmbedSource, /(?:pub\(super\)\s+)?fn wid\(&self\) -> i64/, "mpv native video host must expose a platform-owned mpv wid boundary");
 assert.match(mpvEmbedSource, /mpv_embed_snapshot[\s\S]*player\.snapshot\(0,\s*"playing"\)/, "periodic mpv snapshots must preserve playing status so smooth progress, frame labels, and Space pause keep working");
 assert.match(mpvEmbedSource, /input-default-bindings"[\s\S]*false/, "embedded mpv must not keep its own default keyboard bindings when the video background has focus");
 assert.match(mpvEmbedSource, /input-vo-keyboard"[\s\S]*false/, "embedded mpv video output must not consume OpenPlayer shortcuts");
