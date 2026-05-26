@@ -46,10 +46,15 @@ mod types;
 mod video_host;
 mod video_output;
 mod wall;
+#[cfg(windows)]
 mod wall_hosts;
+#[cfg(any(windows, test))]
 mod wall_normalization;
+#[cfg(any(windows, test))]
 mod wall_startup;
+#[cfg(windows)]
 mod wall_state;
+#[cfg(any(windows, test))]
 mod wall_status;
 
 use capture_recording::*;
@@ -73,6 +78,7 @@ use video_output::*;
 use wall::*;
 #[cfg(windows)]
 use wall_hosts::*;
+#[cfg(any(windows, test))]
 use wall_normalization::*;
 #[cfg(any(windows, test))]
 use wall_startup::*;

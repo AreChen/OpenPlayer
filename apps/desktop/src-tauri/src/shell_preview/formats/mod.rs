@@ -9,6 +9,7 @@ use serde::Serialize;
 
 pub(super) use catalog::PREVIEW_FORMATS;
 pub(super) use selection::filter_preview_formats;
+#[cfg(any(windows, test))]
 pub(super) use summary::registration_summary;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

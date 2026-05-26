@@ -1,3 +1,4 @@
+#[cfg(any(windows, test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct VideoHostRect {
     pub(crate) x: i32,

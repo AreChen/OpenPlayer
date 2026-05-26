@@ -34,9 +34,13 @@ pub(super) const OPENPLAYER_MPV_VO_ENV: &str = "OPENPLAYER_MPV_VO";
 pub(super) const OPENPLAYER_MPV_GPU_CONTEXT_ENV: &str = "OPENPLAYER_MPV_GPU_CONTEXT";
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub(super) const OPENPLAYER_MPV_HWDEC_ENV: &str = "OPENPLAYER_MPV_HWDEC";
+#[cfg(any(windows, test))]
 pub(super) const MAX_MPV_WALL_TILES: usize = 16;
+#[cfg(any(windows, test))]
 pub(super) const MIN_MPV_WALL_TILE_RATIO: f64 = 0.02;
+#[cfg(windows)]
 pub(super) const MPV_WALL_TILE_START_STAGGER: Duration = Duration::from_millis(120);
+#[cfg(windows)]
 pub(super) const MPV_WALL_EVENT_DRAIN_LIMIT: usize = 32;
 #[cfg(windows)]
 pub(super) const MPV_WALL_TILE_CORNER_RADIUS: i32 = 10;

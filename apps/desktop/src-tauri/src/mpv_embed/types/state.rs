@@ -20,7 +20,9 @@ pub struct MpvWallState {
     pub(crate) players: Mutex<BTreeMap<String, MpvWallPlayer>>,
     #[cfg(windows)]
     pub(crate) starting: Mutex<BTreeSet<String>>,
+    #[cfg(windows)]
     pub(crate) statuses: Mutex<BTreeMap<String, MpvWallTileSnapshot>>,
+    #[cfg(windows)]
     pub(crate) generation: Mutex<u64>,
 }
 

@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+#[cfg_attr(not(windows), allow(dead_code))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MpvWallTileRequest {
@@ -13,6 +14,7 @@ pub struct MpvWallTileRequest {
     pub(crate) muted: Option<bool>,
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MpvWallTileLayout {
@@ -23,6 +25,7 @@ pub struct MpvWallTileLayout {
     pub(crate) height: f64,
 }
 
+#[cfg(any(windows, test))]
 #[derive(Debug, Clone)]
 pub(crate) struct NormalizedMpvWallTileRequest {
     pub(crate) id: String,
@@ -32,12 +35,14 @@ pub(crate) struct NormalizedMpvWallTileRequest {
     pub(crate) muted: bool,
 }
 
+#[cfg(any(windows, test))]
 #[derive(Debug, Clone)]
 pub(crate) struct NormalizedMpvWallTileLayout {
     pub(crate) id: String,
     pub(crate) rect: MpvWallTileRect,
 }
 
+#[cfg(any(windows, test))]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct MpvWallTileRect {
     pub(crate) x: f64,

@@ -9,6 +9,7 @@ pub(in crate::mpv_embed) fn create_embed_player(hwnd: i64) -> Result<libmpv2::Mp
     create_embed_player_with_log_subscription(hwnd, true)
 }
 
+#[cfg(windows)]
 pub(in crate::mpv_embed) fn create_embed_player_without_logs(
     hwnd: i64,
 ) -> Result<libmpv2::Mpv, String> {
