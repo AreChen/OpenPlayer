@@ -58,6 +58,7 @@ pub struct MpvWallTileLayout {
 }
 
 #[cfg(any(windows, test))]
+#[cfg_attr(not(windows), allow(dead_code))]
 #[derive(Debug, Clone)]
 pub(crate) struct NormalizedMpvWallTileRequest {
     pub(crate) id: String,

@@ -1,5 +1,7 @@
+#[cfg(windows)]
 use std::{collections::BTreeMap, io::Read};
 
+#[cfg(windows)]
 #[derive(Debug, Clone)]
 pub(in crate::mpv_embed) struct RtspUrl {
     pub(in crate::mpv_embed) host: String,
@@ -7,6 +9,7 @@ pub(in crate::mpv_embed) struct RtspUrl {
     pub(in crate::mpv_embed) request_url: String,
 }
 
+#[cfg(windows)]
 #[derive(Debug)]
 pub(in crate::mpv_embed) struct RtspResponse {
     pub(in crate::mpv_embed) status_line: String,
@@ -14,6 +17,7 @@ pub(in crate::mpv_embed) struct RtspResponse {
     pub(in crate::mpv_embed) body: String,
 }
 
+#[cfg(windows)]
 pub(in crate::mpv_embed) fn parse_rtsp_url(value: &str) -> Option<RtspUrl> {
     let rest = value.strip_prefix("rtsp://")?;
     let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
@@ -49,6 +53,7 @@ pub(in crate::mpv_embed) fn rtsp_rtp_info_timestamp(value: &str) -> Option<u32> 
         .find_map(|part| part.trim().strip_prefix("rtptime=")?.parse::<u32>().ok())
 }
 
+#[cfg(windows)]
 pub(in crate::mpv_embed) fn rtsp_track_url(base_url: &str, sdp: &str) -> String {
     let control = sdp
         .lines()
@@ -66,6 +71,7 @@ pub(in crate::mpv_embed) fn rtsp_track_url(base_url: &str, sdp: &str) -> String 
     }
 }
 
+#[cfg(windows)]
 pub(in crate::mpv_embed) fn parse_rtsp_response(head: &str, body: Vec<u8>) -> RtspResponse {
     let mut lines = head.split("\r\n");
     let status_line = lines.next().unwrap_or_default().to_string();
@@ -82,6 +88,7 @@ pub(in crate::mpv_embed) fn parse_rtsp_response(head: &str, body: Vec<u8>) -> Rt
     }
 }
 
+#[cfg(windows)]
 pub(in crate::mpv_embed) fn read_rtsp_response(
     stream: &mut impl Read,
 ) -> std::io::Result<RtspResponse> {

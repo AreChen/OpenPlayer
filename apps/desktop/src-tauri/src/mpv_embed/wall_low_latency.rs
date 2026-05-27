@@ -53,6 +53,7 @@ pub(in crate::mpv_embed) fn wall_low_latency_tuning_for_url(
     Some(tuning)
 }
 
+#[cfg(windows)]
 pub(in crate::mpv_embed) fn configure_wall_low_latency(
     mpv: &libmpv2::Mpv,
     url: &str,

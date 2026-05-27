@@ -49,6 +49,7 @@ pub(in crate::mpv_embed) fn parse_rtcp_sender_report(packet: &[u8]) -> Option<Rt
     None
 }
 
+#[cfg(windows)]
 pub(in crate::mpv_embed) fn receiver_report_packet(ssrc: u32) -> [u8; 8] {
     let mut packet = [0u8; 8];
     packet[0] = 0x80;
