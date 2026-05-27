@@ -55,6 +55,45 @@ fn normalizes_initial_volume_before_media_load() {
 }
 
 #[test]
+fn startup_snapshots_use_known_state_without_live_mpv_property_reads() {
+    let snapshot = startup_snapshot_for_interactive_open(
+        "https://example.com/live.m3u8",
+        42,
+        37.5,
+        false,
+        "playing",
+    );
+
+    assert_eq!(snapshot.path, "https://example.com/live.m3u8");
+    assert_eq!(snapshot.hwnd, 42);
+    assert_eq!(snapshot.status, "playing");
+    assert!(!snapshot.paused);
+    assert!(!snapshot.ended);
+    assert_eq!(snapshot.position, 0.0);
+    assert_eq!(snapshot.duration, 0.0);
+    assert_eq!(snapshot.fps, 0.0);
+    assert_eq!(snapshot.speed, 1.0);
+    assert_eq!(snapshot.hwdec, "auto-safe");
+    assert_eq!(snapshot.volume, 37.5);
+    assert!(snapshot.tracks.is_empty());
+}
+
+#[test]
+fn startup_snapshots_preserve_requested_pause_status() {
+    let snapshot = startup_snapshot_for_interactive_open(
+        "rtsp://camera.local/stream",
+        0,
+        80.0,
+        true,
+        "paused",
+    );
+
+    assert_eq!(snapshot.status, "paused");
+    assert!(snapshot.paused);
+    assert!(snapshot.video_fill);
+}
+
+#[test]
 fn waits_for_initial_resume_seek_until_duration_and_seekability_are_ready() {
     assert_eq!(
         initial_resume_seek_readiness(120.0, 0.0, true),

@@ -126,6 +126,7 @@ export function buildPlayerOverlayViewPropsFromDomains({
     appearanceState: state.appearanceState,
     activeTheme: settings.activeTheme,
     playerPreferences: state.playerPreferences,
+    pluginRuntimeLogs: state.pluginRuntimeLogs,
     expandedPluginIds: settings.expandedPluginIds,
     shellPreviewFormats: settings.shellPreviewFormats,
     selectedShellPreviewFormats: settings.selectedShellPreviewFormats,

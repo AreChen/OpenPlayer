@@ -1,5 +1,31 @@
 use super::*;
 
+pub(super) fn startup_snapshot_for_interactive_open(
+    path: &str,
+    hwnd: i64,
+    volume: f64,
+    video_fill: bool,
+    fallback_status: &str,
+) -> MpvEmbedSnapshot {
+    let paused = fallback_status == "paused";
+    MpvEmbedSnapshot {
+        path: path.to_string(),
+        hwnd,
+        status: fallback_status.to_string(),
+        ended: false,
+        paused,
+        position: 0.0,
+        duration: 0.0,
+        fps: 0.0,
+        speed: 1.0,
+        hwdec: "auto-safe".to_string(),
+        video_fill,
+        subtitle_delay: 0.0,
+        volume,
+        tracks: Vec::new(),
+    }
+}
+
 impl MpvEmbedPlayer {
     pub(super) fn recording_state(&self) -> MpvRecordingState {
         if let Some(recording) = &self.recording {
@@ -15,6 +41,16 @@ impl MpvEmbedPlayer {
 
     pub(super) fn snapshot(&mut self, hwnd: i64, fallback_status: &str) -> MpvEmbedSnapshot {
         self.drain_events();
+        if self.opening {
+            return startup_snapshot_for_interactive_open(
+                &self.path,
+                hwnd,
+                self.volume,
+                self.video_fill,
+                fallback_status,
+            );
+        }
+
         let raw_paused = self.mpv.get_property::<bool>("pause").unwrap_or(false);
         let pause_guard_active = self
             .force_paused_until

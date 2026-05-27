@@ -4,6 +4,7 @@ export * from "./pluginRuntime/constants";
 export * from "./pluginRuntime/labels";
 export * from "./pluginRuntime/loadOptions";
 export * from "./pluginRuntime/network";
+export * from "./pluginRuntime/permissions";
 export * from "./pluginRuntime/signature";
 export * from "./pluginRuntime/viewDocument";
 export * from "./pluginRuntime/wall";

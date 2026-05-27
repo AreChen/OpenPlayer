@@ -10,7 +10,7 @@ export function buildPluginWorkerSource(source: PluginRuntimeSource) {
 "use strict";
 (() => {
 ${pluginWorkerSandboxSource()}
-${pluginWorkerApiSource()}
+${pluginWorkerApiSource(source)}
 ${pluginWorkerMessageSource(pluginLabel)}
 })();
 ${pluginWorkerBootstrapSource(source.script, source.pluginId)}

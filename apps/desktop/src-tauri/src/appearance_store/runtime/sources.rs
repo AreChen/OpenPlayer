@@ -68,6 +68,7 @@ impl AppearanceStore {
                 entry: entry.to_string(),
                 script,
                 permissions: plugin_permissions(&manifest),
+                events: manifest.runtime.events.clone(),
             });
         }
         runtime_sources.sort_by(|left, right| {

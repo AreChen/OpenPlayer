@@ -6,6 +6,8 @@ pub(in crate::appearance_store) struct PluginRuntime {
     pub(in crate::appearance_store) kind: PluginRuntimeKind,
     pub(in crate::appearance_store) entry: Option<String>,
     pub(in crate::appearance_store) sandbox: Option<String>,
+    #[serde(default)]
+    pub(in crate::appearance_store) events: Vec<String>,
 }
 
 impl Default for PluginRuntime {
@@ -14,6 +16,7 @@ impl Default for PluginRuntime {
             kind: PluginRuntimeKind::Manifest,
             entry: None,
             sandbox: None,
+            events: Vec::new(),
         }
     }
 }
@@ -37,6 +40,7 @@ pub struct PluginRuntimeSource {
     pub(in crate::appearance_store) entry: String,
     pub(in crate::appearance_store) script: String,
     pub(in crate::appearance_store) permissions: Vec<String>,
+    pub(in crate::appearance_store) events: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]

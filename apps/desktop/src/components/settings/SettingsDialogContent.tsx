@@ -16,6 +16,7 @@ export function SettingsDialogContent({
   playerPreferences,
   playbackHistoryLength,
   plugins,
+  pluginRuntimeLogs,
   expandedPluginIds,
   isPickerOpen,
   systemFontFamilies,
@@ -78,6 +79,7 @@ export function SettingsDialogContent({
         t={t}
         locale={locale}
         plugins={plugins}
+        pluginRuntimeLogs={pluginRuntimeLogs}
         expandedPluginIds={expandedPluginIds}
         isPickerOpen={isPickerOpen}
         systemFontFamilies={systemFontFamilies}

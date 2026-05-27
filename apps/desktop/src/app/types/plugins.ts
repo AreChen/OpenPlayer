@@ -40,6 +40,7 @@ export type PluginCapabilityKind =
   | "subtitleStyle"
   | "capture"
   | "streamSource"
+  | "mpvControl"
   | "aiTranscription"
   | "aiTranslation";
 export type PluginSettingKind = "boolean" | "number" | "text" | "select" | "color" | "directory";
@@ -147,6 +148,35 @@ export type PluginRuntimeSource = {
   entry: string;
   script: string;
   permissions: string[];
+  events: PluginRuntimeEventName[];
+};
+
+export type PluginRuntimeEventName =
+  | "app.ready"
+  | "media.opening"
+  | "media.loaded"
+  | "playback.snapshot"
+  | "playback.started"
+  | "playback.paused"
+  | "playback.ended"
+  | "playback.stopped"
+  | "playback.seeked"
+  | "playback.volumeChanged"
+  | "playback.speedChanged"
+  | "tracks.changed"
+  | "theme.changed"
+  | "window.fullscreenChanged"
+  | "plugin.view.opened"
+  | "plugin.view.closed";
+
+export type PluginRuntimeLogLevel = "info" | "warning" | "error";
+
+export type PluginRuntimeLogEntry = {
+  id: string;
+  pluginId: string;
+  level: PluginRuntimeLogLevel;
+  message: string;
+  createdAtMs: number;
 };
 
 export type PluginRuntimeWorkerState = {
@@ -155,6 +185,8 @@ export type PluginRuntimeWorkerState = {
   worker: Worker;
   objectUrl: string;
   permissions: Set<string>;
+  allowedEvents: Set<string>;
+  eventSubscriptions: Set<string>;
   pendingHooks: Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void; timeout: number }>;
   nextHookId: number;
 };

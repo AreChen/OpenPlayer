@@ -1,6 +1,7 @@
 import { runtimeArgsRecord } from "../app/pluginRuntime";
 import { handlePluginDataRuntimeCommand } from "./pluginRuntimeCommands/data";
 import { handlePluginFilesystemRuntimeCommand } from "./pluginRuntimeCommands/filesystem";
+import { handlePluginMpvRuntimeCommand } from "./pluginRuntimeCommands/mpv";
 import { handlePluginPlayerRuntimeCommand } from "./pluginRuntimeCommands/player";
 import { handlePluginPlaylistRuntimeCommand } from "./pluginRuntimeCommands/playlist";
 import {
@@ -13,6 +14,7 @@ import { handlePluginWallRuntimeCommand } from "./pluginRuntimeCommands/wall";
 
 const pluginRuntimeCommandHandlers: PluginRuntimeCommandHandler[] = [
   handlePluginDataRuntimeCommand,
+  handlePluginMpvRuntimeCommand,
   handlePluginWallRuntimeCommand,
   handlePluginUiRuntimeCommand,
   handlePluginFilesystemRuntimeCommand,

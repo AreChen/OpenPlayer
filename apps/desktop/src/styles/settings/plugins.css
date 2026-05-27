@@ -126,6 +126,10 @@
   margin-top: 3px;
 }
 
+.plugin-permissions {
+  width: 100%;
+}
+
 .plugin-technical-summary {
   color: var(--faint);
   font-size: 0.7rem;
@@ -141,6 +145,85 @@
   padding: 3px 8px;
   font-size: 0.72rem;
   line-height: 1;
+}
+
+.plugin-permission-chip {
+  min-height: 22px;
+  border: 1px solid rgba(236, 231, 221, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted);
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.plugin-permission-chip--warning {
+  border-color: color-mix(in srgb, #f4c430 42%, transparent);
+  background: color-mix(in srgb, #f4c430 13%, transparent);
+  color: #f3d77a;
+}
+
+.plugin-permission-chip--danger {
+  border-color: color-mix(in srgb, var(--danger) 50%, transparent);
+  background: color-mix(in srgb, var(--danger) 13%, transparent);
+  color: color-mix(in srgb, var(--danger) 72%, #ffffff);
+}
+
+.plugin-runtime-logs {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.plugin-runtime-logs-heading {
+  display: grid;
+  gap: 3px;
+}
+
+.plugin-runtime-logs-heading span {
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.plugin-runtime-logs-heading small {
+  color: var(--faint);
+  font-size: 0.72rem;
+}
+
+.plugin-runtime-log-list {
+  display: grid;
+  gap: 6px;
+}
+
+.plugin-runtime-log {
+  display: grid;
+  grid-template-columns: minmax(110px, 160px) minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  border: 1px solid rgba(236, 231, 221, 0.08);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.14);
+  padding: 7px 9px;
+}
+
+.plugin-runtime-log--error {
+  border-color: color-mix(in srgb, var(--danger) 36%, transparent);
+}
+
+.plugin-runtime-log span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-runtime-log code {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 0.72rem;
+  white-space: normal;
 }
 
 .plugin-setting-list {

@@ -209,6 +209,10 @@ const mpvOverlayOpenPathMatch = /(?:#\[tauri::command\]\s*)?pub\(crate\)\s+(?:as
 const mpvOverlayOpenPathSource = mpvOverlayOpenPathMatch
   ? extractFunctionAt(tauriRuntimeSource, mpvOverlayOpenPathMatch.index + mpvOverlayOpenPathMatch[0].lastIndexOf("fn"))
   : "";
+const mpvOpenPathForWindowMatch = /fn\s+open_path_for_window\s*\(/.exec(mpvEmbedSource);
+const mpvOpenPathForWindowSource = mpvOpenPathForWindowMatch
+  ? extractFunctionAt(mpvEmbedSource, mpvOpenPathForWindowMatch.index)
+  : "";
 const mpvSnapshotMatch = /fn\s+snapshot\s*\(/.exec(mpvEmbedSource);
 const mpvSnapshotSource = mpvSnapshotMatch ? extractFunctionAt(mpvEmbedSource, mpvSnapshotMatch.index) : "";
 const dragRegionSources = [
@@ -420,6 +424,26 @@ assert.match(appSource, /appearance_plugin_runtime_sources/, "frontend must load
 assert.match(appSource, /buildPluginWorkerSource[\s\S]*new Worker/, "frontend must execute plugin runtime scripts inside Web Workers");
 assert.match(appSource, /globalThis\.fetch\s*=\s*undefined/, "plugin worker prelude must disable direct network APIs before exposing the bridge");
 assert.match(appSource, /globalThis\.openplayer\s*=\s*Object\.freeze/, "plugin worker prelude must expose the sandboxed OpenPlayer bridge");
+assert.match(appSource, /sdkVersion:\s*PLUGIN_SDK_VERSION/, "plugin worker bridge must expose the centralized SDK version");
+assert.match(appSource, /host:\s*Object\.freeze\([\s\S]*version:\s*OPENPLAYER_HOST_VERSION/, "plugin worker bridge must expose host version metadata for compatibility checks");
+assert.match(appSource, /capabilities:\s*Object\.freeze\([\s\S]*has\(capability\)/, "plugin worker bridge must expose capability discovery helpers");
+assert.match(appSource, /mpv:\s*Object\.freeze\([\s\S]*setProperty\(property,\s*value\)/, "plugin worker bridge must expose safe mpv core property writes");
+assert.match(appSource, /mpv:\s*Object\.freeze\([\s\S]*command\(command,\s*args/, "plugin worker bridge must expose safe mpv command execution");
+assert.match(appSource, /filters:\s*Object\.freeze\([\s\S]*add\(filterId,\s*filter,\s*params/, "plugin worker bridge must expose plugin-scoped mpv video filters");
+assert.match(appSource, /mpv_embed_plugin_set_property/, "plugin mpv core property writes must route through the backend allowlist");
+assert.match(appSource, /requireMpvPermission\(permissions,\s*"mpv\.core"\)/, "plugin mpv core commands must enforce declared plugin permissions");
+assert.match(appSource, /pluginPermissionRisk/, "plugin settings must classify plugin permissions by security risk");
+assert.match(appSource, /plugin-permission-chip--danger/, "plugin settings must visibly mark dangerous plugin permissions");
+assert.match(appSource, /pluginRuntimeLogs/, "plugin settings must surface runtime plugin logs and errors");
+assert.match(appSource, /api:\s*Object\.freeze\([\s\S]*compatibility/, "plugin bridge must expose stable API compatibility metadata");
+assert.match(appSource, /events:\s*Object\.freeze\([\s\S]*subscribe\(event\)/, "plugin bridge must expose runtime event subscription helpers");
+assert.match(appSource, /events\.subscribe/, "plugin runtime host must handle dynamic event subscriptions");
+assert.match(appSource, /workerState\.eventSubscriptions/, "plugin runtime events must be filtered by plugin subscriptions");
+assert.match(appSource, /playback\.(started|paused)/, "plugin runtime must broadcast typed playback transition events");
+assert.match(appSource, /audioFilters:\s*Object\.freeze\([\s\S]*add\(filterId,\s*filter,\s*params/, "plugin bridge must expose plugin-scoped mpv audio filters");
+assert.match(appSource, /setAbLoop\(start,\s*end\)/, "plugin bridge must expose AB loop controls");
+assert.match(appSource, /Content-Security-Policy/, "plugin custom views must inject a Content Security Policy");
+assert.match(appSource, /connect-src 'none'/, "plugin custom views must block direct network access");
 assert.match(appSource, /openplayer:request[\s\S]*commandHandler\(command,\s*record\.args,\s*workerState\.permissions,\s*workerState\.pluginId\)/, "plugin runtime bridge must route worker requests through the host command handler");
 assert.match(appSource, /commandHandlerRef[\s\S]*handlePluginRuntimeWorkerMessage/, "plugin runtime host must pass the current command handler into worker message handling");
 assert.match(appSource, /permissions\.has\("media\.openStream"\)/, "plugin runtime host stream commands must enforce declared plugin permissions");
@@ -785,6 +809,8 @@ assert.match(mpvEmbedSource, /force_paused_until/, "frame stepping must guard sn
 assert.match(mpvEmbedSource, /FRAME_STEP_PAUSE_GUARD/, "frame stepping must define a bounded paused-state guard");
 assert.match(mpvEmbedSource, /settle_frame_step_pause/, "frame stepping must wait briefly for mpv to return to paused state");
 assert.match(mpvEmbedSource, /raw_paused\s*\|\|\s*pause_guard_active/, "snapshots must report paused while the frame-step guard is active");
+assert.match(mpvEmbedSource, /fn\s+stop_existing_player_for_replacement\s*\(/, "opening a new media path must explicitly stop the previous mpv player before replacing it");
+assert.match(mpvOpenPathForWindowSource, /stop_existing_player_for_replacement\([\s\S]*create_embed_player/, "open_path_for_window must stop the existing player before creating or loading the replacement player");
 
 assert.doesNotMatch(tauriLibSource, /mod storage\b/, "desktop backend must not restore the removed top-level storage module");
 assert.doesNotMatch(tauriRuntimeSource, /DesktopPlaybackState|DesktopStorageState|playback_command|openplayer_core|openplayer_shared/, "desktop backend must not restore removed playback or storage plumbing");

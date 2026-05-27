@@ -62,10 +62,12 @@ pub(super) fn wall_start_tile_for_app(
     let host = create_wall_video_host_on_main(app, tile.rect)?;
     let mpv = Arc::new(create_embed_player_without_logs(host.wid())?);
     configure_wall_osd(mpv.as_ref());
+    configure_wall_low_latency(mpv.as_ref(), &tile.url, &tile.playback);
     if tile.muted {
         mpv.set_property("volume", 0.0)
             .map_err(|error| format!("mpv wall mute failed: {error}"))?;
     }
+    let telemetry = start_rtsp_receive_telemetry(&tile.url);
     state.insert_player(
         generation,
         MpvWallPlayer {
@@ -75,6 +77,8 @@ pub(super) fn wall_start_tile_for_app(
             rect: tile.rect,
             mpv: Arc::clone(&mpv),
             host,
+            telemetry,
+            playback: tile.playback,
         },
         "loading",
     )?;

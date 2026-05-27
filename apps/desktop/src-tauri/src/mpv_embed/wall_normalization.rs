@@ -43,7 +43,18 @@ pub(super) fn normalize_wall_tile_request(
         title,
         rect: normalize_wall_tile_rect(tile.x, tile.y, tile.width, tile.height)?,
         muted: tile.muted.unwrap_or(true),
+        playback: normalize_wall_playback_options(tile.playback.unwrap_or_default()),
     })
+}
+
+pub(super) fn normalize_wall_playback_options(
+    options: MpvWallPlaybackOptions,
+) -> MpvWallPlaybackOptions {
+    MpvWallPlaybackOptions {
+        latency_mode: options.latency_mode,
+        rtsp_transport: options.rtsp_transport,
+        buffer_ms: options.buffer_ms.map(|value| value.clamp(50, 2_000)),
+    }
 }
 
 pub(super) fn normalize_wall_tile_layouts(

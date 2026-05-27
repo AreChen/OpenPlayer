@@ -7,6 +7,12 @@ use crate::appearance_store::{
 };
 
 pub(super) fn validate_plugin_runtime(runtime: &PluginRuntime) -> Result<(), String> {
+    for event in &runtime.events {
+        if !is_supported_plugin_runtime_event(event) {
+            return Err(format!("unsupported plugin runtime event: {event}"));
+        }
+    }
+
     match runtime.kind {
         PluginRuntimeKind::Manifest => {
             if let Some(entry) = runtime.entry.as_deref() {
@@ -92,7 +98,12 @@ pub(super) fn validate_plugin_view(view: &PluginViewManifest) -> Result<(), Stri
 fn is_supported_capability_kind(kind: &str) -> bool {
     matches!(
         kind,
-        "subtitleStyle" | "capture" | "streamSource" | "aiTranscription" | "aiTranslation"
+        "subtitleStyle"
+            | "capture"
+            | "streamSource"
+            | "mpvControl"
+            | "aiTranscription"
+            | "aiTranslation"
     )
 }
 
@@ -103,11 +114,37 @@ pub(super) fn is_supported_plugin_permission(permission: &str) -> bool {
             | "mpv.loadOptions"
             | "mpv.capture"
             | "mpv.wall"
+            | "mpv.core"
+            | "mpv.filters"
+            | "mpv.osd"
+            | "mpv.scriptMessage"
             | "media.openStream"
             | "filesystem.pick"
             | "filesystem.reveal"
             | "network.request"
             | "ai.transcribe"
             | "ai.translate"
+    )
+}
+
+fn is_supported_plugin_runtime_event(event: &str) -> bool {
+    matches!(
+        event,
+        "app.ready"
+            | "media.opening"
+            | "media.loaded"
+            | "playback.snapshot"
+            | "playback.started"
+            | "playback.paused"
+            | "playback.ended"
+            | "playback.stopped"
+            | "playback.seeked"
+            | "playback.volumeChanged"
+            | "playback.speedChanged"
+            | "tracks.changed"
+            | "theme.changed"
+            | "window.fullscreenChanged"
+            | "plugin.view.opened"
+            | "plugin.view.closed"
     )
 }

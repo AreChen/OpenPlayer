@@ -16,6 +16,7 @@ import type {
   PlatformSupport,
   PlaybackHistoryEntry,
   PlayerPreferences,
+  PluginRuntimeLogEntry,
   TimeDisplayMode,
 } from "../app/types";
 
@@ -47,6 +48,7 @@ export function usePlayerOverlayState() {
   const [recordingState, setRecordingState] =
     useState<MpvRecordingState>(INACTIVE_RECORDING_STATE);
   const [systemFontFamilies, setSystemFontFamilies] = useState<string[]>([]);
+  const [pluginRuntimeLogs, setPluginRuntimeLogs] = useState<PluginRuntimeLogEntry[]>([]);
   const pendingSeekRef = useRef<PendingSeek | null>(null);
   const handledEndedPathRef = useRef<string | null>(null);
   const hardwareDecodingModeRef = useRef<HardwareDecodingMode>("hardware");
@@ -102,6 +104,8 @@ export function usePlayerOverlayState() {
     setRecordingState,
     systemFontFamilies,
     setSystemFontFamilies,
+    pluginRuntimeLogs,
+    setPluginRuntimeLogs,
     pendingSeekRef,
     handledEndedPathRef,
     hardwareDecodingModeRef,

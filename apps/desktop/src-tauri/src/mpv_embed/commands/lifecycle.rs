@@ -29,27 +29,27 @@ pub fn open_path_for_window(
     load_options: Option<MpvLoadOptions>,
 ) -> Result<MpvEmbedSnapshot, String> {
     let path = validate_media_path(&path)?;
+    let path_text = path.to_string_lossy().to_string();
+    let initial_volume = normalize_initial_volume(initial_volume)?;
+    stop_existing_player_for_replacement(state)?;
+
     let host = MpvVideoHost::new(window)?;
     let wid = host.wid();
     let mpv = create_embed_player(wid)?;
     #[cfg(target_os = "macos")]
     let render_context = create_macos_render_context(&mpv, &host)?;
-    let path_text = path.to_string_lossy().to_string();
-    let initial_volume = normalize_initial_volume(initial_volume)?;
 
     mpv.set_property("volume", initial_volume)
         .map_err(|error| format!("mpv initial volume failed: {error}"))?;
     configure_audio_visualizer(&mpv, &path);
     load_media_file_for_interactive_open(&mpv, &path_text, load_options.as_ref())?;
     load_sidecar_subtitles(&mpv, &path);
+    let opening = is_network_stream_media_url(&path_text);
 
     let mut player = state
         .player
         .lock()
         .map_err(|_| "mpv embed state lock failed".to_string())?;
-    if let Some(existing) = player.as_mut() {
-        let _ = stop_recording_for_player(existing);
-    }
     *player = Some(MpvEmbedPlayer {
         #[cfg(target_os = "macos")]
         _render_context: render_context,
@@ -58,6 +58,7 @@ pub fn open_path_for_window(
         path: path_text,
         volume: initial_volume,
         video_fill: false,
+        opening,
         ended: false,
         force_paused_until: None,
         recording: None,
@@ -65,8 +66,18 @@ pub fn open_path_for_window(
     let next_player = player
         .as_mut()
         .ok_or_else(|| "mpv embed player initialization failed".to_string())?;
-    next_player.apply_initial_resume_seek(resume_position);
-    let snapshot = next_player.snapshot(wid, "playing");
+    let snapshot = if opening {
+        startup_snapshot_for_interactive_open(
+            &next_player.path,
+            wid,
+            initial_volume,
+            false,
+            "playing",
+        )
+    } else {
+        next_player.apply_initial_resume_seek(resume_position);
+        next_player.snapshot(wid, "playing")
+    };
 
     Ok(snapshot)
 }

@@ -6,13 +6,14 @@ mod visualizer;
 
 use super::*;
 
+pub(super) use loadfile::is_network_stream_media_url;
 #[cfg(windows)]
 pub(super) use loadfile::load_media_file_async;
 pub(super) use loadfile::load_media_file_for_interactive_open;
 #[cfg(test)]
 pub(super) use loadfile::{
-    is_hls_manifest_media_url, is_network_stream_media_url,
-    legacy_hls_loadfile_args_for_media_path, loadfile_args_for_media_path,
+    is_hls_manifest_media_url, legacy_hls_loadfile_args_for_media_path,
+    loadfile_args_for_media_path,
 };
 #[cfg(test)]
 pub(super) use subtitles::discover_sidecar_subtitles;

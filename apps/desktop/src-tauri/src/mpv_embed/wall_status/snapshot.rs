@@ -26,6 +26,8 @@ pub(in crate::mpv_embed) fn wall_tile_status_snapshot(
         latency_seconds: None,
         buffer_seconds: None,
         bitrate_bps: None,
+        transport_latency_ms: None,
+        transport_latency_source: None,
         message,
     }
 }
@@ -49,6 +51,8 @@ impl MpvWallPlayer {
             latency_seconds: None,
             buffer_seconds: None,
             bitrate_bps: None,
+            transport_latency_ms: None,
+            transport_latency_source: None,
             message,
         }
     }
@@ -91,7 +95,23 @@ pub(in crate::mpv_embed) fn wall_player_snapshot(player: &MpvWallPlayer) -> MpvW
     );
     let buffer_seconds = read_wall_buffer(player.mpv.as_ref());
     let bitrate_bps = read_wall_bitrate(player.mpv.as_ref());
-    update_wall_osd(player.mpv.as_ref(), buffer_seconds, bitrate_bps);
+    let transport_latency = player
+        .telemetry
+        .as_ref()
+        .and_then(|telemetry| telemetry.snapshot());
+    let transport_latency_ms = transport_latency
+        .as_ref()
+        .map(|snapshot| snapshot.latency_ms);
+    let transport_latency_source = transport_latency
+        .as_ref()
+        .map(|snapshot| snapshot.source.to_string());
+    update_wall_osd(
+        player.mpv.as_ref(),
+        buffer_seconds,
+        bitrate_bps,
+        transport_latency_ms,
+        transport_latency_source.as_deref(),
+    );
 
     MpvWallTileSnapshot {
         id: player.id.clone(),
@@ -101,6 +121,8 @@ pub(in crate::mpv_embed) fn wall_player_snapshot(player: &MpvWallPlayer) -> MpvW
         latency_seconds: None,
         buffer_seconds,
         bitrate_bps,
+        transport_latency_ms,
+        transport_latency_source,
         message: None,
     }
 }

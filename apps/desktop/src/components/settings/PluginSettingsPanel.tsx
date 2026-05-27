@@ -3,8 +3,15 @@ import {
   pluginActionPlacementLabel,
   pluginCapabilityLabel,
   pluginPackageKindLabel,
+  pluginPermissionDescription,
+  pluginPermissionRisk,
 } from "../../app/pluginRuntime";
-import type { PluginSettingDefinition, PluginSettingValue, ThemePluginSummary } from "../../app/types";
+import type {
+  PluginRuntimeLogEntry,
+  PluginSettingDefinition,
+  PluginSettingValue,
+  ThemePluginSummary,
+} from "../../app/types";
 import type { AppStrings } from "../../i18n";
 import { PluginSettingControl } from "../plugins/PluginSettingControl";
 
@@ -12,6 +19,7 @@ type PluginSettingsPanelProps = {
   t: AppStrings;
   locale: string;
   plugins: ThemePluginSummary[];
+  pluginRuntimeLogs: PluginRuntimeLogEntry[];
   expandedPluginIds: Set<string>;
   isPickerOpen: boolean;
   systemFontFamilies: string[];
@@ -31,6 +39,7 @@ export function PluginSettingsPanel({
   t,
   locale,
   plugins,
+  pluginRuntimeLogs,
   expandedPluginIds,
   isPickerOpen,
   systemFontFamilies,
@@ -133,7 +142,28 @@ export function PluginSettingsPanel({
               )}
               {(plugin.permissions.length > 0 || plugin.actions.length > 0) && (
                 <div className="plugin-technical-summary">
-                  {plugin.permissions.length > 0 && <span>{t.settings.plugins.permissions}: {plugin.permissions.join(", ")}</span>}
+                  {plugin.permissions.length > 0 && (
+                    <div className="plugin-permissions" aria-label={t.settings.plugins.permissions}>
+                      {plugin.permissions.map((permission) => {
+                        const risk = pluginPermissionRisk(permission);
+                        const riskClass =
+                          risk === "danger"
+                            ? "plugin-permission-chip--danger"
+                            : risk === "warning"
+                              ? "plugin-permission-chip--warning"
+                              : "plugin-permission-chip--normal";
+                        return (
+                          <span
+                            className={`plugin-permission-chip ${riskClass}`}
+                            key={permission}
+                            title={`${t.settings.plugins.permissionRisk[risk]} · ${pluginPermissionDescription(permission, t)}`}
+                          >
+                            {permission}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
                   {plugin.actions.length > 0 && (
                     <span>
                       {t.settings.plugins.actions}:{" "}
@@ -166,6 +196,24 @@ export function PluginSettingsPanel({
           );
         })}
         {!plugins.length && <div className="plugin-empty">{t.settings.plugins.empty}</div>}
+      </div>
+      <div className="plugin-runtime-logs" aria-label={t.settings.plugins.runtimeLogs}>
+        <div className="plugin-runtime-logs-heading">
+          <span>{t.settings.plugins.runtimeLogs}</span>
+          <small>{t.settings.plugins.runtimeLogsDescription}</small>
+        </div>
+        {pluginRuntimeLogs.length > 0 ? (
+          <div className="plugin-runtime-log-list">
+            {pluginRuntimeLogs.slice(0, 8).map((log) => (
+              <div className={`plugin-runtime-log plugin-runtime-log--${log.level}`} key={log.id}>
+                <span>{plugins.find((plugin) => plugin.id === log.pluginId)?.name ?? log.pluginId}</span>
+                <code>{log.message}</code>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="plugin-empty">{t.settings.plugins.runtimeLogsEmpty}</div>
+        )}
       </div>
     </section>
   );

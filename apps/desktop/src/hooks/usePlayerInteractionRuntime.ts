@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import type { MediaItem } from "../app/types";
 import { usePlaybackShortcutActions } from "./usePlaybackShortcutActions";
 import { usePlayerChromeInteractions } from "./usePlayerChromeInteractions";
@@ -112,11 +113,35 @@ export function usePlayerInteractionRuntime({
     toggleAlwaysOnTop: windowActions.toggleAlwaysOnTop,
     openSettingsDialog: settings.openSettingsDialog,
     onError: foundation.reportPlaybackError,
+    onRuntimeLog: (pluginId, level, message) => {
+      state.setPluginRuntimeLogs((logs) => [
+        {
+          id: `${Date.now()}:${pluginId}:${logs.length}`,
+          pluginId,
+          level,
+          message,
+          createdAtMs: Date.now(),
+        },
+        ...logs,
+      ].slice(0, 100));
+    },
     capturePluginScreenshot: captureActions.capturePluginScreenshot,
     startPluginRecording: captureActions.startPluginRecording,
     stopPluginRecording: captureActions.stopPluginRecording,
     togglePluginRecording: captureActions.togglePluginRecording,
   });
+  const previousPluginViewRef = useRef<typeof mediaDomain.activePluginView>(null);
+  useEffect(() => {
+    const previous = previousPluginViewRef.current;
+    const active = mediaDomain.activePluginView;
+    if (previous && (!active || previous.pluginId !== active.pluginId || previous.viewId !== active.viewId)) {
+      pluginRuntime.broadcastPluginRuntimeEvent("plugin.view.closed", previous);
+    }
+    if (active && (!previous || previous.pluginId !== active.pluginId || previous.viewId !== active.viewId)) {
+      pluginRuntime.broadcastPluginRuntimeEvent("plugin.view.opened", active);
+    }
+    previousPluginViewRef.current = active;
+  }, [mediaDomain.activePluginView, pluginRuntime]);
   playback.bindPlayerMpvSessionHandlers({
     applyStoredPluginMpvSettings: settings.applyStoredPluginMpvSettings,
     broadcastPluginRuntimeEvent: pluginRuntime.broadcastPluginRuntimeEvent,

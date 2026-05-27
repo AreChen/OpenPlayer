@@ -134,6 +134,7 @@ export type PlayerAppViewPropsContext = {
   appearanceState: SettingsDialogProps["appearanceState"];
   activeTheme: SettingsDialogProps["activeTheme"];
   playerPreferences: SettingsDialogProps["playerPreferences"];
+  pluginRuntimeLogs: SettingsDialogProps["pluginRuntimeLogs"];
   expandedPluginIds: SettingsDialogProps["expandedPluginIds"];
   shellPreviewFormats: SettingsDialogProps["shellPreviewFormats"];
   selectedShellPreviewFormats: SettingsDialogProps["selectedShellPreviewFormats"];

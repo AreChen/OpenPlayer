@@ -1,6 +1,15 @@
-import type { MpvWallTileLayout, MpvWallTileRequest } from "../types";
-import { runtimeArgsRecord, runtimeStringArg } from "./args";
+import type {
+  MpvWallLatencyMode,
+  MpvWallPlaybackOptions,
+  MpvWallRtspTransport,
+  MpvWallTileLayout,
+  MpvWallTileRequest,
+} from "../types";
+import { runtimeArgsRecord, runtimeNumberArg, runtimeStringArg } from "./args";
 import { MAX_PLUGIN_WALL_TILES } from "./constants";
+
+const WALL_LATENCY_MODES = new Set(["off", "stable", "balanced", "aggressive"]);
+const WALL_RTSP_TRANSPORTS = new Set(["tcp", "udp"]);
 
 type PluginWallFrame = {
   rect: DOMRect;
@@ -73,7 +82,29 @@ export function pluginWallTile(value: unknown, index: number, frame: PluginWallF
     width: tile.width,
     height: tile.height,
     muted: record.muted !== false,
+    playback: pluginWallPlaybackOptions(record.playback),
   };
+}
+
+export function pluginWallPlaybackOptions(value: unknown): MpvWallPlaybackOptions | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const record = runtimeArgsRecord(value);
+  const latencyMode = runtimeStringArg(record, "latencyMode");
+  const rtspTransport = runtimeStringArg(record, "rtspTransport");
+  const bufferMs = runtimeNumberArg(record, "bufferMs");
+  const playback: MpvWallPlaybackOptions = {};
+  if (latencyMode && WALL_LATENCY_MODES.has(latencyMode)) {
+    playback.latencyMode = latencyMode as MpvWallLatencyMode;
+  }
+  if (rtspTransport && WALL_RTSP_TRANSPORTS.has(rtspTransport)) {
+    playback.rtspTransport = rtspTransport as MpvWallRtspTransport;
+  }
+  if (bufferMs !== null) {
+    playback.bufferMs = Math.min(2_000, Math.max(50, Math.round(bufferMs)));
+  }
+  return Object.keys(playback).length ? playback : undefined;
 }
 
 export function pluginWallTileFromFrame(id: string, x: number, y: number, width: number, height: number, frame: PluginWallFrame) {

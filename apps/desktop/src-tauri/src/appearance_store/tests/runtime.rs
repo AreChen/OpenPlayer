@@ -99,9 +99,72 @@ fn accepts_plugin_load_options_permission_for_runtime_hooks() {
 #[test]
 fn accepts_phase_two_plugin_sdk_permissions() {
     assert!(is_supported_plugin_permission("mpv.wall"));
+    assert!(is_supported_plugin_permission("mpv.core"));
+    assert!(is_supported_plugin_permission("mpv.filters"));
+    assert!(is_supported_plugin_permission("mpv.osd"));
+    assert!(is_supported_plugin_permission("mpv.scriptMessage"));
     assert!(is_supported_plugin_permission("network.request"));
     assert!(is_supported_plugin_permission("filesystem.pick"));
     assert!(is_supported_plugin_permission("filesystem.reveal"));
+}
+
+#[test]
+fn imports_mpv_control_plugin_capability_permissions() {
+    let (mut store, directory) = temp_store();
+    let manifest = webview_runtime_plugin_json()
+        .replace(r#""kind": "capture""#, r#""kind": "mpvControl""#)
+        .replace(
+            r#""permissions": ["mpv.capture"]"#,
+            r#""permissions": ["mpv.core", "mpv.filters", "mpv.osd", "mpv.scriptMessage"]"#,
+        );
+
+    let state = store
+        .import_theme_plugin_json(&manifest)
+        .expect("mpv control plugin capability should import");
+    let _ = std::fs::remove_dir_all(&directory);
+
+    let plugin = state
+        .plugins
+        .iter()
+        .find(|plugin| plugin.id == "dev.openplayer.runtime.worker")
+        .expect("plugin should be listed");
+    assert_eq!(
+        plugin.permissions,
+        vec!["mpv.core", "mpv.filters", "mpv.osd", "mpv.scriptMessage"]
+    );
+}
+
+#[test]
+fn imports_runtime_event_subscription_manifest() {
+    let (mut store, directory) = temp_store();
+    let source_directory = directory.join("event-runtime");
+    std::fs::create_dir_all(source_directory.join("dist"))
+        .expect("runtime package directory should be created");
+    let manifest = webview_runtime_plugin_json().replace(
+        r#""sandbox": "openplayer-worker""#,
+        r#""sandbox": "openplayer-worker",
+            "events": ["media.loaded", "playback.started", "theme.changed"]"#,
+    );
+    std::fs::write(source_directory.join("manifest.json"), manifest)
+        .expect("runtime plugin manifest should be written");
+    std::fs::write(
+        source_directory.join("dist").join("plugin.js"),
+        "\"use strict\";",
+    )
+    .expect("runtime plugin script should be written");
+
+    store
+        .import_plugin_directory_path(&source_directory)
+        .expect("runtime event subscriptions should import");
+    let sources = store
+        .plugin_runtime_sources()
+        .expect("runtime sources should include event subscriptions");
+    let _ = std::fs::remove_dir_all(&directory);
+
+    assert_eq!(
+        sources[0].events,
+        vec!["media.loaded", "playback.started", "theme.changed"]
+    );
 }
 
 #[test]
