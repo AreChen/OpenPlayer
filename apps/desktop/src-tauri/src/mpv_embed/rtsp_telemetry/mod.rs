@@ -16,4 +16,6 @@ pub(in crate::mpv_embed) use rtp::parse_rtp_header;
 pub(in crate::mpv_embed) use rtsp::rtsp_rtp_info_timestamp;
 #[cfg(windows)]
 pub(in crate::mpv_embed) use session::{RtspTelemetryHandle, start_rtsp_receive_telemetry};
-pub(in crate::mpv_embed) use state::{RtspTelemetrySnapshot, RtspTelemetryState};
+#[cfg(windows)]
+pub(in crate::mpv_embed) use state::RtspTelemetrySnapshot;
+pub(in crate::mpv_embed) use state::RtspTelemetryState;
