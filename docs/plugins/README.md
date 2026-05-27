@@ -20,6 +20,10 @@ model. Keep official plugin implementations in `openplayer-plugins`; keep only
 small host test fixtures in this repository when integration tests need a
 manifest.
 
+For current SDK 1.5 runtime usage, examples, permissions, events, mpv controls,
+custom views, and verification commands, read
+[`sdk-1.5-developer-guide.md`](./sdk-1.5-developer-guide.md).
+
 ## Current Capabilities
 
 - Install `.opplugin` packages from the Plugins settings page.
@@ -42,6 +46,9 @@ manifest.
   `player.openStreamDialog`.
 - Let capture plugins start and stop lightweight mpv native stream recording
   through permissioned host commands.
+- Let advanced plugins use permissioned, allowlisted mpv core controls for
+  safe properties, commands, OSD text, script messages, and plugin-scoped video
+  filters.
 - Execute optional `webviewJs` runtime scripts in a Web Worker sandbox with no
   DOM, Tauri API, local filesystem access, or direct host privileges.
 - Send playback and media lifecycle events to runtime plugins.
@@ -78,7 +85,7 @@ from the Plugins settings page.
   "name": "Subtitle Styler",
   "version": "1.0.0",
   "apiVersion": "1",
-  "minHostVersion": "1.3.2",
+  "minHostVersion": "1.5.0",
   "author": "OpenPlayer Team",
   "updateUrl": "https://github.com/AreChen/openplayer-plugins/releases",
   "description": "Subtitle typography controls for OpenPlayer.",
@@ -176,7 +183,7 @@ Theme plugins remain supported:
   "name": "Ocean Theme Pack",
   "version": "1.0.0",
   "apiVersion": "1",
-  "minHostVersion": "1.3.2",
+  "minHostVersion": "1.5.0",
   "author": "OpenPlayer Team",
   "updateUrl": "https://github.com/AreChen/openplayer-plugins/releases",
   "description": "Ocean themes for OpenPlayer.",
@@ -224,19 +231,30 @@ Reserved runtime kinds:
 "runtime": {
   "kind": "webviewJs",
   "entry": "dist/plugin.js",
-  "sandbox": "openplayer-worker"
+  "sandbox": "openplayer-worker",
+  "events": ["media.loaded", "playback.snapshot"]
 }
 ```
 
 The runtime entry must be a relative path inside the installed plugin package.
 The current script size limit is 1 MiB.
+`events` is optional, but runtime plugins only receive non-lifecycle event
+payloads that they declare here. Plugins can then enable or disable those
+declared subscriptions at runtime with `openplayer.events.subscribe()` and
+`openplayer.events.unsubscribe()`.
 
 Inside the worker, plugins use the injected `openplayer` bridge:
 
 ```js
 openplayer.onReady(async () => {
+  if (openplayer.capabilities.has("mpv.wall")) {
+    console.log(`OpenPlayer ${openplayer.host.version} supports native wall tiles`);
+    console.log(`SDK compatibility: ${openplayer.api.compatibility.compatibility}`);
+  }
+
   const launchCount = (await openplayer.storage.get("launch.count")) ?? 0;
   await openplayer.storage.set("launch.count", Number(launchCount) + 1);
+  await openplayer.events.subscribe("playback.snapshot");
 });
 
 openplayer.onEvent((event, payload) => {
@@ -262,6 +280,14 @@ openplayer.commands.register("plugin.open-network-stream", async () => {
 });
 ```
 
+SDK 1.5.0 exposes `openplayer.host`, `openplayer.api`, and
+`openplayer.capabilities` in both worker runtimes and custom views.
+`host.version` identifies the running OpenPlayer build.
+`api.compatibility` gives plugins a stable compatibility block for feature
+gating. `capabilities.list()` reports host-supported API families, while
+`capabilities.permissions()` reports the permissions granted to the current
+plugin from its manifest.
+
 Supported worker bridge requests match the built-in action command allowlist.
 Permissioned requests such as `player.captureScreenshot` and `player.openStream`
 are rejected unless the plugin manifest declares the required permission.
@@ -283,9 +309,26 @@ decode directly, such as RTSP and RTMP. `layout` accepts viewport-relative tile
 rectangles and is safe to call from debounced or throttled resize handlers.
 `setVisible(false)` temporarily hides the native wall so plugin-owned dialogs can
 receive pointer input above native video child windows.
+Wall snapshots report native buffer and bitrate telemetry, plus
+`transportLatencyMs`/`transportLatencySource` when the host can bind the
+displayed frame to transport timing.
+`player.wall.open` accepts optional per-tile `playback` tuning for native RTSP
+tiles. Runtime plugins can choose `latencyMode` (`off`, `stable`, `balanced`,
+or `aggressive`), `rtspTransport` (`tcp` or `udp`), and a bounded `bufferMs`
+target; the host validates these values before applying mpv options.
 WebRTC/WHEP plugins should render browser video tiles inside their custom view
 and use `network.request` for WHEP HTTP signaling when they need host-mediated
 requests.
+`openplayer.mpv` exposes a broader but still allowlisted mpv core surface.
+`getProperty`, `setProperty`, and generic safe commands require `mpv.core`.
+`showText` requires `mpv.osd`; `scriptMessage` requires `mpv.scriptMessage`;
+`filters.add`, `filters.remove`, `audioFilters.add`, and
+`audioFilters.remove` require `mpv.filters`. `setAbLoop` and `clearAbLoop`
+require `mpv.core`. The backend validates property names, value types, numeric
+ranges, allowed commands, and plugin-owned filter labels before sending
+anything to libmpv. This API intentionally does not expose raw `loadfile`,
+shell-like commands, arbitrary filter graphs, or unsafe process/configuration
+properties.
 `plugin.storage.get`, `plugin.storage.set`, `plugin.storage.remove`, and
 `plugin.storage.list` provide redb-backed plugin-private JSON storage. Storage
 keys are namespaced by plugin ID and removed when the plugin is uninstalled.
@@ -304,8 +347,11 @@ Runtime commands can open plugin-owned custom views with
 `openplayer.ui.openView("view-id")`. Custom views are static HTML files inside
 the installed plugin package and receive a smaller `openplayer` bridge for
 settings, plugin storage, host-mediated HTTP(S) requests, toasts, and closing
-the view. View bridges also expose `openplayer.player.wall` for plugins that
-render a custom control surface above native mpv wall tiles.
+the view. OpenPlayer injects a restrictive Content Security Policy into custom
+views, including `connect-src 'none'`, so HTTP(S) requests should go through
+`openplayer.network.request` instead of direct browser network APIs. View
+bridges also expose `openplayer.player.wall` and `openplayer.mpv` for plugins
+that render a custom control surface above native mpv wall tiles.
 
 For authoring TypeScript plugins, use the `@openplayer/plugin-sdk` types from
 the official `openplayer-plugins` repository. Runtime plugins do not need to
@@ -321,6 +367,7 @@ capability kinds:
 - `subtitleStyle`
 - `capture`
 - `streamSource`
+- `mpvControl`
 - `aiTranscription`
 - `aiTranslation`
 
@@ -330,6 +377,10 @@ Supported permission declarations:
 - `mpv.loadOptions`
 - `mpv.capture`
 - `mpv.wall`
+- `mpv.core`
+- `mpv.filters`
+- `mpv.osd`
+- `mpv.scriptMessage`
 - `media.openStream`
 - `filesystem.pick`
 - `filesystem.reveal`

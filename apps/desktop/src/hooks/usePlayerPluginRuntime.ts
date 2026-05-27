@@ -27,6 +27,7 @@ type UsePlayerPluginRuntimeOptions = PluginRuntimeCommandContext & {
   loopMode: LoopMode;
   timeDisplayMode: TimeDisplayMode;
   onError: (error: unknown) => void;
+  onRuntimeLog: (pluginId: string, level: "info" | "warning" | "error", message: string) => void;
   capturePluginScreenshot: PluginCaptureAction;
   startPluginRecording: PluginCaptureAction;
   stopPluginRecording: PluginCaptureAction;
@@ -45,6 +46,7 @@ export function usePlayerPluginRuntime({
   loopMode,
   timeDisplayMode,
   onError,
+  onRuntimeLog,
   capturePluginScreenshot,
   startPluginRecording,
   stopPluginRecording,
@@ -95,6 +97,7 @@ export function usePlayerPluginRuntime({
       },
     }),
     pluginViewFrameRef,
+    onRuntimeLog,
   });
   const pluginActions = usePluginActions({
     appearanceState,

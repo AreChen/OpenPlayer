@@ -41,13 +41,20 @@ mod player_normalization;
 mod player_resume;
 mod player_snapshot;
 mod player_tracks;
+mod plugin_core;
 mod plugin_properties;
+#[cfg(any(windows, test))]
+mod rtsp_telemetry;
+#[cfg(any(windows, test))]
+mod transport_latency;
 mod types;
 mod video_host;
 mod video_output;
 mod wall;
 #[cfg(windows)]
 mod wall_hosts;
+#[cfg(any(windows, test))]
+mod wall_low_latency;
 #[cfg(any(windows, test))]
 mod wall_normalization;
 #[cfg(any(windows, test))]
@@ -69,8 +76,14 @@ use player_events::*;
 use player_normalization::*;
 #[cfg(test)]
 use player_resume::*;
+use player_snapshot::*;
 use player_tracks::*;
+use plugin_core::*;
 use plugin_properties::*;
+#[cfg(any(windows, test))]
+use rtsp_telemetry::*;
+#[cfg(any(windows, test))]
+use transport_latency::*;
 pub(crate) use types::*;
 #[cfg(test)]
 use video_host::*;
@@ -78,6 +91,8 @@ use video_output::*;
 use wall::*;
 #[cfg(windows)]
 use wall_hosts::*;
+#[cfg(any(windows, test))]
+use wall_low_latency::*;
 #[cfg(any(windows, test))]
 use wall_normalization::*;
 #[cfg(any(windows, test))]

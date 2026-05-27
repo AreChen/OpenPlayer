@@ -35,16 +35,36 @@ pub(in crate::mpv_embed) fn format_wall_bitrate(bits_per_second: Option<f64>) ->
     }
 }
 
+#[cfg(any(windows, test))]
+pub(in crate::mpv_embed) fn format_wall_transport_latency(
+    latency_ms: Option<f64>,
+    source: Option<&str>,
+) -> Option<String> {
+    let latency_ms = latency_ms.filter(|value| value.is_finite() && *value >= 0.0)?;
+    match source {
+        Some(crate::mpv_embed::RTSP_RECEIVE_LATENCY_SOURCE) => {
+            Some(format!("RTCP {} ms", latency_ms.round() as i64))
+        }
+        _ => None,
+    }
+}
+
 #[cfg(windows)]
 pub(in crate::mpv_embed) fn update_wall_osd(
     mpv: &libmpv2::Mpv,
     buffer_seconds: Option<f64>,
     bitrate_bps: Option<f64>,
+    transport_latency_ms: Option<f64>,
+    transport_latency_source: Option<&str>,
 ) {
-    let text = format!(
-        "BUF {} · {}",
-        format_wall_buffer_millis(buffer_seconds),
-        format_wall_bitrate(bitrate_bps)
-    );
+    let mut parts = Vec::new();
+    if let Some(latency) =
+        format_wall_transport_latency(transport_latency_ms, transport_latency_source)
+    {
+        parts.push(latency);
+    }
+    parts.push(format!("BUF {}", format_wall_buffer_millis(buffer_seconds)));
+    parts.push(format_wall_bitrate(bitrate_bps));
+    let text = parts.join(" · ");
     let _ = mpv.command("show-text", &[text.as_str(), "1500", "1"]);
 }

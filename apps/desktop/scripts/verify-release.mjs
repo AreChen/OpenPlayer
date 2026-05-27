@@ -42,6 +42,7 @@ const cargoLock = await readText("Cargo.lock");
 const packageJson = await readJson("apps/desktop/package.json");
 const packageLock = await readJson("apps/desktop/package-lock.json");
 const tauriConfig = await readJson("apps/desktop/src-tauri/tauri.conf.json");
+const pluginRuntimeConstants = await readText("apps/desktop/src/app/pluginRuntime/constants.ts");
 
 const versions = new Map([
   ["Cargo workspace", matchVersion(workspaceToml, /\[workspace\.package\][\s\S]*?^version = "([^"]+)"$/m, "Cargo workspace")],
@@ -50,6 +51,8 @@ const versions = new Map([
   ["package-lock.json", packageLock.version],
   ["package-lock root package", packageLock.packages?.[""]?.version],
   ["tauri.conf.json", tauriConfig.version],
+  ["plugin runtime SDK", matchVersion(pluginRuntimeConstants, /PLUGIN_SDK_VERSION = "([^"]+)"/, "plugin runtime SDK")],
+  ["plugin runtime host", matchVersion(pluginRuntimeConstants, /OPENPLAYER_HOST_VERSION = "([^"]+)"/, "plugin runtime host")],
 ]);
 
 const uniqueVersions = new Set(versions.values());

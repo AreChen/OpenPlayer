@@ -1,12 +1,34 @@
 import type { ThemePluginSummary, ThemeTokens } from "../types";
-import { PLUGIN_VIEW_BRIDGE_ID } from "./constants";
+import {
+  OPENPLAYER_API_COMPATIBILITY,
+  OPENPLAYER_HOST_CAPABILITIES,
+  OPENPLAYER_HOST_VERSION,
+  PLUGIN_SDK_VERSION,
+  PLUGIN_VIEW_BRIDGE_ID,
+} from "./constants";
 
 export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary, locale: string, theme: ThemeTokens) {
+  const viewCsp = [
+    "default-src 'none'",
+    "script-src 'unsafe-inline'",
+    "style-src 'unsafe-inline'",
+    "img-src data: blob:",
+    "media-src data: blob:",
+    "font-src data:",
+    "connect-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+  ].join("; ");
   const bridge = `
 <script id="${PLUGIN_VIEW_BRIDGE_ID}">
 (() => {
   "use strict";
   const pluginId = ${JSON.stringify(plugin.id)};
+  const PLUGIN_SDK_VERSION = ${JSON.stringify(PLUGIN_SDK_VERSION)};
+  const OPENPLAYER_HOST_VERSION = ${JSON.stringify(OPENPLAYER_HOST_VERSION)};
+  const OPENPLAYER_HOST_CAPABILITIES = Object.freeze(${JSON.stringify(OPENPLAYER_HOST_CAPABILITIES)});
+  const OPENPLAYER_PLUGIN_PERMISSIONS = Object.freeze(${JSON.stringify(plugin.permissions)});
+  const OPENPLAYER_API_COMPATIBILITY = Object.freeze(${JSON.stringify(OPENPLAYER_API_COMPATIBILITY)});
   const pending = new Map();
   let nextRequestId = 1;
   const requestHost = (command, args = {}) => {
@@ -36,9 +58,30 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
     }
   });
   window.openplayer = Object.freeze({
-    sdkVersion: "1.0.0",
+    sdkVersion: PLUGIN_SDK_VERSION,
     locale: ${JSON.stringify(locale)},
     theme: Object.freeze(${JSON.stringify(theme)}),
+    api: Object.freeze({
+      compatibility: Object.freeze(OPENPLAYER_API_COMPATIBILITY),
+    }),
+    host: Object.freeze({
+      name: "OpenPlayer",
+      version: OPENPLAYER_HOST_VERSION,
+    }),
+    capabilities: Object.freeze({
+      list() {
+        return [...OPENPLAYER_HOST_CAPABILITIES];
+      },
+      has(capability) {
+        return typeof capability === "string" && OPENPLAYER_HOST_CAPABILITIES.includes(capability);
+      },
+      permissions() {
+        return [...OPENPLAYER_PLUGIN_PERMISSIONS];
+      },
+      hasPermission(permission) {
+        return typeof permission === "string" && OPENPLAYER_PLUGIN_PERMISSIONS.includes(permission);
+      },
+    }),
     request: requestHost,
     storage: Object.freeze({
       get(key) {
@@ -78,6 +121,45 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
         },
       }),
     }),
+    mpv: Object.freeze({
+      getProperty(property) {
+        return requestHost("mpv.getProperty", { property });
+      },
+      setProperty(property, value) {
+        return requestHost("mpv.setProperty", { property, value });
+      },
+      command(command, args = []) {
+        return requestHost("mpv.command", { command, args });
+      },
+      showText(text, options = {}) {
+        return requestHost("mpv.showText", { ...options, text });
+      },
+      scriptMessage(...args) {
+        return requestHost("mpv.scriptMessage", { args });
+      },
+      filters: Object.freeze({
+        add(filterId, filter, params = {}) {
+          return requestHost("mpv.filters.add", { filterId, filter, params });
+        },
+        remove(filterId) {
+          return requestHost("mpv.filters.remove", { filterId });
+        },
+      }),
+      audioFilters: Object.freeze({
+        add(filterId, filter, params = {}) {
+          return requestHost("mpv.audioFilters.add", { filterId, filter, params });
+        },
+        remove(filterId) {
+          return requestHost("mpv.audioFilters.remove", { filterId });
+        },
+      }),
+      setAbLoop(start, end) {
+        return requestHost("mpv.setAbLoop", { start, end });
+      },
+      clearAbLoop() {
+        return requestHost("mpv.clearAbLoop");
+      },
+    }),
     ui: Object.freeze({
       toast(message, options = {}) {
         return requestHost("ui.toast", { ...options, message });
@@ -93,6 +175,7 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
   window.dispatchEvent(new CustomEvent("openplayer:ready", { detail: window.openplayer }));
 })();
 </script>`;
+  const csp = `<meta http-equiv="Content-Security-Policy" content="${viewCsp}">`;
   const style = `
 <style>
 :root {
@@ -108,7 +191,7 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
   --op-control: ${theme.control};
 }
 </style>`;
-  const injection = `${style}\n${bridge}`;
+  const injection = `${csp}\n${style}\n${bridge}`;
   if (/<\/head>/i.test(html)) {
     return html.replace(/<\/head>/i, `${injection}\n</head>`);
   }

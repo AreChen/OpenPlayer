@@ -3,9 +3,8 @@ use super::*;
 pub(super) fn handle_mpv_event(event: libmpv2::Result<Event<'_>>) -> MpvEventEffect {
     match event {
         Ok(Event::EndFile(mpv_end_file_reason::Eof)) => MpvEventEffect::Ended,
-        Ok(Event::StartFile | Event::FileLoaded | Event::Seek | Event::PlaybackRestart) => {
-            MpvEventEffect::Active
-        }
+        Ok(Event::FileLoaded | Event::PlaybackRestart) => MpvEventEffect::Loaded,
+        Ok(Event::StartFile | Event::Seek) => MpvEventEffect::Active,
         Ok(Event::LogMessage {
             prefix,
             level,
@@ -45,7 +44,12 @@ impl MpvEmbedPlayer {
             MpvEventEffect::Active => {
                 self.ended = false;
             }
+            MpvEventEffect::Loaded => {
+                self.opening = false;
+                self.ended = false;
+            }
             MpvEventEffect::Ended => {
+                self.opening = false;
                 self.ended = true;
                 let _ = stop_recording_for_player(self);
             }

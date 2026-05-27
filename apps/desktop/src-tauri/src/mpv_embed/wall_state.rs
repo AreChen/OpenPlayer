@@ -43,6 +43,23 @@ impl MpvWallState {
             return Ok(false);
         }
 
+        let players = self
+            .players
+            .lock()
+            .map_err(|_| "mpv wall state lock failed".to_string())?;
+        if players.len() == tiles.len()
+            && tiles.iter().all(|tile| {
+                players.get(&tile.id).is_some_and(|player| {
+                    player.url == tile.url && player.playback == tile.playback
+                })
+            })
+        {
+            return Ok(true);
+        }
+        if !players.is_empty() {
+            return Ok(false);
+        }
+
         Ok(tiles.iter().all(|tile| {
             statuses
                 .get(&tile.id)

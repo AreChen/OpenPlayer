@@ -1,4 +1,5 @@
 use super::*;
+use std::collections::BTreeMap;
 
 #[test]
 fn wall_tile_requests_accept_rtsp_rtmp_http_and_hls_streams() {
@@ -19,6 +20,7 @@ fn wall_tile_requests_accept_rtsp_rtmp_http_and_hls_streams() {
             width: 0.5,
             height: 0.5,
             muted: Some(true),
+            playback: None,
         };
 
         let normalized = normalize_wall_tile_request(tile).unwrap();
@@ -73,6 +75,7 @@ fn wall_open_initial_snapshots_cover_every_tile_before_players_start() {
             width: 0.5,
             height: 0.5,
             muted: Some(true),
+            playback: None,
         },
         MpvWallTileRequest {
             id: "rtmp-two".to_string(),
@@ -83,6 +86,7 @@ fn wall_open_initial_snapshots_cover_every_tile_before_players_start() {
             width: 0.5,
             height: 0.5,
             muted: Some(true),
+            playback: None,
         },
     ])
     .unwrap();
@@ -97,6 +101,27 @@ fn wall_open_initial_snapshots_cover_every_tile_before_players_start() {
     );
     assert_eq!(snapshots[0].id, "rtsp-one");
     assert_eq!(snapshots[1].id, "rtmp-two");
+}
+
+#[test]
+fn wall_initial_snapshots_do_not_claim_transport_latency() {
+    let tiles = normalize_wall_tile_requests(vec![MpvWallTileRequest {
+        id: "rtsp-one".to_string(),
+        url: "rtsp://example.test/live/one".to_string(),
+        title: Some("One".to_string()),
+        x: 0.0,
+        y: 0.0,
+        width: 1.0,
+        height: 1.0,
+        muted: Some(true),
+        playback: None,
+    }])
+    .unwrap();
+
+    let snapshots = wall_initial_snapshots(&tiles);
+
+    assert_eq!(snapshots[0].transport_latency_ms, None);
+    assert_eq!(snapshots[0].transport_latency_source, None);
 }
 
 #[test]
@@ -135,6 +160,106 @@ fn wall_osd_formats_bitrate_compactly() {
 }
 
 #[test]
+fn wall_osd_includes_transport_latency_when_available() {
+    assert_eq!(
+        format_wall_transport_latency(Some(595.2), Some(RTSP_RECEIVE_LATENCY_SOURCE)),
+        Some("RTCP 595 ms".to_string())
+    );
+    assert_eq!(
+        format_wall_transport_latency(None, Some(RTSP_RECEIVE_LATENCY_SOURCE)),
+        None
+    );
+    assert_eq!(format_wall_transport_latency(Some(12.0), None), None);
+}
+
+#[test]
+fn wall_low_latency_tuning_only_targets_rtsp_streams() {
+    let options = MpvWallPlaybackOptions {
+        latency_mode: Some(MpvWallLatencyMode::Balanced),
+        rtsp_transport: Some(MpvWallRtspTransport::Tcp),
+        buffer_ms: Some(500),
+    };
+
+    assert!(wall_low_latency_tuning_for_url("rtsp://example.test/live", &options).is_some());
+    assert!(wall_low_latency_tuning_for_url("rtsps://example.test/live", &options).is_some());
+    assert!(wall_low_latency_tuning_for_url("rtmp://example.test/live", &options).is_none());
+    assert!(wall_low_latency_tuning_for_url("https://example.test/live.m3u8", &options).is_none());
+    assert!(wall_low_latency_tuning_for_url("C:\\Media\\clip.mp4", &options).is_none());
+    assert!(
+        wall_low_latency_tuning_for_url(
+            "rtsp://example.test/live",
+            &MpvWallPlaybackOptions::default()
+        )
+        .is_none()
+    );
+}
+
+#[test]
+fn wall_balanced_latency_tuning_keeps_decoder_friendly_buffers() {
+    let options = MpvWallPlaybackOptions {
+        latency_mode: Some(MpvWallLatencyMode::Balanced),
+        rtsp_transport: Some(MpvWallRtspTransport::Tcp),
+        buffer_ms: Some(500),
+    };
+    let tuning = wall_low_latency_tuning_for_url("rtsp://example.test/live", &options).unwrap();
+    let mut properties = BTreeMap::new();
+    for action in tuning {
+        let WallLowLatencyTuning::SetProperty(name, value) = action;
+        properties.insert(name, value);
+    }
+
+    assert_eq!(properties.get("cache").map(String::as_str), Some("no"));
+    assert_eq!(
+        properties.get("cache-pause").map(String::as_str),
+        Some("no")
+    );
+    assert_eq!(
+        properties.get("demuxer-readahead-secs").map(String::as_str),
+        Some("0.5")
+    );
+    assert_eq!(
+        properties.get("demuxer-max-bytes").map(String::as_str),
+        Some("4194304")
+    );
+    assert_eq!(
+        properties.get("demuxer-max-back-bytes").map(String::as_str),
+        Some("0")
+    );
+    let lavf_options = properties.get("demuxer-lavf-o").unwrap();
+    assert!(!lavf_options.contains("fflags=nobuffer"));
+    assert!(lavf_options.contains("flags=low_delay"));
+    assert!(lavf_options.contains("rtsp_transport=tcp"));
+    assert!(!lavf_options.contains("rtsp_transport=udp"));
+}
+
+#[test]
+fn wall_aggressive_latency_tuning_uses_lower_but_smooth_buffers() {
+    let options = MpvWallPlaybackOptions {
+        latency_mode: Some(MpvWallLatencyMode::Aggressive),
+        rtsp_transport: Some(MpvWallRtspTransport::Udp),
+        buffer_ms: Some(300),
+    };
+    let tuning = wall_low_latency_tuning_for_url("rtsp://example.test/live", &options).unwrap();
+    let mut properties = BTreeMap::new();
+    for action in tuning {
+        let WallLowLatencyTuning::SetProperty(name, value) = action;
+        properties.insert(name, value);
+    }
+
+    assert_eq!(
+        properties.get("demuxer-readahead-secs").map(String::as_str),
+        Some("0.3")
+    );
+    assert_eq!(
+        properties.get("demuxer-max-bytes").map(String::as_str),
+        Some("2097152")
+    );
+    let lavf_options = properties.get("demuxer-lavf-o").unwrap();
+    assert!(!lavf_options.contains("fflags=nobuffer"));
+    assert!(lavf_options.contains("rtsp_transport=udp"));
+}
+
+#[test]
 fn wall_request_ids_are_unique_per_generation_and_tile() {
     assert_eq!(wall_request_id(7, 0), 7_001);
     assert_eq!(wall_request_id(7, 1), 7_002);
@@ -154,6 +279,7 @@ fn wall_open_reuses_same_tile_set_without_resetting_generation() {
         width: 1.0,
         height: 1.0,
         muted: Some(true),
+        playback: None,
     }])
     .unwrap();
 

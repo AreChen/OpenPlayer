@@ -19,7 +19,9 @@ export function broadcastPluginRuntimeEvent(
   payload: unknown,
 ) {
   for (const workerState of workers) {
-    workerState.worker.postMessage({ type: "openplayer:event", event, payload });
+    if (event === "app.ready" || workerState.eventSubscriptions.has(event)) {
+      workerState.worker.postMessage({ type: "openplayer:event", event, payload });
+    }
   }
 }
 

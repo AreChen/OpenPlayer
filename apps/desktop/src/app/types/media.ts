@@ -61,6 +61,17 @@ export type MpvWallTileRequest = {
   width: number;
   height: number;
   muted?: boolean;
+  playback?: MpvWallPlaybackOptions;
+};
+
+export type MpvWallLatencyMode = "off" | "stable" | "balanced" | "aggressive";
+
+export type MpvWallRtspTransport = "tcp" | "udp";
+
+export type MpvWallPlaybackOptions = {
+  latencyMode?: MpvWallLatencyMode;
+  rtspTransport?: MpvWallRtspTransport;
+  bufferMs?: number;
 };
 
 export type MpvWallTileLayout = {
@@ -79,5 +90,9 @@ export type MpvWallTileSnapshot = {
   latencySeconds: number | null;
   bufferSeconds: number | null;
   bitrateBps: number | null;
+  transportLatencyMs: number | null;
+  transportLatencySource: string | null;
   message: string | null;
 };
+
+export type MpvCorePropertyValue = boolean | number | string;

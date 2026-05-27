@@ -10,7 +10,9 @@ use std::{
 use super::MacosMpvRenderContext;
 use super::{MpvRecordingSession, MpvVideoHost};
 #[cfg(windows)]
-use super::{MpvWallTileRect, MpvWallTileSnapshot, VideoHostRect};
+use super::{MpvWallPlaybackOptions, MpvWallTileRect, MpvWallTileSnapshot, VideoHostRect};
+#[cfg(windows)]
+use crate::mpv_embed::RtspTelemetryHandle;
 
 #[derive(Default)]
 pub struct MpvEmbedState {
@@ -37,6 +39,7 @@ pub(crate) struct MpvEmbedPlayer {
     pub(crate) path: String,
     pub(crate) volume: f64,
     pub(crate) video_fill: bool,
+    pub(crate) opening: bool,
     pub(crate) ended: bool,
     pub(crate) force_paused_until: Option<Instant>,
     pub(crate) recording: Option<MpvRecordingSession>,
@@ -50,6 +53,8 @@ pub(crate) struct MpvWallPlayer {
     pub(crate) rect: MpvWallTileRect,
     pub(crate) mpv: Arc<libmpv2::Mpv>,
     pub(crate) host: MpvVideoHost,
+    pub(in crate::mpv_embed) telemetry: Option<RtspTelemetryHandle>,
+    pub(in crate::mpv_embed) playback: MpvWallPlaybackOptions,
 }
 
 #[cfg(windows)]
@@ -70,5 +75,6 @@ pub(crate) enum InitialResumeSeekReadiness {
 pub(crate) enum MpvEventEffect {
     None,
     Active,
+    Loaded,
     Ended,
 }

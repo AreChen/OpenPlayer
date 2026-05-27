@@ -27,6 +27,14 @@ type RefValue<T> = {
 
 type SetValue<T> = (value: T) => void;
 
+type PlaybackEventSnapshot = {
+  path: string | null;
+  playing: boolean;
+  volume: number;
+  speed: number;
+  tracks: string;
+};
+
 type ApplyMpvSnapshotOptions = {
   snapshot: MpvSnapshot;
   forceHistoryWrite?: boolean;
@@ -34,6 +42,7 @@ type ApplyMpvSnapshotOptions = {
   handledEndedPathRef: RefValue<string | null>;
   hardwareDecodingModeRef: RefValue<HardwareDecodingMode>;
   previousAudibleVolumeRef: RefValue<number>;
+  previousPlaybackEventRef: RefValue<PlaybackEventSnapshot | null>;
   setDuration: SetValue<number>;
   setIsPlaying: SetValue<boolean>;
   setFramesPerSecond: SetValue<number>;
@@ -58,6 +67,7 @@ export function applyMpvSnapshotToPlaybackState({
   handledEndedPathRef,
   hardwareDecodingModeRef,
   previousAudibleVolumeRef,
+  previousPlaybackEventRef,
   setDuration,
   setIsPlaying,
   setFramesPerSecond,
@@ -78,6 +88,7 @@ export function applyMpvSnapshotToPlaybackState({
   const snapshotDuration = Number.isFinite(snapshot.duration) ? snapshot.duration : 0;
   const snapshotSpeed = clampPlaybackSpeed(snapshot.speed);
   const pendingSeek = pendingSeekRef.current;
+  let confirmedSeekTarget: number | null = null;
   const nextIsPlaying = !snapshot.paused && snapshot.status === "playing";
   const snapshotHwdecMode = hwdecModeFromSnapshot(snapshot.hwdec);
 
@@ -105,6 +116,9 @@ export function applyMpvSnapshotToPlaybackState({
       return;
     }
 
+    if (isConfirmed) {
+      confirmedSeekTarget = pendingSeek.target;
+    }
     pendingSeekRef.current = null;
   }
 
@@ -117,6 +131,19 @@ export function applyMpvSnapshotToPlaybackState({
     duration: snapshotDuration,
     playing: nextIsPlaying,
   });
+  broadcastPlaybackTransitionEvents({
+    snapshot,
+    path: snapshot.path,
+    playing: nextIsPlaying,
+    position: snapshotPosition,
+    duration: snapshotDuration,
+    volume: snapshot.volume,
+    speed: snapshotSpeed,
+    tracks: Array.isArray(snapshot.tracks) ? snapshot.tracks : [],
+    confirmedSeekTarget,
+    previousPlaybackEventRef,
+    broadcastPluginRuntimeEvent,
+  });
 
   if (snapshot.ended || snapshot.status === "ended") {
     broadcastPluginRuntimeEvent("playback.ended", { path: snapshot.path });
@@ -124,6 +151,74 @@ export function applyMpvSnapshotToPlaybackState({
   } else if (handledEndedPathRef.current === snapshot.path) {
     handledEndedPathRef.current = null;
   }
+}
+
+function broadcastPlaybackTransitionEvents({
+  snapshot,
+  path,
+  playing,
+  position,
+  duration,
+  volume,
+  speed,
+  tracks,
+  confirmedSeekTarget,
+  previousPlaybackEventRef,
+  broadcastPluginRuntimeEvent,
+}: {
+  snapshot: MpvSnapshot;
+  path: string | null;
+  playing: boolean;
+  position: number;
+  duration: number;
+  volume: number;
+  speed: number;
+  tracks: MpvTrack[];
+  confirmedSeekTarget: number | null;
+  previousPlaybackEventRef: RefValue<PlaybackEventSnapshot | null>;
+  broadcastPluginRuntimeEvent: (event: string, payload: unknown) => void;
+}) {
+  const trackSignature = JSON.stringify(
+    tracks.map((track) => ({
+      id: track.id,
+      kind: track.kind,
+      selected: track.selected,
+      title: track.title,
+      language: track.language,
+    })),
+  );
+  const previous = previousPlaybackEventRef.current;
+  if (!previous || previous.path !== path) {
+    if (playing) {
+      broadcastPluginRuntimeEvent("playback.started", { path, position, duration, snapshot });
+    }
+  } else {
+    if (!previous.playing && playing) {
+      broadcastPluginRuntimeEvent("playback.started", { path, position, duration, snapshot });
+    }
+    if (previous.playing && !playing && !snapshot.ended && snapshot.status !== "ended") {
+      broadcastPluginRuntimeEvent("playback.paused", { path, position, duration, snapshot });
+    }
+    if (previous.volume !== volume) {
+      broadcastPluginRuntimeEvent("playback.volumeChanged", { path, volume });
+    }
+    if (previous.speed !== speed) {
+      broadcastPluginRuntimeEvent("playback.speedChanged", { path, speed });
+    }
+    if (previous.tracks !== trackSignature) {
+      broadcastPluginRuntimeEvent("tracks.changed", { path, tracks });
+    }
+  }
+  if (confirmedSeekTarget !== null) {
+    broadcastPluginRuntimeEvent("playback.seeked", { path, position, target: confirmedSeekTarget });
+  }
+  previousPlaybackEventRef.current = {
+    path,
+    playing,
+    volume,
+    speed,
+    tracks: trackSignature,
+  };
 }
 
 type OpenMpvPathOptions = {

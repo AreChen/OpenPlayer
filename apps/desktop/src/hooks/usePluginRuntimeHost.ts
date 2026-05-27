@@ -29,9 +29,10 @@ type UsePluginRuntimeHostOptions = {
   commandHandler: PluginRuntimeCommandHandler;
   hostState: () => unknown;
   pluginViewFrameRef: RefObject<HTMLIFrameElement | null>;
+  onRuntimeLog?: (pluginId: string, level: "info" | "warning" | "error", message: string) => void;
 };
 
-export function usePluginRuntimeHost({ activePluginView, plugins, runtimeRefreshKey, commandHandler, hostState, pluginViewFrameRef }: UsePluginRuntimeHostOptions) {
+export function usePluginRuntimeHost({ activePluginView, plugins, runtimeRefreshKey, commandHandler, hostState, pluginViewFrameRef, onRuntimeLog }: UsePluginRuntimeHostOptions) {
   const workersRef = useRef<Map<string, PluginRuntimeWorkerState>>(new Map());
   const commandHandlerRef = useRef<PluginRuntimeCommandHandler>(async () => {
     throw new Error("plugin runtime is not ready");
@@ -39,11 +40,13 @@ export function usePluginRuntimeHost({ activePluginView, plugins, runtimeRefresh
   const activePluginViewRef = useRef<ActivePluginView | null>(null);
   const pluginsRef = useRef<ThemePluginSummary[]>([]);
   const hostStateRef = useRef(hostState);
+  const onRuntimeLogRef = useRef(onRuntimeLog);
 
   commandHandlerRef.current = commandHandler;
   activePluginViewRef.current = activePluginView;
   pluginsRef.current = plugins;
   hostStateRef.current = hostState;
+  onRuntimeLogRef.current = onRuntimeLog;
 
   function broadcastPluginRuntimeEvent(event: string, payload: unknown) {
     broadcastPluginRuntimeEventToWorkers(workersRef.current.values(), event, payload);
@@ -72,8 +75,11 @@ export function usePluginRuntimeHost({ activePluginView, plugins, runtimeRefresh
                 hostState: () => hostStateRef.current(),
                 commandHandler: (command, args, permissions, pluginId) =>
                   commandHandlerRef.current(command, args, permissions, pluginId),
+                onRuntimeLog: (pluginId, level, message) =>
+                  onRuntimeLogRef.current?.(pluginId, level, message),
               });
             },
+            (pluginId, level, message) => onRuntimeLogRef.current?.(pluginId, level, message),
           );
         }
       })

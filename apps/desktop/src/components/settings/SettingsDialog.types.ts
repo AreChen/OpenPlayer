@@ -3,6 +3,7 @@ import type {
   AppVersionInfo,
   AppearanceState,
   PlayerPreferences,
+  PluginRuntimeLogEntry,
   PluginSettingDefinition,
   PluginSettingValue,
   SettingsSection,
@@ -26,6 +27,7 @@ export type SettingsDialogProps = {
   playerPreferences: PlayerPreferences;
   playbackHistoryLength: number;
   plugins: ThemePluginSummary[];
+  pluginRuntimeLogs: PluginRuntimeLogEntry[];
   expandedPluginIds: Set<string>;
   isPickerOpen: boolean;
   systemFontFamilies: string[];

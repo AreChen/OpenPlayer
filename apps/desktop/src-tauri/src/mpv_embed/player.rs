@@ -88,3 +88,23 @@ pub(super) fn stop_player(state: &MpvEmbedState) -> Result<(), String> {
 
     Ok(())
 }
+
+pub(super) fn stop_existing_player_for_replacement(state: &MpvEmbedState) -> Result<(), String> {
+    let existing = {
+        let mut player = state
+            .player
+            .lock()
+            .map_err(|_| "mpv embed state lock failed".to_string())?;
+        player.take()
+    };
+
+    if let Some(mut player) = existing {
+        let _ = stop_recording_for_player(&mut player);
+        player
+            .mpv
+            .command("stop", &[])
+            .map_err(|error| format!("mpv stop before replacement failed: {error}"))?;
+    }
+
+    Ok(())
+}

@@ -19,7 +19,7 @@
 [![Rust](https://img.shields.io/badge/Rust-native-CE412B?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/github/license/AreChen/OpenPlayer?style=for-the-badge)](LICENSE)
 
-[Download](https://github.com/AreChen/OpenPlayer/releases/latest) · [Release Notes](docs/releases/v1.3.1.md) · [License](LICENSE)
+[Download](https://github.com/AreChen/OpenPlayer/releases/latest) · [Release Notes](docs/releases/v1.5.0.md) · [Plugin SDK](docs/plugins/sdk-1.5-developer-guide.md) · [License](LICENSE)
 
 </div>
 
@@ -43,9 +43,18 @@ The default playback path is `mpv-embed`: the main Tauri window hosts the native
 - 🎞️ **Precise playback control**: Fullscreen restore, smooth progress, frame stepping, loop modes, playback speed, track selection, and subtitle controls.
 - 🧭 **Smart chrome hiding**: Controls and the title bar hide during playback inactivity and when the mouse leaves the window.
 - 🗂️ **Playback memory**: Recent media and resume progress are persisted with a lightweight redb store, with clear-history and private playback options.
+- 🧩 **Open plugin SDK**: User-installed plugins can declare permissions, persist runtime data, open custom views, listen for playback events, and call controlled mpv APIs.
 - 🧩 **Desktop integration**: Optional Windows media association and Explorer preview registration for selected formats.
 
 <img src="docs/assets/openplayer-feature-grid.png" alt="OpenPlayer playback, themes, shortcuts, and format settings" width="100%" />
+
+## 🧩 Plugins and SDK
+
+OpenPlayer 1.5.0 expands the plugin system into a documented SDK for external developers and AI-assisted plugin authoring. Plugins can use typed manifests, capability checks, runtime events, scoped storage, validated network requests, custom views, native dialogs, and permission-gated mpv controls for playback, filters, OSD, and script messages.
+
+- SDK guide: [docs/plugins/sdk-1.5-developer-guide.md](docs/plugins/sdk-1.5-developer-guide.md)
+- Plugin host overview: [docs/plugins/README.md](docs/plugins/README.md)
+- Official plugin packages: [AreChen/openplayer-plugins](https://github.com/AreChen/openplayer-plugins)
 
 ## 📦 Download
 
@@ -55,10 +64,10 @@ The latest release is available from GitHub Releases:
 
 Current release:
 
-- 🏷️ `v1.3.1`
-- 🪟 Windows: `OpenPlayer_1.3.1_x64-setup.exe`
-- 🐧 Linux: `OpenPlayer_1.3.1_amd64.deb` and `OpenPlayer_1.3.1_amd64.AppImage`
-- 🍎 macOS: `OpenPlayer_1.3.1_arm64.dmg` and `OpenPlayer_1.3.1_x64.dmg`
+- 🏷️ `v1.5.0`
+- 🪟 Windows: `OpenPlayer_1.5.0_x64-setup.exe`
+- 🐧 Linux: `OpenPlayer_1.5.0_amd64.deb` and `OpenPlayer_1.5.0_amd64.AppImage`
+- 🍎 macOS: `OpenPlayer_1.5.0_arm64.dmg` and `OpenPlayer_1.5.0_x64.dmg`
 - 🔐 Checksums: release assets include `.sha256` files
 
 > Windows packages are not code-signed yet, so SmartScreen may show a warning on first install.

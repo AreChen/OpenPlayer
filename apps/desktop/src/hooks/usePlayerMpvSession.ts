@@ -108,6 +108,13 @@ export function usePlayerMpvSession({
     openNativeMediaFiles: () => undefined,
     runMediaOpeningHooks: passthroughMediaOpen,
   });
+  const previousPlaybackEventRef = useRef<{
+    path: string | null;
+    playing: boolean;
+    volume: number;
+    speed: number;
+    tracks: string;
+  } | null>(null);
   const { invalidatePendingSnapshots } = useMpvSnapshotPolling({
     mediaId: media?.id,
     applySnapshot,
@@ -143,6 +150,7 @@ export function usePlayerMpvSession({
       handledEndedPathRef,
       hardwareDecodingModeRef,
       previousAudibleVolumeRef,
+      previousPlaybackEventRef,
       setDuration,
       setIsPlaying,
       setFramesPerSecond,
