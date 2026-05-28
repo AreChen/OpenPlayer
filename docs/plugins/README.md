@@ -479,6 +479,12 @@ The default presentation is `overlay`; use `sidePanel` for right-side panels.
 `contributes.settings`; OpenPlayer applies that setting as host-level iframe
 opacity for user-tunable translucent side panels.
 
+Custom view documents receive theme tokens and reusable UI classes from the
+host. Use `.op-view`, `.op-surface`, `.op-button`, `.op-button--primary`,
+`.op-icon-button`, `.op-input`, `.op-select`, `.op-list-item`, `.op-badge`, and
+`.op-muted` for controls that should follow theme plugins and user accent
+overrides without plugin-local duplicated CSS.
+
 Supported action placements:
 
 - `controls.left`

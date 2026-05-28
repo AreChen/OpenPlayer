@@ -20,6 +20,11 @@ plugins, SDK examples, and AI-facing plugin instructions.
   `frameOpacitySetting` instead of hard-coding host iframe opacity.
 - Derive colors from host theme tokens such as `--op-accent`, `--op-panel`,
   `--op-panel-strong`, `--op-control`, `--op-text`, and `--op-line`.
+- Prefer host-injected UI classes for reusable controls before writing custom
+  CSS: `.op-view`, `.op-surface`, `.op-button`, `.op-button--primary`,
+  `.op-icon-button`, `.op-input`, `.op-select`, `.op-list-item`, `.op-badge`,
+  and `.op-muted`. These classes are theme-aware and follow the same token
+  layer as theme plugins.
 - The host owns side panel margins, right alignment, height, and 14px rounded
   clipping. Plugin views should usually set their root app to `width: 100%`,
   `height: 100%`, and avoid extra outer padding.

@@ -492,6 +492,10 @@ assert.doesNotMatch(pluginSdkGuide, /`ai\.transcribe`|`ai\.translate`/, "SDK gui
 assert.match(appSource, /Content-Security-Policy/, "plugin custom views must inject a Content Security Policy");
 assert.match(appSource, /img-src data: blob: https:/, "plugin custom views must allow HTTPS channel icons");
 assert.match(appSource, /connect-src 'none'/, "plugin custom views must block direct network access");
+assert.match(appSource, /--op-radius:/, "plugin custom views must receive standardized radius tokens");
+assert.match(appSource, /\.op-button[\s\S]*var\(--op-accent\)/, "plugin custom views must receive a theme-aware standard button class");
+assert.match(appSource, /\.op-input[\s\S]*\.op-select/, "plugin custom views must receive standard input and select classes");
+assert.match(appSource, /\.op-list-item/, "plugin custom views must receive a reusable list item class");
 assert.match(appSource, /responseType[\s\S]*base64/, "plugin network requests must support base64 responses for proxied artwork");
 assert.match(appSource, /bodyFile[\s\S]*path/, "plugin network requests must accept host-managed artifact body files");
 assert.match(appSource, /plugin_network_request[\s\S]*pluginId/, "plugin network requests must pass plugin identity to backend path validation");

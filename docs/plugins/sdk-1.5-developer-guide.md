@@ -518,6 +518,13 @@ Custom views are best for rich plugin-owned UI. Keep these rules:
 
 - Use host theme tokens injected as CSS variables, such as `--op-accent`,
   `--op-panel`, `--op-text`, and `--op-danger`.
+- Prefer the host-injected standard UI classes before writing custom control
+  CSS: `.op-view`, `.op-surface`, `.op-stack`, `.op-row`, `.op-button`,
+  `.op-button--primary`, `.op-icon-button`, `.op-input`, `.op-select`,
+  `.op-textarea`, `.op-list`, `.op-list-item`, `.op-badge`, and `.op-muted`.
+  These classes use tokens such as `--op-accent`, `--op-control`, `--op-text`,
+  `--op-line`, and `--op-radius`, so theme plugins and user accent overrides
+  automatically apply to plugin views.
 - For `sidePanel` views, keep the plugin surface semi-transparent and derive
   layered backgrounds from host tokens such as `--op-panel-strong`,
   `--op-panel`, and `--op-control`, usually with `color-mix(..., transparent)`.

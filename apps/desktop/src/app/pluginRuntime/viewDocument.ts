@@ -285,6 +285,165 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
   --op-danger: ${theme.danger};
   --op-line: ${theme.line};
   --op-control: ${theme.control};
+  --op-radius: 8px;
+  --op-radius-panel: 14px;
+  --op-focus-ring: color-mix(in srgb, var(--op-accent) 38%, transparent);
+  --op-font: Inter, "Segoe UI", system-ui, sans-serif;
+}
+
+.op-view,
+.op-view * {
+  box-sizing: border-box;
+}
+
+.op-view {
+  width: 100%;
+  height: 100%;
+  color: var(--op-text);
+  font-family: var(--op-font);
+}
+
+.op-surface {
+  color: var(--op-text);
+  background: color-mix(in srgb, var(--op-panel) 86%, transparent);
+  border: 1px solid var(--op-line);
+  border-radius: var(--op-radius-panel);
+}
+
+.op-stack {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.op-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.op-button,
+.op-icon-button {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--op-text);
+  background: var(--op-control);
+  border: 1px solid var(--op-line);
+  border-radius: var(--op-radius);
+  font: inherit;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.op-button {
+  padding: 0 12px;
+}
+
+.op-button:hover,
+.op-icon-button:hover {
+  border-color: color-mix(in srgb, var(--op-accent) 58%, var(--op-line));
+  background: color-mix(in srgb, var(--op-accent) 18%, var(--op-control));
+}
+
+.op-button:focus-visible,
+.op-icon-button:focus-visible,
+.op-input:focus,
+.op-select:focus,
+.op-textarea:focus {
+  outline: 2px solid var(--op-focus-ring);
+  outline-offset: 2px;
+}
+
+.op-button--primary {
+  color: var(--op-text);
+  border-color: color-mix(in srgb, var(--op-accent) 72%, var(--op-line));
+  background: color-mix(in srgb, var(--op-accent) 28%, var(--op-control));
+}
+
+.op-icon-button {
+  width: 32px;
+  padding: 0;
+  aspect-ratio: 1;
+}
+
+.op-input,
+.op-select,
+.op-textarea {
+  width: 100%;
+  min-height: 34px;
+  min-width: 0;
+  color: var(--op-text);
+  background: color-mix(in srgb, var(--op-control) 86%, transparent);
+  border: 1px solid var(--op-line);
+  border-radius: var(--op-radius);
+  font: inherit;
+}
+
+.op-input,
+.op-select {
+  padding: 0 10px;
+}
+
+.op-textarea {
+  min-height: 82px;
+  padding: 9px 10px;
+  resize: vertical;
+}
+
+.op-input::placeholder,
+.op-textarea::placeholder {
+  color: var(--op-muted);
+}
+
+.op-list {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.op-list-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  color: var(--op-text);
+  background: color-mix(in srgb, var(--op-control) 58%, transparent);
+  border: 1px solid transparent;
+  border-radius: var(--op-radius);
+}
+
+.op-list-item[aria-selected="true"],
+.op-list-item.is-active {
+  border-color: color-mix(in srgb, var(--op-accent) 72%, var(--op-line));
+  background: color-mix(in srgb, var(--op-accent) 20%, var(--op-control));
+}
+
+.op-badge {
+  display: inline-flex;
+  min-width: 22px;
+  min-height: 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 7px;
+  color: var(--op-muted);
+  background: color-mix(in srgb, var(--op-surface) 76%, transparent);
+  border: 1px solid var(--op-line);
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.op-muted {
+  color: var(--op-muted);
 }
 </style>`;
   const injection = `${csp}\n${style}\n${bridge}`;
