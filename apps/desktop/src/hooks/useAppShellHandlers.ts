@@ -9,10 +9,11 @@ import {
   isPointerInsideSelector,
   isWheelInsideInteractiveSurface,
 } from "../app/shortcuts";
-import type { ContextMenuPosition, ShortcutAction } from "../app/types";
+import type { ActivePluginView, ContextMenuPosition, ShortcutAction } from "../app/types";
 
 type UseAppShellHandlersOptions = {
   contextMenu: ContextMenuPosition | null;
+  activePluginView: ActivePluginView | null;
   isSettingsOpen: boolean;
   isNetworkStreamDialogOpen: boolean;
   recordingShortcutAction: ShortcutAction | null;
@@ -20,6 +21,7 @@ type UseAppShellHandlersOptions = {
   recordUserActivity: () => void;
   openContextMenu: (event: ReactMouseEvent<HTMLElement>) => void;
   closeContextMenu: () => void;
+  closePluginView: () => void;
   closeFloatingPlaybackMenus: () => void;
   handleShellPointerLeave: () => void;
   setVolume: (value: number, options?: { feedback?: boolean }) => void;
@@ -27,6 +29,7 @@ type UseAppShellHandlersOptions = {
 
 export function useAppShellHandlers({
   contextMenu,
+  activePluginView,
   isSettingsOpen,
   isNetworkStreamDialogOpen,
   recordingShortcutAction,
@@ -34,6 +37,7 @@ export function useAppShellHandlers({
   recordUserActivity,
   openContextMenu,
   closeContextMenu,
+  closePluginView,
   closeFloatingPlaybackMenus,
   handleShellPointerLeave,
   setVolume,
@@ -45,6 +49,9 @@ export function useAppShellHandlers({
     }
     if (!isPointerInsidePlaybackControl(event.target)) {
       closeFloatingPlaybackMenus();
+      if (activePluginView) {
+        closePluginView();
+      }
     }
   }
 

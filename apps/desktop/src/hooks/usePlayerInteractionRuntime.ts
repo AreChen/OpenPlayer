@@ -47,6 +47,7 @@ export function usePlayerInteractionRuntime({
     volumeLevel: state.volumeLevel,
     openContextMenu: foundation.openContextMenu,
     closeContextMenu: foundation.closeContextMenu,
+    closePluginView: mediaDomain.closePluginView,
     closeFloatingPlaybackMenus: foundation.closeFloatingPlaybackMenus,
     togglePlayback: playback.togglePlayback,
     setVolume: playback.setVolume,

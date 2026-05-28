@@ -26,6 +26,7 @@ export function Icon({ name }: { name: IconName }) {
     stop: "M7 7h10v10H7z",
     stream: "M5 18a13 13 0 0 1 14 0M8 14a7.5 7.5 0 0 1 8 0M11 10a2 2 0 0 1 2 0M12 10v8",
     tracks: "M4 7h7M15 7h5M11 5v4M4 12h12M20 12h0M16 10v4M4 17h4M12 17h8M8 15v4",
+    tv: "M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7ZM8 21h8M12 17v4",
     volume: "M4 10v4h4l5 4V6l-5 4H4Z M16 9a4 4 0 0 1 0 6",
     volumeMuted: "M4 10v4h4l5 4V6l-5 4H4Z M17 9l4 6M21 9l-4 6",
   };

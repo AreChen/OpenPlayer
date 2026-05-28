@@ -85,7 +85,7 @@ from the Plugins settings page.
   "name": "Subtitle Styler",
   "version": "1.0.0",
   "apiVersion": "1",
-  "minHostVersion": "1.5.0",
+  "minHostVersion": "1.5.1",
   "author": "OpenPlayer Team",
   "updateUrl": "https://github.com/AreChen/openplayer-plugins/releases",
   "description": "Subtitle typography controls for OpenPlayer.",
@@ -183,7 +183,7 @@ Theme plugins remain supported:
   "name": "Ocean Theme Pack",
   "version": "1.0.0",
   "apiVersion": "1",
-  "minHostVersion": "1.5.0",
+  "minHostVersion": "1.5.1",
   "author": "OpenPlayer Team",
   "updateUrl": "https://github.com/AreChen/openplayer-plugins/releases",
   "description": "Ocean themes for OpenPlayer.",
@@ -280,7 +280,7 @@ openplayer.commands.register("plugin.open-network-stream", async () => {
 });
 ```
 
-SDK 1.5.0 exposes `openplayer.host`, `openplayer.api`, and
+SDK 1.5.1 exposes `openplayer.host`, `openplayer.api`, and
 `openplayer.capabilities` in both worker runtimes and custom views.
 `host.version` identifies the running OpenPlayer build.
 `api.compatibility` gives plugins a stable compatibility block for feature
@@ -329,9 +329,11 @@ ranges, allowed commands, and plugin-owned filter labels before sending
 anything to libmpv. This API intentionally does not expose raw `loadfile`,
 shell-like commands, arbitrary filter graphs, or unsafe process/configuration
 properties.
-`plugin.storage.get`, `plugin.storage.set`, `plugin.storage.remove`, and
-`plugin.storage.list` provide redb-backed plugin-private JSON storage. Storage
-keys are namespaced by plugin ID and removed when the plugin is uninstalled.
+`openplayer.plugin.getSettings()` returns the current values declared in
+`contributes.settings`. `plugin.storage.get`, `plugin.storage.set`,
+`plugin.storage.remove`, and `plugin.storage.list` provide redb-backed
+plugin-private JSON storage. Storage keys are namespaced by plugin ID and
+removed when the plugin is uninstalled.
 `player.openStreamDialog` is available to declarative actions and opens the
 host-owned network stream dialog.
 Capture requests such as `player.startRecording`, `player.stopRecording`,
@@ -444,12 +446,18 @@ a small allowlist of built-in OpenPlayer commands, or a plugin-owned
   "titleI18n": {
     "zh-CN": "多路流媒体墙"
   },
+  "presentation": "sidePanel",
+  "frameOpacitySetting": "panel-opacity",
   "entry": "view/index.html"
 }
 ```
 
 The entry must be a safe relative package path. OpenPlayer reads the HTML from
 the installed plugin package and mounts it in an iframe with an injected bridge.
+The default presentation is `overlay`; use `sidePanel` for right-side panels.
+`frameOpacitySetting` is optional and must reference a `number` setting in
+`contributes.settings`; OpenPlayer applies that setting as host-level iframe
+opacity for user-tunable translucent side panels.
 
 Supported action placements:
 
@@ -501,6 +509,7 @@ Supported action icons:
 - `camera`
 - `record`
 - `stream`
+- `tv`
 - `info`
 
 Action arguments:

@@ -114,10 +114,17 @@ pub(in crate::appearance_store) struct PluginViewManifest {
     pub(in crate::appearance_store) title: String,
     pub(in crate::appearance_store) entry: String,
     pub(in crate::appearance_store) description: Option<String>,
+    #[serde(default = "default_plugin_view_presentation")]
+    pub(in crate::appearance_store) presentation: String,
+    pub(in crate::appearance_store) frame_opacity_setting: Option<String>,
     #[serde(default)]
     pub(in crate::appearance_store) title_i18n: HashMap<String, String>,
     #[serde(default)]
     pub(in crate::appearance_store) description_i18n: HashMap<String, String>,
+}
+
+fn default_plugin_view_presentation() -> String {
+    "overlay".to_string()
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]

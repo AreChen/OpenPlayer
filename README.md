@@ -19,7 +19,7 @@
 [![Rust](https://img.shields.io/badge/Rust-native-CE412B?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/github/license/AreChen/OpenPlayer?style=for-the-badge)](LICENSE)
 
-[Download](https://github.com/AreChen/OpenPlayer/releases/latest) · [Release Notes](docs/releases/v1.5.0.md) · [Plugin SDK](docs/plugins/sdk-1.5-developer-guide.md) · [License](LICENSE)
+[Download](https://github.com/AreChen/OpenPlayer/releases/latest) · [Release Notes](docs/releases/v1.5.1.md) · [Plugin SDK](docs/plugins/sdk-1.5-developer-guide.md) · [License](LICENSE)
 
 </div>
 
@@ -50,7 +50,7 @@ The default playback path is `mpv-embed`: the main Tauri window hosts the native
 
 ## 🧩 Plugins and SDK
 
-OpenPlayer 1.5.0 expands the plugin system into a documented SDK for external developers and AI-assisted plugin authoring. Plugins can use typed manifests, capability checks, runtime events, scoped storage, validated network requests, custom views, native dialogs, and permission-gated mpv controls for playback, filters, OSD, and script messages.
+OpenPlayer 1.5.1 expands the plugin system into a documented SDK for external developers and AI-assisted plugin authoring. Plugins can use typed manifests, capability checks, runtime events, scoped storage, validated network requests, translucent themed custom views with setting-backed side-panel opacity, native dialogs, and permission-gated mpv controls for playback, filters, OSD, and script messages.
 
 - SDK guide: [docs/plugins/sdk-1.5-developer-guide.md](docs/plugins/sdk-1.5-developer-guide.md)
 - Plugin host overview: [docs/plugins/README.md](docs/plugins/README.md)
@@ -64,10 +64,10 @@ The latest release is available from GitHub Releases:
 
 Current release:
 
-- 🏷️ `v1.5.0`
-- 🪟 Windows: `OpenPlayer_1.5.0_x64-setup.exe`
-- 🐧 Linux: `OpenPlayer_1.5.0_amd64.deb` and `OpenPlayer_1.5.0_amd64.AppImage`
-- 🍎 macOS: `OpenPlayer_1.5.0_arm64.dmg` and `OpenPlayer_1.5.0_x64.dmg`
+- 🏷️ `v1.5.1`
+- 🪟 Windows: `OpenPlayer_1.5.1_x64-setup.exe`
+- 🐧 Linux: `OpenPlayer_1.5.1_amd64.deb` and `OpenPlayer_1.5.1_amd64.AppImage`
+- 🍎 macOS: `OpenPlayer_1.5.1_arm64.dmg` and `OpenPlayer_1.5.1_x64.dmg`
 - 🔐 Checksums: release assets include `.sha256` files
 
 > Windows packages are not code-signed yet, so SmartScreen may show a warning on first install.

@@ -125,9 +125,13 @@ export type PluginViewDefinition = {
   title: string;
   entry: string;
   description: string | null;
+  presentation: PluginViewPresentation;
+  frameOpacitySetting: string | null;
   titleI18n: Record<string, string>;
   descriptionI18n: Record<string, string>;
 };
+
+export type PluginViewPresentation = "overlay" | "sidePanel";
 
 export type PluginActionInstance = {
   plugin: ThemePluginSummary;
@@ -208,5 +212,7 @@ export type ActivePluginView = {
   pluginId: string;
   viewId: string;
   title: string;
+  presentation: PluginViewPresentation;
+  frameOpacity: number | null;
   html: string;
 };

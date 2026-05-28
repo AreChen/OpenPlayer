@@ -94,56 +94,24 @@
 
 .plugin-view-shell {
   position: absolute;
-  inset: 12px 16px 20px;
+  inset: 0;
   z-index: 55;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: transparent;
-  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.5);
-  pointer-events: auto;
-}
-
-.plugin-view-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--panel-strong) 78%, #050607);
-  padding: 9px 14px;
-}
-
-.plugin-view-header div {
-  min-width: 0;
-}
-
-.plugin-view-header span {
   display: block;
-  color: var(--accent);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0;
-  text-transform: uppercase;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  pointer-events: none;
 }
 
-.plugin-view-header button {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 auto;
-  place-items: center;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  background: var(--control);
-  color: var(--muted);
-  cursor: pointer;
-}
-
-.plugin-view-header button:hover {
-  border-color: var(--accent-border);
-  color: var(--accent);
+.plugin-view-shell--sidePanel {
+  inset: 10px 24px 24px auto;
+  display: flex;
+  width: min(444px, calc(100vw - 48px));
+  border-radius: 14px;
+  justify-content: flex-end;
+  align-items: stretch;
 }
 
 .plugin-view-frame {
@@ -151,6 +119,13 @@
   height: 100%;
   border: 0;
   background: transparent;
+  pointer-events: auto;
+}
+
+.plugin-view-shell--sidePanel .plugin-view-frame {
+  width: 100%;
+  border-radius: inherit;
+  opacity: var(--plugin-view-frame-opacity, 1);
 }
 
 .network-stream-backdrop {
@@ -297,4 +272,3 @@
   padding: 18px;
   text-align: center;
 }
-

@@ -120,6 +120,8 @@ pub(in crate::appearance_store) fn plugin_view_summaries(
             title: view.title.clone(),
             entry: view.entry.clone(),
             description: view.description.clone(),
+            presentation: view.presentation.clone(),
+            frame_opacity_setting: view.frame_opacity_setting.clone(),
             title_i18n: view.title_i18n.clone(),
             description_i18n: view.description_i18n.clone(),
         })

@@ -79,5 +79,6 @@ export type IconName =
   | "stop"
   | "stream"
   | "tracks"
+  | "tv"
   | "volume"
   | "volumeMuted";

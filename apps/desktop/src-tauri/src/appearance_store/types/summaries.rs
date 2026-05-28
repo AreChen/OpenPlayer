@@ -85,6 +85,8 @@ pub struct PluginViewSummary {
     pub(in crate::appearance_store) title: String,
     pub(in crate::appearance_store) entry: String,
     pub(in crate::appearance_store) description: Option<String>,
+    pub(in crate::appearance_store) presentation: String,
+    pub(in crate::appearance_store) frame_opacity_setting: Option<String>,
     pub(in crate::appearance_store) title_i18n: HashMap<String, String>,
     pub(in crate::appearance_store) description_i18n: HashMap<String, String>,
 }

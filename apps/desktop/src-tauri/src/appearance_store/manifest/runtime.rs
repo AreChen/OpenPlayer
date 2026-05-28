@@ -90,6 +90,20 @@ pub(super) fn validate_plugin_view(view: &PluginViewManifest) -> Result<(), Stri
     if let Some(description) = view.description.as_deref() {
         validate_non_empty("plugin view description", description)?;
     }
+    if !matches!(view.presentation.as_str(), "overlay" | "sidePanel") {
+        return Err(format!(
+            "unsupported plugin view presentation: {}",
+            view.presentation
+        ));
+    }
+    if let Some(setting_id) = view.frame_opacity_setting.as_deref() {
+        validate_dotted_identifier("plugin view frameOpacitySetting", setting_id, false)?;
+        if view.presentation != "sidePanel" {
+            return Err(
+                "plugin view frameOpacitySetting requires sidePanel presentation".to_string(),
+            );
+        }
+    }
     validate_localized_text_map("plugin view titleI18n", &view.title_i18n, 128)?;
     validate_localized_text_map("plugin view descriptionI18n", &view.description_i18n, 512)?;
     Ok(())

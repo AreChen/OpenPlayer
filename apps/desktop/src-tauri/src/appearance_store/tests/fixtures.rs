@@ -217,13 +217,25 @@ pub(super) fn view_plugin_json() -> &'static str {
                 "permissions": ["network.request"]
               }
             ],
+            "settings": [
+              {
+                "id": "panel-opacity",
+                "label": "Panel opacity",
+                "kind": "number",
+                "placement": "pluginSettings",
+                "defaultValue": 0.86,
+                "min": 0.45,
+                "max": 1.0,
+                "step": 0.05
+              }
+            ],
             "actions": [
               {
                 "id": "open-wall",
                 "label": "Open Wall",
                 "placement": "contextMenu",
                 "command": "plugin.open-wall",
-                "icon": "stream"
+                "icon": "tv"
               }
             ],
             "views": [
@@ -232,6 +244,8 @@ pub(super) fn view_plugin_json() -> &'static str {
                 "title": "Stream Wall",
                 "entry": "views/wall.html",
                 "description": "A custom plugin view.",
+                "presentation": "sidePanel",
+                "frameOpacitySetting": "panel-opacity",
                 "titleI18n": {
                   "zh-CN": "流媒体墙"
                 }

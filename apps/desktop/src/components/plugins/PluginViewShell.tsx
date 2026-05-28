@@ -1,7 +1,5 @@
-import type { RefObject } from "react";
-import { Icon } from "../../app/Icon";
+import type { CSSProperties, RefObject } from "react";
 import type { ActivePluginView } from "../../app/types";
-import { startMainWindowDrag } from "../../app/windowControls";
 import type { AppStrings } from "../../i18n";
 
 type PluginViewShellProps = {
@@ -12,36 +10,25 @@ type PluginViewShellProps = {
   onClose: () => void;
 };
 
-export function PluginViewShell({ t, activePluginView, documentHtml, frameRef, onClose }: PluginViewShellProps) {
+export function PluginViewShell({ activePluginView, documentHtml, frameRef }: PluginViewShellProps) {
+  const shellStyle =
+    activePluginView.frameOpacity === null
+      ? undefined
+      : ({ "--plugin-view-frame-opacity": String(activePluginView.frameOpacity) } as CSSProperties);
+
   return (
     <section
-      className="plugin-view-shell"
+      className={`plugin-view-shell plugin-view-shell--${activePluginView.presentation}`}
       aria-label={activePluginView.title}
+      style={shellStyle}
       onContextMenu={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
     >
-      <header
-        className="plugin-view-header"
-        onPointerDown={(event) => {
-          event.stopPropagation();
-          if (event.button !== 0 || (event.target as HTMLElement).closest("[data-plugin-view-close]")) {
-            return;
-          }
-          event.preventDefault();
-          startMainWindowDrag();
-        }}
-      >
-        <div>
-          <span>OpenPlayer Plugin</span>
-        </div>
-        <button type="button" aria-label={t.controls.close} data-plugin-view-close="true" onClick={onClose}>
-          <Icon name="close" />
-        </button>
-      </header>
       <iframe
         ref={frameRef}
         className="plugin-view-frame"
         title={activePluginView.title}
+        allowTransparency={true}
         sandbox="allow-scripts allow-forms allow-modals"
         style={{ backgroundColor: "transparent" }}
         srcDoc={documentHtml}

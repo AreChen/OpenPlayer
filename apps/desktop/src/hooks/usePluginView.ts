@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { buildPluginViewDocument, localizedPluginText } from "../app/pluginRuntime";
+import { buildPluginViewDocument, localizedPluginText, resolvePluginViewFrameOpacity } from "../app/pluginRuntime";
 import type { AppLocale } from "../i18n";
 import type { ActivePluginView, AppearanceState, ContextMenuPosition, MediaPanelMode, PluginViewHtml, ThemeCatalogItem } from "../app/types";
 
@@ -47,6 +47,8 @@ export function usePluginView({
       pluginId: viewHtml.pluginId,
       viewId: viewHtml.viewId,
       title: localizedPluginText(view.title, view.titleI18n, locale),
+      presentation: view.presentation,
+      frameOpacity: resolvePluginViewFrameOpacity(plugin, view),
       html: viewHtml.html,
     });
   }
@@ -59,11 +61,30 @@ export function usePluginView({
   }
 
   const activePluginViewPlugin = activePluginView ? appearanceState?.plugins.find((plugin) => plugin.id === activePluginView.pluginId) ?? null : null;
+  const activePluginViewDefinition =
+    activePluginView && activePluginViewPlugin
+      ? activePluginViewPlugin.views.find((view) => view.id === activePluginView.viewId) ?? null
+      : null;
+  const resolvedActivePluginView =
+    activePluginView && activePluginViewPlugin && activePluginViewDefinition
+      ? {
+          ...activePluginView,
+          frameOpacity: resolvePluginViewFrameOpacity(activePluginViewPlugin, activePluginViewDefinition),
+        }
+      : activePluginView;
+  const activePluginViewThemeTokens = activeTheme
+    ? {
+        ...activeTheme.tokens,
+        accent: appearanceState?.accentOverride ?? activeTheme.tokens.accent,
+      }
+    : null;
   const activePluginViewDocument =
-    activePluginView && activePluginViewPlugin && activeTheme ? buildPluginViewDocument(activePluginView.html, activePluginViewPlugin, locale, activeTheme.tokens) : null;
+    activePluginView && activePluginViewPlugin && activePluginViewThemeTokens
+      ? buildPluginViewDocument(activePluginView.html, activePluginViewPlugin, locale, activePluginViewThemeTokens)
+      : null;
 
   return {
-    activePluginView,
+    activePluginView: resolvedActivePluginView,
     activePluginViewDocument,
     pluginViewFrameRef,
     openPluginView,

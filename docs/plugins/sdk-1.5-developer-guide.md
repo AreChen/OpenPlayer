@@ -38,9 +38,9 @@ public TypeScript types, official plugin examples, and docs together.
 {
   "id": "dev.example.openplayer.plugin",
   "name": "Example Plugin",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "apiVersion": "1",
-  "minHostVersion": "1.5.0",
+  "minHostVersion": "1.5.1",
   "author": "Example Author",
   "updateUrl": "https://github.com/example/openplayer-plugin/releases",
   "description": "Example runtime plugin.",
@@ -276,6 +276,7 @@ RTSP and RTMP. WebRTC/WHEP views should render browser `<video>` tiles and use
 ### Storage, Network, Filesystem, UI
 
 ```js
+const settings = await openplayer.plugin.getSettings();
 await openplayer.storage.set("state", { enabled: true });
 const state = await openplayer.storage.get("state");
 
@@ -286,6 +287,12 @@ const response = await openplayer.network.request({
   body: offerSdp,
   timeoutMs: 8000,
 });
+
+const logo = await openplayer.network.request({
+  url: "https://example.com/logo.png",
+  responseType: "base64",
+});
+const logoDataUrl = `data:${logo.headers["content-type"] || "image/png"};base64,${logo.bodyBase64}`;
 
 const files = await openplayer.filesystem.pickMedia({ multiple: true });
 const directory = await openplayer.filesystem.pickDirectory();
@@ -306,6 +313,51 @@ Custom views are best for rich plugin-owned UI. Keep these rules:
 
 - Use host theme tokens injected as CSS variables, such as `--op-accent`,
   `--op-panel`, `--op-text`, and `--op-danger`.
+- For `sidePanel` views, keep the plugin surface semi-transparent and derive
+  layered backgrounds from host tokens such as `--op-panel-strong`,
+  `--op-panel`, and `--op-control`, usually with `color-mix(..., transparent)`.
+  The host already provides the right-side size, margins, and 14px rounded
+  clipping, so the view should normally use `width: 100%`, `height: 100%`, a
+  transparent document background, and no extra outer padding.
+- If a `sidePanel` view needs user-tunable transparency, declare a bounded
+  `number` setting in plugin settings and reference it from the view with
+  `frameOpacitySetting`. OpenPlayer applies that value as host-level iframe
+  opacity so WebView2 transparent subframe composition still blends with the
+  native mpv video surface:
+
+```json
+{
+  "settings": [
+    {
+      "id": "panel-opacity",
+      "label": "Panel opacity",
+      "kind": "number",
+      "placement": "pluginSettings",
+      "defaultValue": 0.82,
+      "min": 0.45,
+      "max": 1,
+      "step": 0.05
+    }
+  ],
+  "views": [
+    {
+      "id": "channels",
+      "title": "Channels",
+      "presentation": "sidePanel",
+      "frameOpacitySetting": "panel-opacity",
+      "entry": "view/index.html"
+    }
+  ]
+}
+```
+
+- Set view `presentation` to `sidePanel` for playlist-like transparent right
+  panels. The default `overlay` presentation keeps a full-stage custom view.
+- HTTPS images are allowed for passive artwork such as channel logos. Direct
+  HTTP requests from views remain blocked; use `openplayer.network.request` for
+  playlist, API, and signaling requests.
+- Use `responseType: "base64"` for small binary assets that need to be rendered
+  as `data:` URLs in a custom view.
 - Route all privileged actions through `openplayer`; do not use direct fetch
   for host-mediated network operations unless the feature is intentionally
   browser-local.
@@ -313,6 +365,10 @@ Custom views are best for rich plugin-owned UI. Keep these rules:
   `openplayer.player.wall.setVisible(false)` before opening plugin-owned modal
   UI and restore visibility after closing it.
 - Close native resources in `beforeunload` and when the view closes.
+
+For action icons, use `tv` for TV-like channel browsers, IPTV surfaces, and
+other television-oriented plugins. Keep `stream` for generic network stream
+entry points.
 
 ## Official Plugin Improvement Checklist
 

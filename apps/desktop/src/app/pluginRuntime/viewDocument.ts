@@ -12,7 +12,7 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
     "default-src 'none'",
     "script-src 'unsafe-inline'",
     "style-src 'unsafe-inline'",
-    "img-src data: blob:",
+    "img-src data: blob: https:",
     "media-src data: blob:",
     "font-src data:",
     "connect-src 'none'",
@@ -83,6 +83,11 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
       },
     }),
     request: requestHost,
+    plugin: Object.freeze({
+      getSettings() {
+        return requestHost("plugin.getSettings");
+      },
+    }),
     storage: Object.freeze({
       get(key) {
         return requestHost("plugin.storage.get", { key });

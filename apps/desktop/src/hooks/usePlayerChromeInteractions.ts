@@ -27,6 +27,7 @@ type UsePlayerChromeInteractionsOptions = {
   volumeLevel: number;
   openContextMenu: (event: ReactMouseEvent<HTMLElement>) => void;
   closeContextMenu: () => void;
+  closePluginView: () => void;
   closeFloatingPlaybackMenus: () => void;
   togglePlayback: () => void;
   setVolume: (value: number, options?: { feedback?: boolean }) => void;
@@ -49,6 +50,7 @@ export function usePlayerChromeInteractions({
   volumeLevel,
   openContextMenu,
   closeContextMenu,
+  closePluginView,
   closeFloatingPlaybackMenus,
   togglePlayback,
   setVolume,
@@ -91,6 +93,7 @@ export function usePlayerChromeInteractions({
   clearResizeHoverFeedbackRef.current = clearResizeHoverFeedback;
   const shellHandlers = useAppShellHandlers({
     contextMenu,
+    activePluginView,
     isSettingsOpen,
     isNetworkStreamDialogOpen,
     recordingShortcutAction,
@@ -98,6 +101,7 @@ export function usePlayerChromeInteractions({
     recordUserActivity,
     openContextMenu,
     closeContextMenu,
+    closePluginView,
     closeFloatingPlaybackMenus,
     handleShellPointerLeave,
     setVolume,

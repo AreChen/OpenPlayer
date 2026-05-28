@@ -256,6 +256,11 @@ fn imports_plugin_custom_view_contributions() {
     assert_eq!(plugin.views.len(), 1);
     assert_eq!(plugin.views[0].id, "wall");
     assert_eq!(plugin.views[0].entry, "views/wall.html");
+    assert_eq!(plugin.views[0].presentation, "sidePanel");
+    assert_eq!(
+        plugin.views[0].frame_opacity_setting.as_deref(),
+        Some("panel-opacity")
+    );
     assert_eq!(
         plugin.views[0].title_i18n.get("zh-CN").map(String::as_str),
         Some("流媒体墙")
@@ -311,6 +316,22 @@ fn rejects_plugin_custom_view_unsafe_entry_paths() {
     let _ = std::fs::remove_dir_all(&directory);
 
     assert!(error.contains("relative package path"));
+}
+
+#[test]
+fn rejects_plugin_custom_view_unknown_frame_opacity_setting() {
+    let (mut store, directory) = temp_store();
+    let invalid = view_plugin_json().replace(
+        "\"frameOpacitySetting\": \"panel-opacity\"",
+        "\"frameOpacitySetting\": \"missing-opacity\"",
+    );
+
+    let error = store
+        .import_theme_plugin_json(&invalid)
+        .expect_err("unknown plugin view frame opacity settings should be rejected");
+    let _ = std::fs::remove_dir_all(&directory);
+
+    assert!(error.contains("frameOpacitySetting"));
 }
 
 #[test]

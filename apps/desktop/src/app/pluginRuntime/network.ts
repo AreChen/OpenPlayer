@@ -42,6 +42,10 @@ export async function runPluginNetworkRequest(args: Record<string, unknown>) {
   if (!supportedPluginNetworkMethods.has(method)) {
     throw new Error(`network.request method is unsupported: ${method}`);
   }
+  const responseType = runtimeStringArg(args, "responseType") ?? "text";
+  if (responseType !== "text" && responseType !== "base64") {
+    throw new Error(`network.request responseType is unsupported: ${responseType}`);
+  }
   const timeoutMs = Math.min(MAX_PLUGIN_NETWORK_TIMEOUT_MS, Math.max(1000, runtimeNumberArg(args, "timeoutMs") ?? 15_000));
   const headers = normalizePluginNetworkHeaders(args.headers);
   let body: BodyInit | undefined;
@@ -59,6 +63,7 @@ export async function runPluginNetworkRequest(args: Record<string, unknown>) {
       headers,
       body,
       timeoutMs,
+      responseType,
     },
   });
   if (!response || typeof response !== "object") {

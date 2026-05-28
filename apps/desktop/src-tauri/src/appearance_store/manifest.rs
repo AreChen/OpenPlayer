@@ -138,6 +138,25 @@ pub(super) fn validate_plugin_manifest(manifest: &PluginManifest) -> Result<(), 
     let mut view_ids = HashSet::new();
     for view in &manifest.contributes.views {
         validate_plugin_view(view)?;
+        if let Some(setting_id) = view.frame_opacity_setting.as_deref() {
+            let Some(setting) = manifest
+                .contributes
+                .settings
+                .iter()
+                .find(|candidate| candidate.id == setting_id)
+            else {
+                return Err(format!(
+                    "plugin view {} frameOpacitySetting references unknown setting: {}",
+                    view.id, setting_id
+                ));
+            };
+            if setting.kind != "number" {
+                return Err(format!(
+                    "plugin view {} frameOpacitySetting must reference a number setting",
+                    view.id
+                ));
+            }
+        }
         if !view_ids.insert(view.id.as_str()) {
             return Err(format!("duplicate view id: {}", view.id));
         }

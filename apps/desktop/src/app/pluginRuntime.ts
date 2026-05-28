@@ -6,6 +6,7 @@ export * from "./pluginRuntime/loadOptions";
 export * from "./pluginRuntime/network";
 export * from "./pluginRuntime/permissions";
 export * from "./pluginRuntime/signature";
+export * from "./pluginRuntime/viewFrameOpacity";
 export * from "./pluginRuntime/viewDocument";
 export * from "./pluginRuntime/wall";
 export * from "./pluginRuntime/workerSource";

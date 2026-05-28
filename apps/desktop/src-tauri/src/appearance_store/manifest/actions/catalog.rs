@@ -71,6 +71,7 @@ pub(super) fn is_supported_plugin_action_icon(icon: &str) -> bool {
             | "camera"
             | "record"
             | "stream"
+            | "tv"
             | "info"
     )
 }
