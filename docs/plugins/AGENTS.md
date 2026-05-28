@@ -23,8 +23,10 @@ plugins, SDK examples, and AI-facing plugin instructions.
 - Prefer host-injected UI classes for reusable controls before writing custom
   CSS: `.op-view`, `.op-surface`, `.op-button`, `.op-button--primary`,
   `.op-icon-button`, `.op-input`, `.op-select`, `.op-list-item`, `.op-badge`,
-  and `.op-muted`. These classes are theme-aware and follow the same token
-  layer as theme plugins.
+  and `.op-muted`. Use `.op-toolbar`, `.op-spacer`, `.op-field`, `.op-label`,
+  `.op-help`, `.op-divider`, `.op-tabs`, `.op-tab`, `.op-progress`, and
+  `.op-empty` for reusable layout and state surfaces. These classes are
+  theme-aware and follow the same token layer as theme plugins.
 - The host owns side panel margins, right alignment, height, and 14px rounded
   clipping. Plugin views should usually set their root app to `width: 100%`,
   `height: 100%`, and avoid extra outer padding.

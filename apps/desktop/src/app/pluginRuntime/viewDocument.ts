@@ -339,6 +339,26 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
   gap: 8px;
 }
 
+.op-section {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.op-toolbar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.op-spacer {
+  flex: 1 1 auto;
+  min-width: 8px;
+}
+
 .op-button,
 .op-icon-button {
   display: inline-flex;
@@ -417,6 +437,89 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
   color: var(--op-muted);
 }
 
+.op-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.op-label {
+  color: var(--op-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.op-help {
+  color: var(--op-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.op-divider {
+  height: 1px;
+  min-height: 1px;
+  background: var(--op-line);
+  border: 0;
+}
+
+.op-tabs {
+  display: inline-flex;
+  min-width: 0;
+  gap: 4px;
+  padding: 3px;
+  background: color-mix(in srgb, var(--op-control) 78%, transparent);
+  border: 1px solid var(--op-line);
+  border-radius: var(--op-radius);
+}
+
+.op-tab {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  color: var(--op-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: calc(var(--op-radius) - 2px);
+  font: inherit;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.op-tab[aria-selected="true"],
+.op-tab.is-active {
+  color: var(--op-text);
+  background: color-mix(in srgb, var(--op-accent) 20%, var(--op-control));
+  border-color: color-mix(in srgb, var(--op-accent) 58%, var(--op-line));
+}
+
+.op-tab:focus-visible {
+  outline: 2px solid var(--op-focus-ring);
+  outline-offset: 2px;
+}
+
+.op-progress {
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  accent-color: var(--op-accent);
+  background: color-mix(in srgb, var(--op-control) 84%, transparent);
+  border: 0;
+  border-radius: 999px;
+}
+
+.op-progress::-webkit-progress-bar {
+  background: color-mix(in srgb, var(--op-control) 84%, transparent);
+}
+
+.op-progress::-webkit-progress-value {
+  background: var(--op-accent);
+}
+
 .op-list {
   display: flex;
   min-width: 0;
@@ -459,6 +562,21 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
 
 .op-muted {
   color: var(--op-muted);
+}
+
+.op-empty {
+  display: flex;
+  min-width: 0;
+  min-height: 92px;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  color: var(--op-muted);
+  line-height: 1.4;
+  text-align: center;
+  background: color-mix(in srgb, var(--op-control) 42%, transparent);
+  border: 1px dashed var(--op-line);
+  border-radius: var(--op-radius);
 }
 </style>`;
   const injection = `${csp}\n${style}\n${bridge}`;

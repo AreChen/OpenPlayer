@@ -605,6 +605,12 @@ Custom views are best for rich plugin-owned UI. Keep these rules:
   These classes use tokens such as `--op-accent`, `--op-control`, `--op-text`,
   `--op-line`, and `--op-radius`, so theme plugins and user accent overrides
   automatically apply to plugin views.
+- Use reusable layout and state classes before creating plugin-local UI systems:
+  `.op-section` for grouped content, `.op-toolbar` with `.op-spacer` for action
+  rows, `.op-field` with `.op-label` and `.op-help` for settings-like controls,
+  `.op-divider` for subtle separators, `.op-tabs` with `.op-tab` for compact
+  mode switches, `.op-progress` for task progress, and `.op-empty` for empty
+  search/results states.
 - For `sidePanel` views, keep the plugin surface semi-transparent and derive
   layered backgrounds from host tokens such as `--op-panel-strong`,
   `--op-panel`, and `--op-control`, usually with `color-mix(..., transparent)`.

@@ -514,6 +514,10 @@ assert.match(appSource, /--op-radius:/, "plugin custom views must receive standa
 assert.match(appSource, /\.op-button[\s\S]*var\(--op-accent\)/, "plugin custom views must receive a theme-aware standard button class");
 assert.match(appSource, /\.op-input[\s\S]*\.op-select/, "plugin custom views must receive standard input and select classes");
 assert.match(appSource, /\.op-list-item/, "plugin custom views must receive a reusable list item class");
+assert.match(appSource, /\.op-toolbar[\s\S]*\.op-spacer/, "plugin custom views must receive reusable toolbar layout classes");
+assert.match(appSource, /\.op-field[\s\S]*\.op-label[\s\S]*\.op-help/, "plugin custom views must receive reusable form field classes");
+assert.match(appSource, /\.op-tabs[\s\S]*\.op-tab/, "plugin custom views must receive reusable tab classes");
+assert.match(appSource, /\.op-progress[\s\S]*\.op-empty/, "plugin custom views must receive reusable progress and empty-state classes");
 assert.match(appSource, /responseType[\s\S]*base64/, "plugin network requests must support base64 responses for proxied artwork");
 assert.match(appSource, /bodyFile[\s\S]*path/, "plugin network requests must accept host-managed artifact body files");
 assert.match(appSource, /plugin_network_request[\s\S]*pluginId/, "plugin network requests must pass plugin identity to backend path validation");

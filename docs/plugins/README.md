@@ -496,7 +496,10 @@ Custom view documents receive theme tokens and reusable UI classes from the
 host. Use `.op-view`, `.op-surface`, `.op-button`, `.op-button--primary`,
 `.op-icon-button`, `.op-input`, `.op-select`, `.op-list-item`, `.op-badge`, and
 `.op-muted` for controls that should follow theme plugins and user accent
-overrides without plugin-local duplicated CSS.
+overrides without plugin-local duplicated CSS. Use `.op-toolbar`, `.op-spacer`,
+`.op-field`, `.op-label`, `.op-help`, `.op-divider`, `.op-tabs`, `.op-tab`,
+`.op-progress`, and `.op-empty` for reusable plugin layout, form, navigation,
+progress, and empty-state UI.
 
 Supported action placements:
 
