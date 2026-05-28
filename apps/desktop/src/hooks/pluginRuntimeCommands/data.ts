@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { runPluginNetworkRequest, runtimeStringArg } from "../../app/pluginRuntime";
+import { runPluginNetworkRequest, runtimeNumberArg, runtimeStringArg } from "../../app/pluginRuntime";
 import { PLUGIN_RUNTIME_COMMAND_NOT_HANDLED, type PluginRuntimeCommandHandler } from "./types";
 
 export const handlePluginDataRuntimeCommand: PluginRuntimeCommandHandler = async (context, command, record, permissions, pluginId) => {
@@ -17,6 +17,13 @@ export const handlePluginDataRuntimeCommand: PluginRuntimeCommandHandler = async
     }
     case "plugin.storage.list":
       return await invoke("appearance_plugin_kv_list", { pluginId });
+    case "plugin.storage.info":
+      return await invoke("appearance_plugin_kv_info", { pluginId });
+    case "plugin.storage.markMigrated":
+      return await invoke("appearance_plugin_kv_mark_migrated", {
+        pluginId,
+        schemaVersion: runtimeNumberArg(record, "schemaVersion") ?? null,
+      });
     case "plugin.storage.set": {
       const key = runtimeStringArg(record, "key");
       if (!key) {

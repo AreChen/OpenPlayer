@@ -103,6 +103,8 @@ pub fn run() {
             crate::appearance_store::commands::appearance_set_plugin_setting,
             crate::appearance_store::commands::appearance_plugin_kv_get,
             crate::appearance_store::commands::appearance_plugin_kv_list,
+            crate::appearance_store::commands::appearance_plugin_kv_info,
+            crate::appearance_store::commands::appearance_plugin_kv_mark_migrated,
             crate::appearance_store::commands::appearance_plugin_kv_set,
             crate::appearance_store::commands::appearance_plugin_kv_remove,
             crate::appearance_store::commands::appearance_uninstall_plugin,

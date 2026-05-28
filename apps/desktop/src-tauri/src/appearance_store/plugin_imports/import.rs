@@ -3,16 +3,23 @@ use std::{fs, path::Path};
 use redb::ReadableTable;
 
 use crate::appearance_store::{
-    PLUGIN_ENABLEMENT, PLUGIN_INSTALLS, PLUGIN_MANIFEST_FILE, PLUGIN_MANIFESTS,
-    PLUGIN_PACKAGE_EXTENSION, THEME_MANIFESTS,
+    MAX_PLUGIN_RUNTIME_STORAGE_VALUE_BYTES, PLUGIN_ENABLEMENT, PLUGIN_INSTALLS,
+    PLUGIN_MANIFEST_FILE, PLUGIN_MANIFESTS, PLUGIN_PACKAGE_EXTENSION, PLUGIN_RUNTIME_STORAGE,
+    PLUGIN_RUNTIME_STORAGE_META, THEME_MANIFESTS,
     manifest::parse_theme_plugin_manifest_json,
     package::{
         copy_directory_contents, extract_plugin_package, read_manifest_from_plugin_package,
         replace_directory_with_writer,
     },
-    records::{current_time_ms, theme_manifests_for_plugin},
+    records::{
+        current_time_ms, plugin_runtime_storage_key, plugin_runtime_storage_prefix,
+        theme_manifests_for_plugin,
+    },
     store::AppearanceStore,
-    types::{AppearanceState, PluginManifest, StoredPluginInstall, StoredThemeManifest},
+    types::{
+        AppearanceState, PluginManifest, PluginStorageManifest, StoredPluginInstall,
+        StoredThemeManifest,
+    },
 };
 
 impl AppearanceStore {
@@ -126,6 +133,14 @@ impl AppearanceStore {
             let mut plugin_installs = transaction
                 .open_table(PLUGIN_INSTALLS)
                 .map_err(|error| format!("failed to open plugin installs table: {error}"))?;
+            let mut plugin_runtime_storage = transaction
+                .open_table(PLUGIN_RUNTIME_STORAGE)
+                .map_err(|error| format!("failed to open plugin runtime storage table: {error}"))?;
+            let mut plugin_runtime_storage_meta = transaction
+                .open_table(PLUGIN_RUNTIME_STORAGE_META)
+                .map_err(|error| {
+                    format!("failed to open plugin runtime storage metadata table: {error}")
+                })?;
 
             let stale_theme_ids = theme_manifests_for_plugin(&theme_manifests, &manifest.id)?;
             for theme_id in stale_theme_ids {
@@ -163,10 +178,87 @@ impl AppearanceStore {
                     .insert(theme.id.as_str(), encoded_theme.as_str())
                     .map_err(|error| format!("failed to store theme manifest: {error}"))?;
             }
+
+            initialize_plugin_runtime_storage_defaults(
+                &manifest.id,
+                manifest.contributes.storage.as_ref(),
+                &mut plugin_runtime_storage,
+                &mut plugin_runtime_storage_meta,
+            )?;
         }
         transaction
             .commit()
             .map_err(|error| format!("failed to commit plugin import: {error}"))?;
         self.state()
     }
+}
+
+fn initialize_plugin_runtime_storage_defaults(
+    plugin_id: &str,
+    storage_manifest: Option<&PluginStorageManifest>,
+    plugin_runtime_storage: &mut redb::Table<'_, &str, &str>,
+    plugin_runtime_storage_meta: &mut redb::Table<'_, &str, &str>,
+) -> Result<(), String> {
+    let Some(storage_manifest) = storage_manifest else {
+        return Ok(());
+    };
+    let had_existing_values = plugin_runtime_storage_has_values(plugin_id, plugin_runtime_storage)?;
+
+    for (key, value) in &storage_manifest.defaults {
+        let storage_key = plugin_runtime_storage_key(plugin_id, key);
+        if plugin_runtime_storage
+            .get(storage_key.as_str())
+            .map_err(|error| format!("failed to read plugin runtime storage default: {error}"))?
+            .is_some()
+        {
+            continue;
+        }
+
+        let encoded = serde_json::to_string(value).map_err(|error| {
+            format!("failed to encode plugin runtime storage default {key}: {error}")
+        })?;
+        if encoded.len() > MAX_PLUGIN_RUNTIME_STORAGE_VALUE_BYTES {
+            return Err(format!("plugin runtime storage default {key} is too large"));
+        }
+        plugin_runtime_storage
+            .insert(storage_key.as_str(), encoded.as_str())
+            .map_err(|error| format!("failed to store plugin runtime storage default: {error}"))?;
+    }
+
+    let current_version = plugin_runtime_storage_meta
+        .get(plugin_id)
+        .map_err(|error| format!("failed to read plugin runtime storage metadata: {error}"))?
+        .map(|value| {
+            value.value().parse::<u32>().map_err(|error| {
+                format!("failed to decode plugin runtime storage metadata: {error}")
+            })
+        })
+        .transpose()?
+        .unwrap_or(0);
+    if current_version == 0 && !had_existing_values {
+        let encoded_version = storage_manifest.version.to_string();
+        plugin_runtime_storage_meta
+            .insert(plugin_id, encoded_version.as_str())
+            .map_err(|error| format!("failed to store plugin runtime storage metadata: {error}"))?;
+    }
+
+    Ok(())
+}
+
+fn plugin_runtime_storage_has_values(
+    plugin_id: &str,
+    plugin_runtime_storage: &redb::Table<'_, &str, &str>,
+) -> Result<bool, String> {
+    let prefix = plugin_runtime_storage_prefix(plugin_id);
+    for item in plugin_runtime_storage
+        .iter()
+        .map_err(|error| format!("failed to scan plugin runtime storage: {error}"))?
+    {
+        let (key, _) =
+            item.map_err(|error| format!("failed to read plugin runtime storage: {error}"))?;
+        if key.value().starts_with(&prefix) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }

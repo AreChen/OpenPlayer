@@ -60,6 +60,12 @@ plugins, SDK examples, and AI-facing plugin instructions.
 - Use `network.request` `bodyFile` for larger host-managed artifacts returned by
   APIs such as `audio.extractClip` or `capture.frame`; do not describe it as
   arbitrary local file upload access.
+- Use `contributes.storage` for persistent plugin-private data. Keep defaults
+  small and JSON-serializable, bump the storage `version` when changing the
+  plugin's schema, read `openplayer.storage.info()` at runtime for migrations,
+  call `openplayer.storage.markMigrated()` after successful migration, and rely
+  on uninstall cleanup instead of writing plugin data outside the host storage
+  API.
 
 ## Verification
 

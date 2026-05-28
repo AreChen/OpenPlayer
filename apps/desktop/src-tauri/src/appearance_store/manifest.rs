@@ -4,6 +4,7 @@ mod actions;
 mod primitives;
 mod runtime;
 mod settings;
+mod storage;
 mod theme;
 
 use actions::validate_plugin_action;
@@ -12,6 +13,7 @@ use primitives::{
 };
 use runtime::{validate_plugin_capability, validate_plugin_runtime, validate_plugin_view};
 use settings::validate_plugin_setting;
+use storage::validate_plugin_storage;
 use theme::validate_theme_manifest;
 
 use super::{SUPPORTED_PLUGIN_API_VERSION, records::plugin_permissions, types::*};
@@ -95,11 +97,16 @@ pub(super) fn validate_plugin_manifest(manifest: &PluginManifest) -> Result<(), 
         && manifest.contributes.settings.is_empty()
         && manifest.contributes.actions.is_empty()
         && manifest.contributes.views.is_empty()
+        && manifest.contributes.storage.is_none()
     {
         return Err(
-            "plugin must contribute at least one theme, capability, setting, action, or view"
+            "plugin must contribute at least one theme, capability, setting, action, view, or storage schema"
                 .to_string(),
         );
+    }
+
+    if let Some(storage) = manifest.contributes.storage.as_ref() {
+        validate_plugin_storage(storage)?;
     }
 
     let mut ids = HashSet::new();

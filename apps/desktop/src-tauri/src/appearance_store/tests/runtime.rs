@@ -60,6 +60,131 @@ fn plugin_runtime_storage_is_removed_with_plugin() {
 }
 
 #[test]
+fn plugin_runtime_storage_manifest_initializes_defaults_and_tracks_schema_upgrades() {
+    let (mut store, directory) = temp_store();
+    let manifest = webview_runtime_plugin_json().replace(
+        r#""actions": ["#,
+        r#""storage": {
+              "version": 1,
+              "defaults": {
+                "transcript.language": "auto",
+                "transcript.queue": []
+              }
+            },
+            "actions": ["#,
+    );
+
+    store
+        .import_theme_plugin_json(&manifest)
+        .expect("runtime plugin storage manifest should import");
+    let info = store
+        .plugin_runtime_storage_info("dev.openplayer.runtime.worker")
+        .expect("runtime storage info should be readable");
+    assert_eq!(info.schema_version, 1);
+    assert_eq!(info.manifest_version, 1);
+    assert_eq!(info.keys, vec!["transcript.language", "transcript.queue"]);
+    assert_eq!(
+        store
+            .plugin_runtime_storage_value("dev.openplayer.runtime.worker", "transcript.language")
+            .expect("storage default should be readable"),
+        Some(serde_json::json!("auto"))
+    );
+
+    store
+        .set_plugin_runtime_storage_value(
+            "dev.openplayer.runtime.worker",
+            "transcript.language",
+            serde_json::json!("zh-CN"),
+        )
+        .expect("plugin-owned value should be writable");
+    let upgraded_manifest = webview_runtime_plugin_json().replace(
+        r#""actions": ["#,
+        r#""storage": {
+              "version": 2,
+              "defaults": {
+                "transcript.language": "auto",
+                "transcript.model": "small",
+                "transcript.queue": []
+              }
+            },
+            "actions": ["#,
+    );
+
+    store
+        .import_theme_plugin_json(&upgraded_manifest)
+        .expect("runtime plugin storage upgrade should import");
+    let upgraded_info = store
+        .plugin_runtime_storage_info("dev.openplayer.runtime.worker")
+        .expect("upgraded runtime storage info should be readable");
+
+    assert_eq!(upgraded_info.schema_version, 1);
+    assert_eq!(upgraded_info.manifest_version, 2);
+    assert_eq!(
+        upgraded_info.keys,
+        vec![
+            "transcript.language",
+            "transcript.model",
+            "transcript.queue"
+        ]
+    );
+    assert_eq!(
+        store
+            .plugin_runtime_storage_value("dev.openplayer.runtime.worker", "transcript.language")
+            .expect("existing plugin value should survive storage upgrade"),
+        Some(serde_json::json!("zh-CN"))
+    );
+    assert_eq!(
+        store
+            .plugin_runtime_storage_value("dev.openplayer.runtime.worker", "transcript.model")
+            .expect("new storage default should be initialized"),
+        Some(serde_json::json!("small"))
+    );
+    let migrated_info = store
+        .mark_plugin_runtime_storage_migrated("dev.openplayer.runtime.worker", Some(2))
+        .expect("plugin migration marker should persist");
+    assert_eq!(migrated_info.schema_version, 2);
+    assert_eq!(migrated_info.manifest_version, 2);
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
+#[test]
+fn plugin_runtime_storage_schema_upgrade_from_legacy_storage_starts_at_zero() {
+    let (mut store, directory) = temp_store();
+    store
+        .import_theme_plugin_json(webview_runtime_plugin_json())
+        .expect("legacy runtime plugin should import");
+    store
+        .set_plugin_runtime_storage_value(
+            "dev.openplayer.runtime.worker",
+            "legacy.state",
+            serde_json::json!({ "enabled": true }),
+        )
+        .expect("legacy plugin storage value should persist");
+
+    let schema_manifest = webview_runtime_plugin_json().replace(
+        r#""actions": ["#,
+        r#""storage": {
+              "version": 2,
+              "defaults": {
+                "legacy.schema": "v2"
+              }
+            },
+            "actions": ["#,
+    );
+    store
+        .import_theme_plugin_json(&schema_manifest)
+        .expect("legacy plugin storage schema should import");
+    let info = store
+        .plugin_runtime_storage_info("dev.openplayer.runtime.worker")
+        .expect("legacy storage info should be readable");
+    let _ = std::fs::remove_dir_all(&directory);
+
+    assert_eq!(info.schema_version, 0);
+    assert_eq!(info.manifest_version, 2);
+    assert_eq!(info.keys, vec!["legacy.schema", "legacy.state"]);
+}
+
+#[test]
 fn imports_webview_runtime_source_from_installed_plugin_package() {
     let (mut store, directory) = temp_store();
     let source_directory = directory.join("worker-runtime");

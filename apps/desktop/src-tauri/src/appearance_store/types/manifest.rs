@@ -44,6 +44,8 @@ pub(in crate::appearance_store) struct PluginContributions {
     pub(in crate::appearance_store) actions: Vec<PluginActionManifest>,
     #[serde(default)]
     pub(in crate::appearance_store) views: Vec<PluginViewManifest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(in crate::appearance_store) storage: Option<PluginStorageManifest>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -134,4 +136,12 @@ pub struct PluginSettingOption {
     pub(in crate::appearance_store) label: String,
     #[serde(default)]
     pub(in crate::appearance_store) label_i18n: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(in crate::appearance_store) struct PluginStorageManifest {
+    pub(in crate::appearance_store) version: u32,
+    #[serde(default)]
+    pub(in crate::appearance_store) defaults: HashMap<String, Value>,
 }

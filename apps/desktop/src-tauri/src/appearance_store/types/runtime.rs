@@ -51,3 +51,12 @@ pub struct PluginViewHtml {
     pub(in crate::appearance_store) title: String,
     pub(in crate::appearance_store) html: String,
 }
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginStorageInfo {
+    pub(in crate::appearance_store) plugin_id: String,
+    pub(in crate::appearance_store) schema_version: u32,
+    pub(in crate::appearance_store) manifest_version: u32,
+    pub(in crate::appearance_store) keys: Vec<String>,
+}

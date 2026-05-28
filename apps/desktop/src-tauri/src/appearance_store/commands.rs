@@ -154,6 +154,23 @@ pub fn appearance_plugin_kv_list(
 }
 
 #[tauri::command]
+pub fn appearance_plugin_kv_info(
+    state: State<'_, AppearanceStoreState>,
+    plugin_id: String,
+) -> Result<PluginStorageInfo, String> {
+    state.with_store(|store| store.plugin_runtime_storage_info(&plugin_id))
+}
+
+#[tauri::command]
+pub fn appearance_plugin_kv_mark_migrated(
+    state: State<'_, AppearanceStoreState>,
+    plugin_id: String,
+    schema_version: Option<u32>,
+) -> Result<PluginStorageInfo, String> {
+    state.with_store(|store| store.mark_plugin_runtime_storage_migrated(&plugin_id, schema_version))
+}
+
+#[tauri::command]
 pub fn appearance_plugin_kv_set(
     state: State<'_, AppearanceStoreState>,
     plugin_id: String,

@@ -4,7 +4,8 @@ use redb::ReadableDatabase;
 
 use crate::appearance_store::{
     ACTIVE_THEME_KEY, DEFAULT_THEME_ID, PLUGIN_ENABLEMENT, PLUGIN_INSTALLS, PLUGIN_MANIFESTS,
-    PLUGIN_RUNTIME_STORAGE, PLUGIN_SETTINGS, SETTINGS_KV, THEME_MANIFESTS,
+    PLUGIN_RUNTIME_STORAGE, PLUGIN_RUNTIME_STORAGE_META, PLUGIN_SETTINGS, SETTINGS_KV,
+    THEME_MANIFESTS,
     manifest::validate_dotted_identifier,
     package::remove_installed_plugin_directory,
     records::{
@@ -91,6 +92,17 @@ impl AppearanceStore {
                         format!("failed to remove plugin runtime storage value: {error}")
                     })?;
             }
+
+            let mut plugin_runtime_storage_meta = transaction
+                .open_table(PLUGIN_RUNTIME_STORAGE_META)
+                .map_err(|error| {
+                    format!("failed to open plugin runtime storage metadata table: {error}")
+                })?;
+            plugin_runtime_storage_meta
+                .remove(plugin_id)
+                .map_err(|error| {
+                    format!("failed to remove plugin runtime storage metadata: {error}")
+                })?;
 
             if active_theme_belongs_to_plugin {
                 let mut settings = transaction.open_table(SETTINGS_KV).map_err(|error| {

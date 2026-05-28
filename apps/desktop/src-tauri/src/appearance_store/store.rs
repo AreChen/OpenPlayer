@@ -4,8 +4,9 @@ use redb::Database;
 use tauri::{AppHandle, Manager};
 
 use super::{
-    PLUGIN_ENABLEMENT, PLUGIN_INSTALLS, PLUGIN_MANIFESTS, PLUGIN_RUNTIME_STORAGE, PLUGIN_SETTINGS,
-    SETTINGS_KV, THEME_MANIFESTS, database::create_database_with_retry,
+    PLUGIN_ENABLEMENT, PLUGIN_INSTALLS, PLUGIN_MANIFESTS, PLUGIN_RUNTIME_STORAGE,
+    PLUGIN_RUNTIME_STORAGE_META, PLUGIN_SETTINGS, SETTINGS_KV, THEME_MANIFESTS,
+    database::create_database_with_retry,
 };
 pub struct AppearanceStoreState {
     path: PathBuf,
@@ -103,6 +104,11 @@ impl AppearanceStore {
             transaction
                 .open_table(PLUGIN_RUNTIME_STORAGE)
                 .map_err(|error| format!("failed to open plugin runtime storage table: {error}"))?;
+            transaction
+                .open_table(PLUGIN_RUNTIME_STORAGE_META)
+                .map_err(|error| {
+                    format!("failed to open plugin runtime storage metadata table: {error}")
+                })?;
             transaction
                 .open_table(PLUGIN_INSTALLS)
                 .map_err(|error| format!("failed to open plugin installs table: {error}"))?;

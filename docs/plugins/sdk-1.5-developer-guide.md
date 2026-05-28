@@ -507,6 +507,7 @@ RTSP and RTMP. WebRTC/WHEP views should render browser `<video>` tiles and use
 
 ```js
 const settings = await openplayer.plugin.getSettings();
+const storageInfo = await openplayer.storage.info();
 await openplayer.storage.set("state", { enabled: true });
 const state = await openplayer.storage.get("state");
 
@@ -535,7 +536,34 @@ await openplayer.ui.closeView();
 ```
 
 Storage is plugin-private, redb-backed, and removed when the plugin is
-uninstalled.
+uninstalled. Persistent plugins should declare `contributes.storage` so the
+host can initialize missing defaults on install, preserve existing values on
+upgrade, and expose schema metadata through `openplayer.storage.info` for
+plugin-owned migrations:
+
+```json
+{
+  "contributes": {
+    "storage": {
+      "version": 2,
+      "defaults": {
+        "runtime.launchCount": 0,
+        "transcript.language": "auto",
+        "transcript.queue": []
+      }
+    }
+  }
+}
+```
+
+```js
+const info = await openplayer.storage.info();
+if (info.schemaVersion < info.manifestVersion) {
+  const queue = (await openplayer.storage.get("transcript.queue")) ?? [];
+  await openplayer.storage.set("transcript.queue", queue);
+  await openplayer.storage.markMigrated();
+}
+```
 
 ## Custom Views
 

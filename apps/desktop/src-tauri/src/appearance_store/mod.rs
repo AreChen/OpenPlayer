@@ -26,6 +26,8 @@ const PLUGIN_ENABLEMENT: TableDefinition<&str, &str> = TableDefinition::new("plu
 const PLUGIN_SETTINGS: TableDefinition<&str, &str> = TableDefinition::new("plugin_settings");
 const PLUGIN_RUNTIME_STORAGE: TableDefinition<&str, &str> =
     TableDefinition::new("plugin_runtime_storage");
+const PLUGIN_RUNTIME_STORAGE_META: TableDefinition<&str, &str> =
+    TableDefinition::new("plugin_runtime_storage_meta");
 const PLUGIN_INSTALLS: TableDefinition<&str, &str> = TableDefinition::new("plugin_installs");
 const ACTIVE_THEME_KEY: &str = "activeThemeId";
 const ACCENT_OVERRIDE_KEY: &str = "accentOverride";

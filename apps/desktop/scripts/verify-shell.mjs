@@ -491,6 +491,14 @@ assert.match(appSource, /"capture\.frame"/, "plugin bridge must advertise manage
 assert.match(appSource, /frame\(args\)[\s\S]*capture\.frame/, "plugin bridge must expose a managed frame capture helper");
 assert.match(tauriRuntimeSource, /mpv_embed_capture_plugin_frame/, "mpv runtime must register plugin frame capture");
 assert.match(tauriRuntimeSource, /frame-captures/, "frame captures must use a plugin-scoped managed directory");
+assert.match(appearanceStoreSource, /PluginStorageManifest/, "plugin manifests must support declarative storage lifecycle metadata");
+assert.match(appearanceStoreSource, /PLUGIN_RUNTIME_STORAGE_META/, "plugin storage schema versions must live in backend redb metadata");
+assert.match(appearanceStoreSource, /initialize_plugin_runtime_storage_defaults/, "plugin install and upgrade must initialize missing storage defaults");
+assert.match(appSource, /storage:\s*Object\.freeze\(\{[\s\S]*info\(\)[\s\S]*plugin\.storage\.info/, "plugin bridge must expose storage.info for migration-aware plugins");
+assert.match(appSource, /markMigrated\(schemaVersion\)[\s\S]*plugin\.storage\.markMigrated/, "plugin bridge must let plugins acknowledge completed storage migrations");
+assert.match(appSource, /appearance_plugin_kv_info/, "plugin storage info must be routed through the backend store");
+assert.match(appSource, /appearance_plugin_kv_mark_migrated/, "plugin storage migration acknowledgement must be routed through the backend store");
+assert.match(pluginSdkGuide, /`contributes\.storage`[\s\S]*defaults[\s\S]*upgrade[\s\S]*`openplayer\.storage\.info`/, "SDK guide must document storage defaults, upgrade schema versions, and storage.info");
 assert.doesNotMatch(appSource, /"ai\.transcribe"|"ai\.translate"/, "plugin SDK should not advertise AI-specific permissions without a real host AI API");
 assert.doesNotMatch(tauriRuntimeSource, /"ai\.transcribe"|"ai\.translate"/, "plugin manifest validation should reject reserved AI-specific permissions");
 assert.doesNotMatch(pluginSdkGuide, /`ai\.transcribe`|`ai\.translate`/, "SDK guide should steer AI-like plugins to generic audio, network, and subtitle primitives");
