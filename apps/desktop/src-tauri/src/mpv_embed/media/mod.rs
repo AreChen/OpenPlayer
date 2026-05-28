@@ -21,7 +21,8 @@ pub(super) use subtitles::MAX_GENERATED_SUBTITLE_BYTES;
 pub(super) use subtitles::discover_sidecar_subtitles;
 pub(super) use subtitles::{
     append_generated_subtitle_cues_file, format_generated_subtitle_cues, load_sidecar_subtitles,
-    plugin_generated_subtitle_path, validate_subtitle_path, write_generated_subtitle_file,
+    plugin_generated_subtitle_path, read_generated_subtitle_file, validate_subtitle_path,
+    write_generated_subtitle_file,
 };
 pub(super) use validation::validate_media_path;
 pub(super) use visualizer::configure_audio_visualizer;

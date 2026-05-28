@@ -20,6 +20,13 @@ type GeneratedSubtitleTrack = {
   path: string;
 };
 
+type GeneratedSubtitleReadResult = {
+  track: GeneratedSubtitleTrack;
+  format: string;
+  content: string;
+  cues: GeneratedSubtitleCue[] | null;
+};
+
 type GeneratedSubtitleCue = {
   start: number;
   end: number;
@@ -226,6 +233,19 @@ export const handlePluginFilesystemRuntimeCommand: PluginRuntimeCommandHandler =
         throw new Error("plugin runtime command requires subtitle.write");
       }
       return await invoke<GeneratedSubtitleTrack[]>("mpv_embed_list_generated_subtitles", { pluginId });
+    }
+    case "subtitle.readGenerated": {
+      if (!context.media) {
+        throw new Error("subtitle.readGenerated requires loaded media");
+      }
+      if (!permissions.has("subtitle.write")) {
+        throw new Error("plugin runtime command requires subtitle.write");
+      }
+      const trackId = generatedSubtitleTrackId(record, "subtitle.readGenerated");
+      return await invoke<GeneratedSubtitleReadResult>("mpv_embed_read_generated_subtitle", {
+        pluginId,
+        trackId,
+      });
     }
     case "subtitle.removeGenerated": {
       if (!context.media) {

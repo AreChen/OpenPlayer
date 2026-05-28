@@ -160,6 +160,33 @@ pub async fn mpv_embed_list_generated_subtitles(
 }
 
 #[tauri::command]
+pub async fn mpv_embed_read_generated_subtitle(
+    app: AppHandle,
+    plugin_id: String,
+    track_id: i64,
+) -> Result<GeneratedSubtitleReadResult, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("failed to resolve app data directory: {error}"))?;
+
+    let track = run_mpv_command(app, move |state| {
+        with_player(state, |player| {
+            plugin_generated_subtitle_track_by_id(&player.mpv, &app_data_dir, &plugin_id, track_id)
+        })
+    })
+    .await?;
+    let file = read_generated_subtitle_file(&PathBuf::from(&track.path))?;
+
+    Ok(GeneratedSubtitleReadResult {
+        track,
+        format: file.format,
+        content: file.content,
+        cues: file.cues,
+    })
+}
+
+#[tauri::command]
 pub async fn mpv_embed_remove_generated_subtitle(
     app: AppHandle,
     plugin_id: String,
@@ -338,6 +365,33 @@ fn read_plugin_generated_subtitle_tracks(
     }
 
     tracks
+}
+
+fn plugin_generated_subtitle_track_by_id(
+    mpv: &libmpv2::Mpv,
+    app_data_dir: &Path,
+    plugin_id: &str,
+    track_id: i64,
+) -> Result<GeneratedSubtitleTrack, String> {
+    if track_id <= 0 {
+        return Err("invalid generated subtitle track id".to_string());
+    }
+    let count = mpv
+        .get_property::<i64>("track-list/count")
+        .unwrap_or(0)
+        .clamp(0, MAX_TRACKS);
+
+    for index in 0..count {
+        let Some(track) = plugin_generated_subtitle_track_at(mpv, app_data_dir, plugin_id, index)
+        else {
+            continue;
+        };
+        if track.id == track_id {
+            return Ok(track);
+        }
+    }
+
+    Err("generated subtitle track is not owned by the current plugin".to_string())
 }
 
 fn plugin_generated_subtitle_track_path(

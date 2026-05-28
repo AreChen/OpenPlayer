@@ -15,6 +15,9 @@ export function pluginWorkerSubtitleApiSource() {
       listGenerated() {
         return requestHost("subtitle.listGenerated");
       },
+      readGenerated(trackId) {
+        return requestHost("subtitle.readGenerated", { trackId });
+      },
       removeGenerated(trackId) {
         return requestHost("subtitle.removeGenerated", { trackId });
       },

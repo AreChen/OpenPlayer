@@ -152,6 +152,33 @@ pub(in crate::mpv_embed) fn append_generated_subtitle_cues_file(
         .map_err(|error| format!("failed to append generated subtitle cues: {error}"))
 }
 
+pub(in crate::mpv_embed) fn read_generated_subtitle_file(
+    path: &Path,
+) -> Result<GeneratedSubtitleContent, String> {
+    let format = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .ok_or_else(|| "generated subtitle file has no format extension".to_string())?;
+    let format = normalize_generated_subtitle_format(format)?.to_string();
+    let content = fs::read_to_string(path)
+        .map_err(|error| format!("failed to read generated subtitle file: {error}"))?;
+    let byte_len = content.len();
+    if byte_len > MAX_GENERATED_SUBTITLE_BYTES {
+        return Err(format!(
+            "generated subtitle content is too large: {byte_len} bytes exceeds {MAX_GENERATED_SUBTITLE_BYTES}"
+        ));
+    }
+    let cues = parse_generated_subtitle_cues(&format, &content)
+        .ok()
+        .flatten();
+
+    Ok(GeneratedSubtitleContent {
+        format,
+        content,
+        cues,
+    })
+}
+
 pub(in crate::mpv_embed) fn generated_subtitle_directory(
     app_data_dir: &Path,
     plugin_id: &str,
@@ -278,6 +305,67 @@ fn next_srt_cue_index(content: &str) -> usize {
         .filter(|line| line.trim().parse::<usize>().is_ok())
         .count();
     count + 1
+}
+
+fn parse_generated_subtitle_cues(
+    format: &str,
+    content: &str,
+) -> Result<Option<Vec<GeneratedSubtitleCue>>, String> {
+    normalize_generated_subtitle_cue_format(format)?;
+    let normalized = content.replace("\r\n", "\n").replace('\r', "\n");
+    let mut cues = Vec::new();
+
+    for block in normalized.split("\n\n") {
+        let lines: Vec<&str> = block
+            .lines()
+            .map(str::trim_end)
+            .filter(|line| !line.trim().is_empty())
+            .collect();
+        let Some(time_index) = lines.iter().position(|line| line.contains("-->")) else {
+            continue;
+        };
+        let Some((start, end)) = parse_generated_subtitle_time_range(lines[time_index]) else {
+            continue;
+        };
+        let text = lines
+            .iter()
+            .skip(time_index + 1)
+            .map(|line| line.trim())
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        if text.is_empty() {
+            continue;
+        }
+        cues.push(GeneratedSubtitleCue { start, end, text });
+    }
+
+    Ok(Some(cues))
+}
+
+fn parse_generated_subtitle_time_range(line: &str) -> Option<(f64, f64)> {
+    let (start, rest) = line.split_once("-->")?;
+    let end = rest.split_whitespace().next()?;
+    Some((
+        parse_generated_subtitle_timecode(start.trim())?,
+        parse_generated_subtitle_timecode(end.trim())?,
+    ))
+}
+
+fn parse_generated_subtitle_timecode(value: &str) -> Option<f64> {
+    let normalized = value.replace(',', ".");
+    let mut parts = normalized.split(':');
+    let hours = parts.next()?.parse::<u64>().ok()?;
+    let minutes = parts.next()?.parse::<u64>().ok()?;
+    let seconds_part = parts.next()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    let (seconds, millis) = seconds_part.split_once('.').unwrap_or((seconds_part, "0"));
+    let seconds = seconds.parse::<u64>().ok()?;
+    let millis = format!("{millis:0<3}");
+    let millis = millis.get(..3)?.parse::<u64>().ok()?;
+    Some((hours * 3600 + minutes * 60 + seconds) as f64 + millis as f64 / 1000.0)
 }
 
 fn normalize_generated_subtitle_cue_text(text: &str) -> String {

@@ -51,6 +51,23 @@ pub struct GeneratedSubtitleTrack {
     pub(crate) path: String,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GeneratedSubtitleContent {
+    pub(crate) format: String,
+    pub(crate) content: String,
+    pub(crate) cues: Option<Vec<GeneratedSubtitleCue>>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeneratedSubtitleReadResult {
+    pub(crate) track: GeneratedSubtitleTrack,
+    pub(crate) format: String,
+    pub(crate) content: String,
+    pub(crate) cues: Option<Vec<GeneratedSubtitleCue>>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CurrentSubtitleCue {
@@ -62,7 +79,7 @@ pub struct CurrentSubtitleCue {
     pub(crate) text: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct GeneratedSubtitleCue {
     pub(crate) start: f64,

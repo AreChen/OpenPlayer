@@ -393,6 +393,46 @@ fn appends_structured_generated_subtitle_cues() {
 }
 
 #[test]
+fn reads_generated_subtitle_files_with_structured_cues() {
+    let directory = std::env::temp_dir().join(format!(
+        "openplayer-subtitle-read-test-{}",
+        std::process::id()
+    ));
+    let plugin_id = "dev.openplayer.transcriber";
+    let _ = std::fs::remove_dir_all(&directory);
+    let cues = vec![
+        GeneratedSubtitleCue {
+            start: 0.0,
+            end: 1.25,
+            text: "Hello".to_string(),
+        },
+        GeneratedSubtitleCue {
+            start: 2.0,
+            end: 3.5,
+            text: "world\nagain".to_string(),
+        },
+    ];
+    let content =
+        format_generated_subtitle_cues("vtt", &cues).expect("structured cues should format as vtt");
+    let path = write_generated_subtitle_file(
+        &directory,
+        plugin_id,
+        Some("live-transcript"),
+        "vtt",
+        &content,
+    )
+    .expect("generated subtitle should be written");
+
+    let read =
+        read_generated_subtitle_file(&path).expect("generated subtitle content should be readable");
+    let _ = std::fs::remove_dir_all(&directory);
+
+    assert_eq!(read.format, "vtt");
+    assert_eq!(read.content, content);
+    assert_eq!(read.cues, Some(cues));
+}
+
+#[test]
 fn enables_real_audio_visualizer_for_audio_files_only() {
     assert!(is_likely_audio_path(Path::new("song.MP3")));
     assert!(is_likely_audio_path(Path::new("voice.amr")));

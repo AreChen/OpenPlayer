@@ -74,10 +74,11 @@ custom views, and verification commands, read
   displayed cue with `openplayer.subtitle.currentCue`, so translation and
   cleanup plugins can compose read, network, and generated subtitle write APIs
   without arbitrary subtitle file access.
-- Let plugins list, replace, and remove only their own generated subtitle
+- Let plugins list, read, replace, and remove only their own generated subtitle
   tracks with `openplayer.subtitle.listGenerated`,
-  `openplayer.subtitle.replaceGenerated`, `openplayer.subtitle.appendGeneratedCues`,
-  and `openplayer.subtitle.removeGenerated`.
+  `openplayer.subtitle.readGenerated`, `openplayer.subtitle.replaceGenerated`,
+  `openplayer.subtitle.appendGeneratedCues`, and
+  `openplayer.subtitle.removeGenerated`.
 
 ## Package Format
 

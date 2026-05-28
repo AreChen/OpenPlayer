@@ -74,6 +74,7 @@ pub fn run() {
             crate::mpv_embed::mpv_embed_load_generated_subtitle,
             crate::mpv_embed::mpv_embed_load_generated_subtitle_cues,
             crate::mpv_embed::mpv_embed_list_generated_subtitles,
+            crate::mpv_embed::mpv_embed_read_generated_subtitle,
             crate::mpv_embed::mpv_embed_remove_generated_subtitle,
             crate::mpv_embed::mpv_embed_replace_generated_subtitle,
             crate::mpv_embed::mpv_embed_replace_generated_subtitle_cues,

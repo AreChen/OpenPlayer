@@ -381,15 +381,17 @@ loads generated subtitle text through mpv. Plugins do not receive raw filesystem
 write access and should not use raw mpv `sub-add` or provider-specific host
 commands.
 
-Generated subtitle tracks are plugin-owned resources. A plugin can inspect,
-append to, replace, or unload only tracks backed by files in its own managed
-subtitle directory:
+Generated subtitle tracks are plugin-owned resources. A plugin can inspect, read
+back, append to, replace, or unload only tracks backed by files in its own
+managed subtitle directory:
 
 ```js
 const generatedTracks = await openplayer.subtitle.listGenerated();
 const currentTranscript = generatedTracks.find((track) => track.selected);
 
 if (currentTranscript) {
+  const currentContent = await openplayer.subtitle.readGenerated(currentTranscript.id);
+
   await openplayer.subtitle.appendGeneratedCues(currentTranscript.id, {
     cues: latestTranscriptSegments,
     select: true,
@@ -398,7 +400,10 @@ if (currentTranscript) {
   await openplayer.subtitle.replaceGeneratedCues(currentTranscript.id, {
     name: "Updated Transcript",
     format: "vtt",
-    cues: updatedTranscriptSegments,
+    cues: (currentContent.cues ?? updatedTranscriptSegments).map((cue) => ({
+      ...cue,
+      text: cue.text.trim(),
+    })),
     select: true,
   });
 }
@@ -409,9 +414,12 @@ for (const staleTrack of generatedTracks.filter((track) => !track.selected)) {
 ```
 
 For real-time transcription, create a VTT or SRT track once with
-`loadGeneratedCues`, then append new `SubtitleCue[]` chunks with
-`appendGeneratedCues`. The host keeps the write scoped to the current plugin's
-managed subtitle file and asks mpv to reload that subtitle track.
+`loadGeneratedCues`, append new `SubtitleCue[]` chunks with
+`appendGeneratedCues`, and use `readGenerated` for review, translation, cleanup,
+or resumable plugin state. `readGenerated` returns the raw subtitle content and
+parsed `SubtitleCue[]` for SRT/VTT. The host keeps all reads and writes scoped to
+the current plugin's managed subtitle files and asks mpv to reload updated
+subtitle tracks.
 
 For larger audio clips, avoid `includeBase64` and upload the managed artifact
 directly:

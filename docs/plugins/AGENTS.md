@@ -52,11 +52,11 @@ plugins, SDK examples, and AI-facing plugin instructions.
   and batch operations. Report progress with `tasks.update`, request cooperative
   cancellation with `tasks.cancel`, and finish cancellation with
   `tasks.markCancelled`.
-- Use `openplayer.subtitle.listGenerated`, `replaceGenerated`, and
-  `removeGenerated` when a plugin needs to update or clean up its own generated
-  tracks. Prefer `replaceGeneratedCues` when the plugin owns structured
-  transcript segments, and `appendGeneratedCues` for real-time transcription
-  chunks; do not use raw mpv subtitle commands.
+- Use `openplayer.subtitle.listGenerated`, `readGenerated`, `replaceGenerated`,
+  and `removeGenerated` when a plugin needs to review, update, or clean up its
+  own generated tracks. Prefer `replaceGeneratedCues` when the plugin owns
+  structured transcript segments, and `appendGeneratedCues` for real-time
+  transcription chunks; do not use raw mpv subtitle commands.
 - Use `network.request` `bodyFile` for larger host-managed artifacts returned by
   APIs such as `audio.extractClip` or `capture.frame`; do not describe it as
   arbitrary local file upload access.
