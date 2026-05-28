@@ -113,6 +113,10 @@ openplayer.commands.register("plugin.open-example-stream", async () => {
   only to the runtime for the same plugin that declared the action.
 - Runtime event delivery is opt-in. Declare allowed event names in
   `runtime.events`, then subscribe with `openplayer.events.subscribe(event)`.
+- Use `openplayer.log.info`, `openplayer.log.warn`, and
+  `openplayer.log.error` for diagnostics that should be visible in the host
+  plugin runtime log panel. Do not rely on worker `console.log` output for
+  supportable plugin diagnostics.
 
 ## Permission Model
 
@@ -150,6 +154,15 @@ plugins should compose the generic media segment, audio, capture, network,
 subtitle, player, task, and storage APIs instead of asking the core for one-off
 provider support.
 
+That composition model is intentional. A real-time transcription plugin should
+be built by combining `openplayer.media.currentSegment`,
+`openplayer.audio.extractClip`, `openplayer.network.request`,
+`openplayer.subtitle.loadGeneratedCues` or `appendGeneratedCues`,
+`openplayer.tasks`, `openplayer.storage`, and `openplayer.log`. The host should
+add or harden one of those generic primitives only when the composition itself
+is impossible or unsafe, not add a provider- or feature-specific
+`openplayer.ai.*` wrapper.
+
 Do not document or implement plugins that bypass these permissions with raw
 Tauri calls, raw filesystem access, raw sockets, arbitrary mpv commands, or
 unvalidated filter graphs.
@@ -169,6 +182,17 @@ openplayer.capabilities.hasPermission("mpv.core");
 ```
 
 Use this before enabling optional UI or mpv features.
+
+### Diagnostics
+
+```js
+await openplayer.log.info("Loaded provider profile");
+await openplayer.log.warn("Provider returned no timing metadata");
+await openplayer.log.error("Transcription failed");
+```
+
+These entries are shown in the host plugin runtime log panel and are available
+from worker runtimes and custom views.
 
 ### Events
 

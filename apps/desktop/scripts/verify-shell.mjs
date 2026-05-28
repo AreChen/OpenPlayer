@@ -438,6 +438,10 @@ assert.match(appSource, /requireMpvPermission\(permissions,\s*"mpv\.core"\)/, "p
 assert.match(appSource, /pluginPermissionRisk/, "plugin settings must classify plugin permissions by security risk");
 assert.match(appSource, /plugin-permission-chip--danger/, "plugin settings must visibly mark dangerous plugin permissions");
 assert.match(appSource, /pluginRuntimeLogs/, "plugin settings must surface runtime plugin logs and errors");
+assert.match(appSource, /log:\s*Object\.freeze\(\{[\s\S]*info\(message\)[\s\S]*plugin\.log\.info/, "plugin bridge must expose openplayer.log.info");
+assert.match(appSource, /warn\(message\)[\s\S]*plugin\.log\.warning/, "plugin bridge must expose openplayer.log.warn");
+assert.match(appSource, /error\(message\)[\s\S]*plugin\.log\.error/, "plugin bridge must expose openplayer.log.error");
+assert.match(appSource, /case "plugin\.log\.info"[\s\S]*onRuntimeLog/, "plugin log commands must route to the host runtime log panel");
 assert.match(appSource, /api:\s*Object\.freeze\([\s\S]*compatibility/, "plugin bridge must expose stable API compatibility metadata");
 assert.match(appSource, /"plugin\.settings"[\s\S]*getSettings\(\)[\s\S]*plugin\.getSettings/, "plugin bridge must expose setting snapshots through the typed plugin API");
 assert.match(appSource, /"plugin\.tasks"/, "plugin bridge must advertise host-managed plugin task state");

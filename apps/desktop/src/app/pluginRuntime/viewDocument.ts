@@ -88,6 +88,17 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
         return requestHost("plugin.getSettings");
       },
     }),
+    log: Object.freeze({
+      info(message) {
+        return requestHost("plugin.log.info", { message });
+      },
+      warn(message) {
+        return requestHost("plugin.log.warning", { message });
+      },
+      error(message) {
+        return requestHost("plugin.log.error", { message });
+      },
+    }),
     tasks: Object.freeze({
       start(input) {
         return requestHost("tasks.start", input);

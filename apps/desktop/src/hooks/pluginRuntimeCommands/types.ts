@@ -42,6 +42,7 @@ export type PluginRuntimeCommandContext = {
   clearPlaylist: () => void;
   setRecordingState: (state: MpvRecordingState) => void;
   showCaptureFeedback: (icon: "camera" | "record" | "info", message: string) => void;
+  onRuntimeLog: (pluginId: string, level: "info" | "warning" | "error", message: string) => void;
   openPluginView: (pluginId: string, viewId: string) => Promise<void>;
   closePluginView: () => void;
   openQueueIndex: (index: number) => Promise<void>;

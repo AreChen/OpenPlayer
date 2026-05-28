@@ -1,9 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { runPluginNetworkRequest, runtimeNumberArg, runtimeStringArg } from "../../app/pluginRuntime";
-import { PLUGIN_RUNTIME_COMMAND_NOT_HANDLED, type PluginRuntimeCommandHandler } from "./types";
+import { PLUGIN_RUNTIME_COMMAND_NOT_HANDLED, type PluginRuntimeCommandContext, type PluginRuntimeCommandHandler } from "./types";
 
 export const handlePluginDataRuntimeCommand: PluginRuntimeCommandHandler = async (context, command, record, permissions, pluginId) => {
   switch (command) {
+    case "plugin.log.info":
+    case "plugin.log.warning":
+    case "plugin.log.error":
+      return pluginRuntimeLog(context, command, record, pluginId);
     case "plugin.getSettings": {
       const plugin = context.appearanceState?.plugins.find((candidate) => candidate.id === pluginId);
       return Object.fromEntries((plugin?.settings ?? []).map((setting) => [setting.id, setting.value]));
@@ -53,6 +57,21 @@ export const handlePluginDataRuntimeCommand: PluginRuntimeCommandHandler = async
       return PLUGIN_RUNTIME_COMMAND_NOT_HANDLED;
   }
 };
+
+function pluginRuntimeLog(
+  context: PluginRuntimeCommandContext,
+  command: string,
+  record: Record<string, unknown>,
+  pluginId: string,
+) {
+  const message = runtimeStringArg(record, "message");
+  if (!message) {
+    throw new Error("plugin log requires a message");
+  }
+  const level = command === "plugin.log.error" ? "error" : command === "plugin.log.warning" ? "warning" : "info";
+  context.onRuntimeLog(pluginId, level, message.slice(0, 2000));
+  return null;
+}
 
 function runtimeStorageUpdatePatch(record: Record<string, unknown>) {
   const rawSet = record.set;

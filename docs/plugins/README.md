@@ -37,6 +37,9 @@ custom views, and verification commands, read
 - Let plugins create session-local host-managed task snapshots for long-running
   transcription, translation, analysis, and batch work with
   `openplayer.tasks`.
+- Let plugins write host-visible diagnostics into the plugin runtime log panel
+  with `openplayer.log.info`, `openplayer.log.warn`, and
+  `openplayer.log.error`.
 - Render settings assigned to the subtitle/track panel in that panel.
 - Render plugin actions in UI slots such as the control strip, context menu, and
   playlist actions.
@@ -79,6 +82,10 @@ custom views, and verification commands, read
   `openplayer.subtitle.readGenerated`, `openplayer.subtitle.replaceGenerated`,
   `openplayer.subtitle.appendGeneratedCues`, and
   `openplayer.subtitle.removeGenerated`.
+- Keep AI-like features plugin-composed: use media segments, audio extraction,
+  frame capture, subtitle read/write, network requests, tasks, storage, and
+  logs as reusable primitives instead of adding one-off core toggles for
+  transcription, translation, OCR, or a specific provider.
 
 ## Package Format
 

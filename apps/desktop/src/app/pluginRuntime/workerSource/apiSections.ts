@@ -2,6 +2,7 @@ import { pluginWorkerAudioApiSource } from "./apiSections/audio";
 import { pluginWorkerCaptureApiSource } from "./apiSections/capture";
 import { pluginWorkerCommandsApiSource } from "./apiSections/commands";
 import { pluginWorkerFilesystemApiSource } from "./apiSections/filesystem";
+import { pluginWorkerLogApiSource } from "./apiSections/log";
 import { pluginWorkerMediaApiSource } from "./apiSections/media";
 import { pluginWorkerMpvApiSource } from "./apiSections/mpv";
 import { pluginWorkerNetworkApiSource } from "./apiSections/network";
@@ -17,6 +18,7 @@ export function pluginWorkerApiObjectMembersSource() {
   return [
     pluginWorkerCommandsApiSource(),
     pluginWorkerPluginApiSource(),
+    pluginWorkerLogApiSource(),
     pluginWorkerTasksApiSource(),
     pluginWorkerMediaApiSource(),
     pluginWorkerPlayerApiSource(),

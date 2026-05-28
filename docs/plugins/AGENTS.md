@@ -54,6 +54,9 @@ plugins, SDK examples, and AI-facing plugin instructions.
   and batch operations. Report progress with `tasks.update`, request cooperative
   cancellation with `tasks.cancel`, and finish cancellation with
   `tasks.markCancelled`.
+- Use `openplayer.log.info`, `openplayer.log.warn`, and
+  `openplayer.log.error` for host-visible diagnostics in the plugin runtime log
+  panel instead of relying on worker console output.
 - Use `openplayer.subtitle.listGenerated`, `readGenerated`, `replaceGenerated`,
   and `removeGenerated` when a plugin needs to review, update, or clean up its
   own generated tracks. Prefer `replaceGeneratedCues` when the plugin owns
