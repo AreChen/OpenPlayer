@@ -6,6 +6,9 @@ export function pluginWorkerSubtitleApiSource() {
       currentCue() {
         return requestHost("subtitle.currentCue");
       },
+      setStyle(args) {
+        return requestHost("subtitle.setStyle", args);
+      },
       loadGenerated(args) {
         return requestHost("subtitle.loadGenerated", args);
       },

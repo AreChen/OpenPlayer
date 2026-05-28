@@ -40,6 +40,7 @@ export const OPENPLAYER_HOST_CAPABILITIES = Object.freeze([
   "filesystem.reveal",
   "subtitle.external",
   "subtitle.read",
+  "subtitle.style",
   "subtitle.generated",
   "subtitle.cues",
   "ui.toast",

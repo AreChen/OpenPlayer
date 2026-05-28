@@ -62,6 +62,9 @@ plugins, SDK examples, and AI-facing plugin instructions.
   own generated tracks. Prefer `replaceGeneratedCues` when the plugin owns
   structured transcript segments, and `appendGeneratedCues` for real-time
   transcription chunks; do not use raw mpv subtitle commands.
+- Use `openplayer.subtitle.setStyle` for runtime subtitle presentation changes
+  when the plugin declares `mpv.subtitleStyle`; do not route subtitle typography
+  through raw `openplayer.mpv.setProperty`.
 - Use `network.request` `bodyFile` for larger host-managed artifacts returned by
   APIs such as `audio.extractClip` or `capture.frame`; do not describe it as
   arbitrary local file upload access.

@@ -463,8 +463,10 @@ assert.match(appSource, /audioFilters:\s*Object\.freeze\([\s\S]*add\(filterId,\s
 assert.match(appSource, /setAbLoop\(start,\s*end\)/, "plugin bridge must expose AB loop controls");
 assert.match(appSource, /"subtitle\.generated"/, "plugin bridge must advertise generated subtitle loading as a host capability");
 assert.match(appSource, /"subtitle\.cues"/, "plugin bridge must advertise structured subtitle cue helpers");
+assert.match(appSource, /"subtitle\.style"/, "plugin bridge must advertise high-level subtitle styling as a host capability");
 assert.match(appSource, /loadGenerated\(args\)[\s\S]*subtitle\.loadGenerated/, "plugin bridge must expose a high-level generated subtitle loader");
 assert.match(appSource, /loadGeneratedCues\(args\)[\s\S]*subtitle\.loadGeneratedCues/, "plugin bridge must expose structured cue subtitle loading");
+assert.match(appSource, /setStyle\(args\)[\s\S]*subtitle\.setStyle/, "plugin bridge must expose high-level subtitle style updates");
 assert.match(appSource, /listGenerated\(\)[\s\S]*subtitle\.listGenerated/, "plugin bridge must expose generated subtitle listing");
 assert.match(appSource, /removeGenerated\(trackId\)[\s\S]*subtitle\.removeGenerated/, "plugin bridge must expose generated subtitle removal");
 assert.match(appSource, /replaceGenerated\(trackId,\s*args\)[\s\S]*subtitle\.replaceGenerated/, "plugin bridge must expose generated subtitle replacement");
@@ -486,6 +488,7 @@ assert.match(tauriRuntimeSource, /read_generated_subtitle_file/, "generated subt
 assert.match(appSource, /"subtitle\.read"/, "plugin bridge must advertise current subtitle reading as a host capability");
 assert.match(appSource, /currentCue\(\)[\s\S]*subtitle\.currentCue/, "plugin bridge must expose a high-level current subtitle cue reader");
 assert.match(appSource, /permissions\.has\("subtitle\.read"\)/, "current subtitle reading must require the subtitle.read plugin permission");
+assert.match(appSource, /case "subtitle\.setStyle"[\s\S]*permissions\.has\("mpv\.subtitleStyle"\)[\s\S]*mpv_embed_set_plugin_property/, "subtitle style updates must require mpv.subtitleStyle and use the safe plugin mpv property allowlist");
 assert.match(appSource, /readGenerated\(trackId\)[\s\S]*subtitle\.readGenerated/, "plugin bridge must expose generated subtitle readback");
 assert.match(tauriRuntimeSource, /mpv_embed_current_subtitle_cue/, "mpv runtime must register current subtitle cue reading");
 assert.match(tauriRuntimeSource, /sub-text/, "current subtitle cue reading must use mpv subtitle text properties");

@@ -77,6 +77,9 @@ custom views, and verification commands, read
   displayed cue with `openplayer.subtitle.currentCue`, so translation and
   cleanup plugins can compose read, network, and generated subtitle write APIs
   without arbitrary subtitle file access.
+- Let runtime and view plugins update subtitle presentation with
+  `openplayer.subtitle.setStyle` through the same safe `mpv.subtitleStyle`
+  allowlist used by manifest-backed subtitle settings.
 - Let plugins list, read, replace, and remove only their own generated subtitle
   tracks with `openplayer.subtitle.listGenerated`,
   `openplayer.subtitle.readGenerated`, `openplayer.subtitle.replaceGenerated`,

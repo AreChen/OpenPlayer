@@ -33,6 +33,81 @@ type GeneratedSubtitleCue = {
   text: string;
 };
 
+type SubtitleStyleWrite = {
+  property: string;
+  value: string | number;
+};
+
+function subtitleStylePatch(record: Record<string, unknown>, command: string): SubtitleStyleWrite[] {
+  const patch: SubtitleStyleWrite[] = [];
+  pushSubtitleStyleString(patch, record, "fontFamily", "sub-font", 128, command);
+  pushSubtitleStyleNumber(patch, record, "fontSize", "sub-font-size", 1, 128, command);
+  pushSubtitleStyleNumber(patch, record, "scale", "sub-scale", 0.1, 5, command);
+  pushSubtitleStyleNumber(patch, record, "position", "sub-pos", 0, 100, command);
+  pushSubtitleStyleColor(patch, record, "color", "sub-color", command);
+  pushSubtitleStyleNumber(patch, record, "spacing", "sub-spacing", -10, 10, command);
+  pushSubtitleStyleNumber(patch, record, "outlineSize", "sub-outline-size", 0, 32, command);
+  pushSubtitleStyleNumber(patch, record, "shadowOffset", "sub-shadow-offset", 0, 32, command);
+  if (patch.length === 0) {
+    throw new Error(`${command} requires at least one style field`);
+  }
+  return patch;
+}
+
+function pushSubtitleStyleString(
+  patch: SubtitleStyleWrite[],
+  record: Record<string, unknown>,
+  key: string,
+  property: string,
+  maxLength: number,
+  command: string,
+) {
+  const value = record[key];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (typeof value !== "string" || !value.trim() || value.length > maxLength) {
+    throw new Error(`${command} requires ${key} to be non-empty text`);
+  }
+  patch.push({ property, value });
+}
+
+function pushSubtitleStyleNumber(
+  patch: SubtitleStyleWrite[],
+  record: Record<string, unknown>,
+  key: string,
+  property: string,
+  min: number,
+  max: number,
+  command: string,
+) {
+  const value = record[key];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max) {
+    throw new Error(`${command} requires ${key} between ${min} and ${max}`);
+  }
+  patch.push({ property, value });
+}
+
+function pushSubtitleStyleColor(
+  patch: SubtitleStyleWrite[],
+  record: Record<string, unknown>,
+  key: string,
+  property: string,
+  command: string,
+) {
+  const value = record[key];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (typeof value !== "string" || !/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)) {
+    throw new Error(`${command} requires ${key} to be a hex color`);
+  }
+  patch.push({ property, value });
+}
+
 function generatedSubtitleTrackId(record: Record<string, unknown>, command: string) {
   const trackId = runtimeNumberArg(record, "trackId");
   if (trackId === null || !Number.isInteger(trackId) || trackId <= 0) {
@@ -184,6 +259,25 @@ export const handlePluginFilesystemRuntimeCommand: PluginRuntimeCommandHandler =
         throw new Error("plugin runtime command requires subtitle.read");
       }
       return await invoke<CurrentSubtitleCue | null>("mpv_embed_current_subtitle_cue");
+    }
+    case "subtitle.setStyle": {
+      if (!context.media) {
+        throw new Error("subtitle.setStyle requires loaded media");
+      }
+      if (!permissions.has("mpv.subtitleStyle")) {
+        throw new Error("plugin runtime command requires mpv.subtitleStyle");
+      }
+      const patch = subtitleStylePatch(record, "subtitle.setStyle");
+      context.invalidatePendingSnapshots();
+      let snapshot: MpvSnapshot | null = null;
+      for (const item of patch) {
+        snapshot = await invoke<MpvSnapshot>("mpv_embed_set_plugin_property", item);
+      }
+      if (!snapshot) {
+        throw new Error("subtitle.setStyle did not apply a style field");
+      }
+      context.applyCommandSnapshot(snapshot);
+      return snapshot;
     }
     case "subtitle.loadGenerated": {
       if (!context.media) {

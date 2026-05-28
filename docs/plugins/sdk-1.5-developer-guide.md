@@ -158,10 +158,10 @@ That composition model is intentional. A real-time transcription plugin should
 be built by combining `openplayer.media.currentSegment`,
 `openplayer.audio.extractClip`, `openplayer.network.request`,
 `openplayer.subtitle.loadGeneratedCues` or `appendGeneratedCues`,
-`openplayer.tasks`, `openplayer.storage`, and `openplayer.log`. The host should
-add or harden one of those generic primitives only when the composition itself
-is impossible or unsafe, not add a provider- or feature-specific
-`openplayer.ai.*` wrapper.
+`openplayer.subtitle.setStyle`, `openplayer.tasks`, `openplayer.storage`, and
+`openplayer.log`. The host should add or harden one of those generic primitives
+only when the composition itself is impossible or unsafe, not add a provider- or
+feature-specific `openplayer.ai.*` wrapper.
 
 Do not document or implement plugins that bypass these permissions with raw
 Tauri calls, raw filesystem access, raw sockets, arbitrary mpv commands, or
@@ -444,6 +444,22 @@ or resumable plugin state. `readGenerated` returns the raw subtitle content and
 parsed `SubtitleCue[]` for SRT/VTT. The host keeps all reads and writes scoped to
 the current plugin's managed subtitle files and asks mpv to reload updated
 subtitle tracks.
+
+Use `setStyle` for runtime subtitle presentation changes instead of raw mpv
+property writes:
+
+```js
+await openplayer.subtitle.setStyle({
+  fontFamily: "Inter",
+  fontSize: 42,
+  position: 92,
+  color: "#78d5b3",
+  outlineSize: 2,
+});
+```
+
+`setStyle` requires `mpv.subtitleStyle` and accepts only the same safe subtitle
+style fields as manifest-backed subtitle settings.
 
 For larger audio clips, avoid `includeBase64` and upload the managed artifact
 directly:
