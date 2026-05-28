@@ -63,6 +63,9 @@ custom views, and verification commands, read
 - Let runtime and view plugins ask the host for normalized current playback
   windows with `openplayer.media.currentSegment`, then export short managed WAV
   clips from those windows with `openplayer.audio.extractClip`.
+- Let runtime and view plugins split loaded media into bounded overlapping
+  chunks with `openplayer.media.segmentTimeline` for batch transcription,
+  analysis, or summarization.
 - Let runtime and view plugins capture the current video frame as a managed
   image artifact with `openplayer.capture.frame` for OCR, visual understanding,
   scene tagging, or summary workflows.

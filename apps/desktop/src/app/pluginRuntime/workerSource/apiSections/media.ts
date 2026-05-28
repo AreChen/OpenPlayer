@@ -17,6 +17,9 @@ export function pluginWorkerMediaApiSource() {
       currentSegment(args = {}) {
         return requestHost("player.currentSegment", args);
       },
+      segmentTimeline(args = {}) {
+        return requestHost("player.segmentTimeline", args);
+      },
       snapshot() {
         return requestHost("player.snapshot");
       },

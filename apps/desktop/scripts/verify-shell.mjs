@@ -454,7 +454,10 @@ assert.match(appSource, /MAX_PLUGIN_TASKS_PER_PLUGIN/, "plugin task registry mus
 assert.match(appSource, /"media\.segments"/, "plugin bridge must advertise generic media segment helpers");
 assert.match(appSource, /currentSegment\(args/, "plugin bridge must expose current media segment normalization");
 assert.match(appSource, /player\.currentSegment/, "plugin bridge must route current media segment requests through the host");
+assert.match(appSource, /segmentTimeline\(args/, "plugin bridge must expose media timeline segmentation");
+assert.match(appSource, /player\.segmentTimeline/, "plugin bridge must route media timeline segmentation through the host");
 assert.match(appSource, /normalizePluginMediaSegment/, "plugin runtime host must normalize current media segment windows centrally");
+assert.match(appSource, /normalizePluginMediaSegmentTimeline/, "plugin runtime host must normalize batch media segment timelines centrally");
 assert.match(appSource, /events:\s*Object\.freeze\([\s\S]*subscribe\(event\)/, "plugin bridge must expose runtime event subscription helpers");
 assert.match(appSource, /events\.subscribe/, "plugin runtime host must handle dynamic event subscriptions");
 assert.match(appSource, /workerState\.eventSubscriptions/, "plugin runtime events must be filtered by plugin subscriptions");

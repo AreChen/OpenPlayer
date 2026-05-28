@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   normalizePluginLoadOptions,
   normalizePluginMediaSegment,
+  normalizePluginMediaSegmentTimeline,
   runtimeNumberArg,
   runtimeStringArg,
 } from "../../../app/pluginRuntime";
@@ -28,6 +29,21 @@ export const handlePluginPlayerMediaCommand: PluginRuntimeCommandHandler = async
           start: runtimeNumberArg(record, "start") ?? undefined,
           before: runtimeNumberArg(record, "before") ?? undefined,
           duration: runtimeNumberArg(record, "duration") ?? undefined,
+        },
+        {
+          media: context.media,
+          position: context.displayTime,
+          mediaDuration: context.duration,
+        },
+      );
+    case "player.segmentTimeline":
+      return normalizePluginMediaSegmentTimeline(
+        {
+          start: runtimeNumberArg(record, "start") ?? undefined,
+          end: runtimeNumberArg(record, "end") ?? undefined,
+          duration: runtimeNumberArg(record, "duration") ?? undefined,
+          overlap: runtimeNumberArg(record, "overlap") ?? undefined,
+          maxSegments: runtimeNumberArg(record, "maxSegments") ?? undefined,
         },
         {
           media: context.media,

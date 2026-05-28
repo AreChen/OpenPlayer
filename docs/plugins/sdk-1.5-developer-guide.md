@@ -271,6 +271,7 @@ openplayer.media.openStream(url, {
 openplayer.media.openStreamDialog();
 openplayer.media.current();
 openplayer.media.currentSegment({ before: 2, duration: 8 });
+openplayer.media.segmentTimeline({ duration: 20, overlap: 1 });
 openplayer.media.snapshot();
 openplayer.playlist.current();
 openplayer.playlist.playIndex(0);
@@ -284,8 +285,10 @@ require `mpv.loadOptions`.
 `openplayer.media.currentSegment()` returns a host-normalized window around the
 current playback position. Use `before` for already-played audio, `duration` for
 bounded chunk size, and pass `segment.clip` into `openplayer.audio.extractClip`.
-The host clamps segment boundaries to the loaded media duration, so transcription
-plugins do not each need to reimplement time-window math.
+For batch transcription or analysis, `segmentTimeline()` splits the loaded media
+into bounded, optionally overlapping `MediaSegment[]` chunks. The host clamps
+all segment boundaries to the loaded media duration, so plugins do not each need
+to reimplement time-window math.
 
 ### Audio Clips
 
@@ -304,6 +307,17 @@ with a separate mpv instance, so it does not interrupt playback. It requires
 `audio.extract`. Use small chunks when requesting `includeBase64`; larger
 provider uploads should stay host-mediated instead of giving plugins raw
 filesystem access.
+
+For whole-file batch transcription, create a timeline once and process each
+clip through the same artifact and network primitives:
+
+```js
+const timeline = await openplayer.media.segmentTimeline({ duration: 20, overlap: 1 });
+for (const segment of timeline.segments) {
+  const clip = await openplayer.audio.extractClip(segment.clip);
+  await openplayer.log.info(`Extracted ${segment.start}-${segment.end}`);
+}
+```
 
 ### Frame Capture Artifacts
 

@@ -43,6 +43,7 @@ plugins, SDK examples, and AI-facing plugin instructions.
 - For AI transcription, translation, subtitle cleanup, or OCR subtitle tools,
   compose generic permissions instead of inventing feature-specific host code:
   use `openplayer.media.currentSegment` for host-normalized time windows,
+  `openplayer.media.segmentTimeline` for whole-media batch chunks,
   `audio.extract` with `openplayer.audio.extractClip` for short current media
   WAV clips, `mpv.capture` with `openplayer.capture.frame` for current video
   frame artifacts, `subtitle.read` with `openplayer.subtitle.currentCue` for
