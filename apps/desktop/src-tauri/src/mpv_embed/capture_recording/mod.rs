@@ -1,9 +1,11 @@
+mod artifacts;
 mod clipboard;
 mod directories;
 mod formats;
 mod paths;
 mod recording;
 
+pub(super) use artifacts::frame_capture_artifact;
 pub(super) use clipboard::copy_image_file_to_clipboard;
 #[cfg(test)]
 pub(super) use directories::normalize_capture_directory_override;
@@ -13,7 +15,8 @@ pub(super) use formats::{
     recording_container_format_for_method,
 };
 pub(super) use paths::{
-    capture_file_stem, capture_output_path, current_time_ms_for_capture, recording_output_path,
+    capture_file_stem, capture_output_path, current_time_ms_for_capture,
+    plugin_frame_capture_output_path, recording_output_path,
 };
 #[cfg(test)]
 pub(super) use recording::{

@@ -482,6 +482,10 @@ assert.match(appSource, /extractClip\(args\)[\s\S]*audio\.extractClip/, "plugin 
 assert.match(appSource, /permissions\.has\("audio\.extract"\)/, "audio clip extraction must require the audio.extract plugin permission");
 assert.match(tauriRuntimeSource, /mpv_embed_extract_audio_clip/, "mpv runtime must register plugin audio clip extraction");
 assert.match(tauriRuntimeSource, /audio-clips/, "audio clip exports must use a plugin-scoped managed directory");
+assert.match(appSource, /"capture\.frame"/, "plugin bridge must advertise managed video frame capture as a host capability");
+assert.match(appSource, /frame\(args\)[\s\S]*capture\.frame/, "plugin bridge must expose a managed frame capture helper");
+assert.match(tauriRuntimeSource, /mpv_embed_capture_plugin_frame/, "mpv runtime must register plugin frame capture");
+assert.match(tauriRuntimeSource, /frame-captures/, "frame captures must use a plugin-scoped managed directory");
 assert.doesNotMatch(appSource, /"ai\.transcribe"|"ai\.translate"/, "plugin SDK should not advertise AI-specific permissions without a real host AI API");
 assert.doesNotMatch(tauriRuntimeSource, /"ai\.transcribe"|"ai\.translate"/, "plugin manifest validation should reject reserved AI-specific permissions");
 assert.doesNotMatch(pluginSdkGuide, /`ai\.transcribe`|`ai\.translate`/, "SDK guide should steer AI-like plugins to generic audio, network, and subtitle primitives");

@@ -3,6 +3,9 @@ export function pluginWorkerCaptureApiSource() {
       screenshot(args = {}) {
         return requestHost("player.captureScreenshot", args);
       },
+      frame(args) {
+        return requestHost("capture.frame", args);
+      },
       startRecording(args = {}) {
         return requestHost("player.startRecording", args);
       },

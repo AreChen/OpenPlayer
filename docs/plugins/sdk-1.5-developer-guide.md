@@ -127,7 +127,8 @@ Important permissions:
   rewrite stream paths.
 - `mpv.loadOptions`: return safe mpv `loadfile` options from media-opening
   hooks, such as HLS demuxer hints.
-- `mpv.capture`: screenshots and native recording.
+- `mpv.capture`: screenshots, native recording, and managed current-frame image
+  artifacts.
 - `mpv.wall`: native multi-stream wall tiles.
 - `mpv.core`: allowlisted mpv properties, safe commands, and AB loop helpers.
 - `mpv.filters`: plugin-scoped video/audio filters.
@@ -143,9 +144,9 @@ Important permissions:
 
 There is no current provider-specific AI permission. Transcription,
 translation, subtitle cleanup, OCR subtitle extraction, and media-understanding
-plugins should compose the generic media segment, audio, network, subtitle,
-player, task, and storage APIs instead of asking the core for one-off provider
-support.
+plugins should compose the generic media segment, audio, capture, network,
+subtitle, player, task, and storage APIs instead of asking the core for one-off
+provider support.
 
 Do not document or implement plugins that bypass these permissions with raw
 Tauri calls, raw filesystem access, raw sockets, arbitrary mpv commands, or
@@ -278,6 +279,21 @@ with a separate mpv instance, so it does not interrupt playback. It requires
 provider uploads should stay host-mediated instead of giving plugins raw
 filesystem access.
 
+### Frame Capture Artifacts
+
+```js
+const frame = await openplayer.capture.frame({
+  format: "webp",
+  includeBase64: false,
+});
+```
+
+`openplayer.capture.frame` captures the currently displayed video frame into a
+plugin-scoped managed image artifact. It requires `mpv.capture` and is meant for
+OCR, visual understanding, video summaries, scene tagging, and similar plugins.
+Use `includeBase64` only for small inline requests; larger provider uploads
+should pass the returned artifact path to `openplayer.network.request`.
+
 ### Player Controls
 
 ```js
@@ -297,10 +313,11 @@ code should not guess playback state.
 
 ### Subtitle Generation
 
-Generated subtitles and audio clips are composable SDK primitives. Use them for
-AI transcription, translation, OCR subtitle extraction, subtitle cleanup, and
-other plugins that produce standard subtitle text. Request `audio.extract` when
-the plugin needs a short WAV clip from the current media, request
+Generated subtitles, audio clips, and frame captures are composable SDK
+primitives. Use them for AI transcription, translation, OCR subtitle extraction,
+subtitle cleanup, and other plugins that produce standard subtitle text. Request
+`audio.extract` when the plugin needs a short WAV clip from the current media,
+request `mpv.capture` when it needs a current-frame image artifact, request
 `subtitle.write` when it creates a subtitle track, and request `network.request`
 only when it calls an external provider.
 
@@ -395,8 +412,23 @@ const response = await openplayer.network.request({
 ```
 
 `bodyFile` is limited to host-managed artifacts for the current plugin, such as
-files returned by `openplayer.audio.extractClip`. It is not raw filesystem
-upload access.
+files returned by `openplayer.audio.extractClip` or
+`openplayer.capture.frame`. It is not raw filesystem upload access.
+
+For OCR or visual understanding, use the same managed artifact pattern:
+
+```js
+const frame = await openplayer.capture.frame({ format: "webp" });
+const response = await openplayer.network.request({
+  url: "https://example.com/vision",
+  method: "POST",
+  bodyFile: {
+    path: frame.path,
+    contentType: frame.mimeType,
+  },
+  timeoutMs: 30000,
+});
+```
 
 ### Permissioned mpv Controls
 

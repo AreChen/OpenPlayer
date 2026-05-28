@@ -37,9 +37,10 @@ plugins, SDK examples, and AI-facing plugin instructions.
   compose generic permissions instead of inventing feature-specific host code:
   use `openplayer.media.currentSegment` for host-normalized time windows,
   `audio.extract` with `openplayer.audio.extractClip` for short current media
-  WAV clips, `network.request` for provider calls, and `subtitle.write` with
-  `openplayer.subtitle.loadGeneratedCues` for timestamped `SubtitleCue[]` or
-  `openplayer.subtitle.loadGenerated` for standard subtitle text.
+  WAV clips, `mpv.capture` with `openplayer.capture.frame` for current video
+  frame artifacts, `network.request` for provider calls, and `subtitle.write`
+  with `openplayer.subtitle.loadGeneratedCues` for timestamped `SubtitleCue[]`
+  or `openplayer.subtitle.loadGenerated` for standard subtitle text.
 - Use `openplayer.tasks` for long-running transcription, translation, analysis,
   and batch operations. Report progress with `tasks.update`, request cooperative
   cancellation with `tasks.cancel`, and finish cancellation with
@@ -50,8 +51,8 @@ plugins, SDK examples, and AI-facing plugin instructions.
   transcript segments, and `appendGeneratedCues` for real-time transcription
   chunks; do not use raw mpv subtitle commands.
 - Use `network.request` `bodyFile` for larger host-managed artifacts returned by
-  APIs such as `audio.extractClip`; do not describe it as arbitrary local file
-  upload access.
+  APIs such as `audio.extractClip` or `capture.frame`; do not describe it as
+  arbitrary local file upload access.
 
 ## Verification
 

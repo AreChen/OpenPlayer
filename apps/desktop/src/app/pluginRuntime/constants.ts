@@ -25,6 +25,7 @@ export const OPENPLAYER_HOST_CAPABILITIES = Object.freeze([
   "media.openStream",
   "media.segments",
   "audio.extractClip",
+  "capture.frame",
   "mpv.loadOptions",
   "mpv.capture",
   "mpv.wall",

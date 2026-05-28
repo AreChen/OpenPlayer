@@ -66,16 +66,22 @@ pub(super) fn plugin_network_body_file_path(
     if path.trim().is_empty() || path.len() > 4096 {
         return Err("network.request bodyFile path is required".to_string());
     }
-    let candidate = PathBuf::from(path);
-    if !candidate.is_absolute() {
+    let candidate_path = PathBuf::from(path);
+    if !candidate_path.is_absolute() {
         return Err("network.request bodyFile path must be absolute".to_string());
     }
-    let allowed_directory = app_data_dir.join("audio-clips").join(plugin_id);
-    let allowed_directory = std::fs::canonicalize(&allowed_directory)
+    let candidate = std::fs::canonicalize(candidate_path)
         .map_err(|_| "network.request bodyFile must be a managed plugin artifact".to_string())?;
-    let candidate = std::fs::canonicalize(candidate)
-        .map_err(|_| "network.request bodyFile must be a managed plugin artifact".to_string())?;
-    if !candidate.starts_with(&allowed_directory) {
+    let allowed_artifact_roots = [
+        app_data_dir.join("audio-clips").join(plugin_id),
+        app_data_dir.join("frame-captures").join(plugin_id),
+    ];
+    let is_managed_artifact = allowed_artifact_roots.iter().any(|allowed_directory| {
+        std::fs::canonicalize(allowed_directory)
+            .ok()
+            .is_some_and(|allowed_directory| candidate.starts_with(allowed_directory))
+    });
+    if !is_managed_artifact {
         return Err("network.request bodyFile must be a managed plugin artifact".to_string());
     }
     let metadata = std::fs::metadata(&candidate)
@@ -154,7 +160,7 @@ mod tests {
     }
 
     #[test]
-    fn plugin_network_body_file_accepts_current_plugin_audio_artifacts_only() {
+    fn plugin_network_body_file_accepts_current_plugin_managed_artifacts_only() {
         let directory = std::env::temp_dir().join(format!(
             "openplayer-network-body-file-{}-{}",
             std::process::id(),
@@ -178,6 +184,23 @@ mod tests {
             )
             .expect("current plugin artifacts should be uploadable"),
             std::fs::canonicalize(&artifact).expect("artifact should canonicalize")
+        );
+
+        let frame_directory = directory
+            .join("frame-captures")
+            .join("dev.openplayer.ai-transcript");
+        std::fs::create_dir_all(&frame_directory).expect("frame directory should be created");
+        let frame = frame_directory.join("frame.webp");
+        std::fs::write(&frame, b"webp").expect("frame artifact should be written");
+
+        assert_eq!(
+            plugin_network_body_file_path(
+                &directory,
+                "dev.openplayer.ai-transcript",
+                &frame.to_string_lossy()
+            )
+            .expect("current plugin frame artifacts should be uploadable"),
+            std::fs::canonicalize(&frame).expect("frame artifact should canonicalize")
         );
 
         let _ = std::fs::remove_dir_all(&directory);

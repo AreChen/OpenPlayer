@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { INACTIVE_RECORDING_STATE } from "../../../app/constants";
 import { parentDirectoryFromPath } from "../../../app/media";
 import { runtimeBooleanArg, runtimeStringArg } from "../../../app/pluginRuntime";
-import type { MpvCaptureArtifact, MpvRecordingState } from "../../../app/types";
+import type { MpvCaptureArtifact, MpvFrameCaptureArtifact, MpvRecordingState } from "../../../app/types";
 import { focusOverlayWindow } from "../../../app/windowControls";
 import {
   PLUGIN_RUNTIME_COMMAND_NOT_HANDLED,
@@ -15,6 +15,7 @@ export const handlePluginPlayerCaptureCommand: PluginRuntimeCommandHandler = asy
   command,
   record,
   permissions,
+  pluginId,
 ) => {
   switch (command) {
     case "player.captureScreenshot": {
@@ -32,6 +33,14 @@ export const handlePluginPlayerCaptureCommand: PluginRuntimeCommandHandler = asy
       );
       focusOverlayWindow();
       return artifact;
+    }
+    case "capture.frame": {
+      requireCapturePermission(permissions);
+      return await invoke<MpvFrameCaptureArtifact>("mpv_embed_capture_plugin_frame", {
+        pluginId,
+        format: runtimeStringArg(record, "format"),
+        includeBase64: runtimeBooleanArg(record, "includeBase64"),
+      });
     }
     case "player.startRecording":
       requireCapturePermission(permissions);

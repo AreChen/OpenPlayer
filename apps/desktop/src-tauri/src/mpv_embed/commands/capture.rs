@@ -35,6 +35,46 @@ pub async fn mpv_embed_capture_screenshot(
 }
 
 #[tauri::command]
+pub async fn mpv_embed_capture_plugin_frame(
+    app: AppHandle,
+    plugin_id: String,
+    format: Option<String>,
+    include_base64: Option<bool>,
+) -> Result<MpvFrameCaptureArtifact, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("failed to resolve app data directory: {error}"))?;
+    let format = normalize_capture_image_format(format)?;
+    let include_base64 = include_base64.unwrap_or(false);
+
+    run_mpv_command(app, move |state| {
+        with_player(state, |player| {
+            let output_path = plugin_frame_capture_output_path(
+                &app_data_dir,
+                &plugin_id,
+                &player.path,
+                current_time_ms_for_capture(),
+                &format,
+            )?;
+            let parent = output_path
+                .parent()
+                .ok_or_else(|| "frame capture output path has no parent directory".to_string())?;
+            fs::create_dir_all(parent)
+                .map_err(|error| format!("failed to create frame capture directory: {error}"))?;
+
+            let output_text = output_path.to_string_lossy().to_string();
+            player
+                .mpv
+                .command("screenshot-to-file", &[&output_text, "video"])
+                .map_err(|error| format!("mpv frame capture failed: {error}"))?;
+            frame_capture_artifact(&output_path, &format, include_base64)
+        })
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn mpv_embed_recording_state(app: AppHandle) -> Result<MpvRecordingState, String> {
     let state = app.state::<MpvEmbedState>();
     let mut player = state

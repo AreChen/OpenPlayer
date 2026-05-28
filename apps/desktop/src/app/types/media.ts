@@ -52,6 +52,14 @@ export type MpvCaptureArtifact = {
   copiedToClipboard: boolean;
 };
 
+export type MpvFrameCaptureArtifact = {
+  path: string;
+  format: "png" | "jpg" | "webp";
+  mimeType: "image/png" | "image/jpeg" | "image/webp";
+  sizeBytes: number;
+  bodyBase64?: string | null;
+};
+
 export type MpvWallTileRequest = {
   id: string;
   url: string;

@@ -35,6 +35,41 @@ fn normalizes_capture_screenshot_formats() {
 }
 
 #[test]
+fn builds_plugin_scoped_frame_capture_output_paths() {
+    let path = plugin_frame_capture_output_path(
+        &PathBuf::from("app-data"),
+        "dev.openplayer.ocr",
+        "C:\\Media Library\\Episode 01.mkv",
+        42,
+        "webp",
+    )
+    .expect("plugin frame capture output path should normalize");
+
+    assert_eq!(
+        path,
+        PathBuf::from("app-data")
+            .join("frame-captures")
+            .join("dev.openplayer.ocr")
+            .join("openplayer-Episode_01-42.webp")
+    );
+}
+
+#[test]
+fn rejects_invalid_frame_capture_plugin_ids() {
+    assert!(
+        plugin_frame_capture_output_path(
+            &PathBuf::from("app-data"),
+            "../plugin",
+            "movie.mkv",
+            42,
+            "png"
+        )
+        .expect_err("path-like plugin ids should be rejected")
+        .contains("invalid frame capture plugin id")
+    );
+}
+
+#[test]
 fn builds_sanitized_recording_output_paths() {
     let directory = PathBuf::from("recordings");
     let path = recording_output_path(&directory, "rtsp://camera.local/live stream", 42, "mp4");
