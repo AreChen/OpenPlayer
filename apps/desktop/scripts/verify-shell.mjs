@@ -526,6 +526,8 @@ assert.match(appSource, /\.op-field[\s\S]*\.op-label[\s\S]*\.op-help/, "plugin c
 assert.match(appSource, /\.op-tabs[\s\S]*\.op-tab/, "plugin custom views must receive reusable tab classes");
 assert.match(appSource, /\.op-progress[\s\S]*\.op-empty/, "plugin custom views must receive reusable progress and empty-state classes");
 assert.match(appSource, /responseType[\s\S]*base64/, "plugin network requests must support base64 responses for proxied artwork");
+assert.match(appSource, /"network\.json"/, "plugin bridge must advertise JSON network helpers as a host capability");
+assert.match(appSource, /requestJson\(args\)[\s\S]*network\.request[\s\S]*JSON\.parse/, "plugin bridge must expose openplayer.network.requestJson over the host-mediated request path");
 assert.match(appSource, /bodyFile[\s\S]*path/, "plugin network requests must accept host-managed artifact body files");
 assert.match(appSource, /plugin_network_request[\s\S]*pluginId/, "plugin network requests must pass plugin identity to backend path validation");
 assert.match(tauriRuntimeSource, /body_base64/, "plugin network backend must return optional base64 response bodies");

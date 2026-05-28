@@ -36,6 +36,7 @@ export const OPENPLAYER_HOST_CAPABILITIES = Object.freeze([
   "mpv.osd",
   "mpv.scriptMessage",
   "network.request",
+  "network.json",
   "filesystem.pick",
   "filesystem.reveal",
   "subtitle.external",

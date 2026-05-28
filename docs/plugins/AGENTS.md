@@ -46,10 +46,10 @@ plugins, SDK examples, and AI-facing plugin instructions.
   `audio.extract` with `openplayer.audio.extractClip` for short current media
   WAV clips, `mpv.capture` with `openplayer.capture.frame` for current video
   frame artifacts, `subtitle.read` with `openplayer.subtitle.currentCue` for
-  current displayed subtitle text, `network.request` for provider calls, and
-  `subtitle.write` with `openplayer.subtitle.loadGeneratedCues` for timestamped
-  `SubtitleCue[]` or `openplayer.subtitle.loadGenerated` for standard subtitle
-  text.
+  current displayed subtitle text, `network.request` or
+  `openplayer.network.requestJson` for provider calls, and `subtitle.write`
+  with `openplayer.subtitle.loadGeneratedCues` for timestamped `SubtitleCue[]`
+  or `openplayer.subtitle.loadGenerated` for standard subtitle text.
 - Use `openplayer.tasks` for long-running transcription, translation, analysis,
   and batch operations. Report progress with `tasks.update`, request cooperative
   cancellation with `tasks.cancel`, and finish cancellation with
@@ -68,6 +68,9 @@ plugins, SDK examples, and AI-facing plugin instructions.
 - Use `network.request` `bodyFile` for larger host-managed artifacts returned by
   APIs such as `audio.extractClip` or `capture.frame`; do not describe it as
   arbitrary local file upload access.
+- Use `openplayer.network.requestJson` for JSON AI provider APIs instead of
+  repeating manual `JSON.stringify` and `JSON.parse`; it still requires
+  `network.request`.
 - Use `contributes.storage` for persistent plugin-private data. Keep defaults
   small and JSON-serializable, bump the storage `version` when changing the
   plugin's schema, read `openplayer.storage.info()` at runtime for migrations,

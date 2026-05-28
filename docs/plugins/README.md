@@ -69,6 +69,9 @@ custom views, and verification commands, read
 - Let runtime and view plugins upload current-plugin managed artifacts through
   `openplayer.network.request({ bodyFile })` without exposing arbitrary local
   filesystem reads.
+- Let runtime and view plugins call JSON provider APIs with
+  `openplayer.network.requestJson`, a convenience wrapper over the same
+  host-mediated `network.request` permission and validation path.
 - Let runtime and view plugins create subtitles from structured `SubtitleCue[]`
   input with `openplayer.subtitle.loadGeneratedCues`, or from standard subtitle
   text with `openplayer.subtitle.loadGenerated`; the host writes results into a

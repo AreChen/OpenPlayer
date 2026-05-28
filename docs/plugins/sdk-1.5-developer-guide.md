@@ -346,7 +346,9 @@ subtitle cleanup, and other plugins that produce standard subtitle text. Request
 request `mpv.capture` when it needs a current-frame image artifact, request
 `subtitle.read` when it reads the current displayed subtitle cue, request
 `subtitle.write` when it creates a subtitle track, and request `network.request`
-only when it calls an external provider.
+only when it calls an external provider. Prefer
+`openplayer.network.requestJson` for JSON AI provider APIs; it still routes
+through the host-mediated `network.request` validation path.
 
 ```js
 const segment = await openplayer.media.currentSegment({ before: 2, duration: 8 });
@@ -357,18 +359,17 @@ const clip = await openplayer.audio.extractClip({
   includeBase64: true,
 });
 
-const response = await openplayer.network.request({
+const response = await openplayer.network.requestJson({
   url: "https://example.com/transcribe",
   method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ audioBase64: clip.bodyBase64 }),
+  body: { audioBase64: clip.bodyBase64 },
   timeoutMs: 30000,
 });
 
 await openplayer.subtitle.loadGeneratedCues({
   name: "AI Transcript",
   format: "vtt",
-  cues: JSON.parse(response.text).segments.map((segment) => ({
+  cues: response.json.segments.map((segment) => ({
     start: segment.start,
     end: segment.end,
     text: segment.text,
@@ -384,16 +385,16 @@ host does not expose arbitrary subtitle file reads:
 ```js
 const cue = await openplayer.subtitle.currentCue();
 if (cue && cue.start !== null && cue.end !== null) {
-  const response = await openplayer.network.request({
+  const response = await openplayer.network.requestJson({
     url: "https://example.com/translate",
     method: "POST",
-    body: JSON.stringify({ text: cue.text, targetLanguage: "zh-CN" }),
+    body: { text: cue.text, targetLanguage: "zh-CN" },
     timeoutMs: 30000,
   });
   await openplayer.subtitle.loadGeneratedCues({
     name: "Translated Subtitles",
     format: "vtt",
-    cues: [{ start: cue.start, end: cue.end, text: response.text }],
+    cues: [{ start: cue.start, end: cue.end, text: response.json.text }],
     select: true,
   });
 }
