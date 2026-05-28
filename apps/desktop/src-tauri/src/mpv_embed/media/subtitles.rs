@@ -115,6 +115,43 @@ pub(in crate::mpv_embed) fn format_generated_subtitle_cues(
     }
 }
 
+pub(in crate::mpv_embed) fn append_generated_subtitle_cues_file(
+    path: &Path,
+    cues: &[GeneratedSubtitleCue],
+) -> Result<(), String> {
+    let format = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .ok_or_else(|| "generated subtitle file has no format extension".to_string())?;
+    let format = normalize_generated_subtitle_cue_format(format)?;
+    let existing = fs::read_to_string(path)
+        .map_err(|error| format!("failed to read generated subtitle file: {error}"))?;
+    let append_content = match format {
+        "srt" => format_generated_srt_cues_from_index(cues, next_srt_cue_index(&existing))?,
+        "vtt" => format_generated_vtt_cues_for_append(cues)?,
+        _ => {
+            return Err(format!(
+                "unsupported generated subtitle cue format: {format}"
+            ));
+        }
+    };
+    let mut combined = existing.trim_end().to_string();
+    if !combined.is_empty() {
+        combined.push_str("\n\n");
+    }
+    combined.push_str(append_content.trim_start());
+    combined.push('\n');
+
+    let byte_len = combined.len();
+    if byte_len > MAX_GENERATED_SUBTITLE_BYTES {
+        return Err(format!(
+            "generated subtitle content is too large: {byte_len} bytes exceeds {MAX_GENERATED_SUBTITLE_BYTES}"
+        ));
+    }
+    fs::write(path, combined.as_bytes())
+        .map_err(|error| format!("failed to append generated subtitle cues: {error}"))
+}
+
 pub(in crate::mpv_embed) fn generated_subtitle_directory(
     app_data_dir: &Path,
     plugin_id: &str,
@@ -168,10 +205,17 @@ fn normalize_generated_subtitle_cue_format(format: &str) -> Result<&'static str,
 }
 
 fn format_generated_srt_cues(cues: &[GeneratedSubtitleCue]) -> Result<String, String> {
+    format_generated_srt_cues_from_index(cues, 1)
+}
+
+fn format_generated_srt_cues_from_index(
+    cues: &[GeneratedSubtitleCue],
+    first_index: usize,
+) -> Result<String, String> {
     let mut output = String::new();
     for (index, cue) in cues.iter().enumerate() {
         validate_generated_subtitle_cue(cue)?;
-        output.push_str(&(index + 1).to_string());
+        output.push_str(&(first_index + index).to_string());
         output.push('\n');
         output.push_str(&format!(
             "{} --> {}\n",
@@ -199,6 +243,21 @@ fn format_generated_vtt_cues(cues: &[GeneratedSubtitleCue]) -> Result<String, St
     Ok(output)
 }
 
+fn format_generated_vtt_cues_for_append(cues: &[GeneratedSubtitleCue]) -> Result<String, String> {
+    let mut output = String::new();
+    for cue in cues {
+        validate_generated_subtitle_cue(cue)?;
+        output.push_str(&format!(
+            "{} --> {}\n",
+            format_generated_subtitle_timecode(cue.start, '.'),
+            format_generated_subtitle_timecode(cue.end, '.')
+        ));
+        output.push_str(&normalize_generated_subtitle_cue_text(&cue.text));
+        output.push_str("\n\n");
+    }
+    Ok(output)
+}
+
 fn validate_generated_subtitle_cue(cue: &GeneratedSubtitleCue) -> Result<(), String> {
     if !cue.start.is_finite() || !cue.end.is_finite() || cue.start < 0.0 || cue.end <= cue.start {
         return Err(
@@ -209,6 +268,16 @@ fn validate_generated_subtitle_cue(cue: &GeneratedSubtitleCue) -> Result<(), Str
         return Err("generated subtitle cues require non-empty text".to_string());
     }
     Ok(())
+}
+
+fn next_srt_cue_index(content: &str) -> usize {
+    let normalized = content.replace("\r\n", "\n");
+    let count = normalized
+        .split("\n\n")
+        .filter_map(|block| block.lines().find(|line| !line.trim().is_empty()))
+        .filter(|line| line.trim().parse::<usize>().is_ok())
+        .count();
+    count + 1
 }
 
 fn normalize_generated_subtitle_cue_text(text: &str) -> String {

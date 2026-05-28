@@ -47,7 +47,8 @@ plugins, SDK examples, and AI-facing plugin instructions.
 - Use `openplayer.subtitle.listGenerated`, `replaceGenerated`, and
   `removeGenerated` when a plugin needs to update or clean up its own generated
   tracks. Prefer `replaceGeneratedCues` when the plugin owns structured
-  transcript segments; do not use raw mpv subtitle commands.
+  transcript segments, and `appendGeneratedCues` for real-time transcription
+  chunks; do not use raw mpv subtitle commands.
 - Use `network.request` `bodyFile` for larger host-managed artifacts returned by
   APIs such as `audio.extractClip`; do not describe it as arbitrary local file
   upload access.

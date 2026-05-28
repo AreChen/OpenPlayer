@@ -168,6 +168,9 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
       replaceGeneratedCues(trackId, args) {
         return requestHost("subtitle.replaceGeneratedCues", { ...args, trackId });
       },
+      appendGeneratedCues(trackId, args) {
+        return requestHost("subtitle.appendGeneratedCues", { ...args, trackId });
+      },
       setDelay(delay) {
         return requestHost("player.setSubtitleDelay", { delay });
       },

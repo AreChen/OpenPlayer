@@ -237,6 +237,59 @@ pub async fn mpv_embed_replace_generated_subtitle_cues(
         .await
 }
 
+#[tauri::command]
+pub async fn mpv_embed_append_generated_subtitle_cues(
+    app: AppHandle,
+    plugin_id: String,
+    track_id: i64,
+    cues: Vec<GeneratedSubtitleCue>,
+    select: Option<bool>,
+) -> Result<GeneratedSubtitleLoadResult, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("failed to resolve app data directory: {error}"))?;
+
+    let managed_path = run_mpv_command(app.clone(), {
+        let plugin_id = plugin_id.clone();
+        move |state| {
+            with_player(state, |player| {
+                plugin_generated_subtitle_track_path(
+                    &player.mpv,
+                    &app_data_dir,
+                    &plugin_id,
+                    track_id,
+                )
+            })
+        }
+    })
+    .await?;
+
+    append_generated_subtitle_cues_file(&managed_path, &cues)?;
+    let result_path = managed_path.to_string_lossy().to_string();
+    let snapshot = run_mpv_command(app, move |state| {
+        with_player(state, |player| {
+            let track_arg = track_id.to_string();
+            player
+                .mpv
+                .command("sub-reload", &[track_arg.as_str()])
+                .map_err(|error| format!("mpv generated subtitle append reload failed: {error}"))?;
+            if select.unwrap_or(true) {
+                player.mpv.set_property("sid", track_id).map_err(|error| {
+                    format!("mpv generated subtitle append select failed: {error}")
+                })?;
+            }
+            Ok(player.snapshot(0, "playing"))
+        })
+    })
+    .await?;
+
+    Ok(GeneratedSubtitleLoadResult {
+        path: result_path,
+        snapshot,
+    })
+}
+
 fn read_plugin_generated_subtitle_tracks(
     mpv: &libmpv2::Mpv,
     app_data_dir: &Path,

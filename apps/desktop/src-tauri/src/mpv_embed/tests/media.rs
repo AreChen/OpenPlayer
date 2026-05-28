@@ -340,6 +340,59 @@ fn rejects_invalid_structured_generated_subtitle_cues() {
 }
 
 #[test]
+fn appends_structured_generated_subtitle_cues() {
+    let directory = std::env::temp_dir().join(format!(
+        "openplayer-subtitle-append-test-{}",
+        std::process::id()
+    ));
+    let plugin_id = "dev.openplayer.transcriber";
+    let _ = std::fs::remove_dir_all(&directory);
+
+    let srt_path = write_generated_subtitle_file(
+        &directory,
+        plugin_id,
+        Some("live-transcript"),
+        "srt",
+        "1\n00:00:00,000 --> 00:00:01,000\nHello\n\n",
+    )
+    .expect("initial generated subtitle should be written");
+    append_generated_subtitle_cues_file(
+        &srt_path,
+        &[GeneratedSubtitleCue {
+            start: 1.2,
+            end: 2.0,
+            text: "world".to_string(),
+        }],
+    )
+    .expect("structured cues should append to srt");
+    let srt = std::fs::read_to_string(&srt_path).expect("srt append should be readable");
+    assert!(srt.contains("2\n00:00:01,200 --> 00:00:02,000\nworld"));
+
+    let vtt_path = write_generated_subtitle_file(
+        &directory,
+        plugin_id,
+        Some("live-transcript"),
+        "vtt",
+        "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello\n\n",
+    )
+    .expect("initial vtt subtitle should be written");
+    append_generated_subtitle_cues_file(
+        &vtt_path,
+        &[GeneratedSubtitleCue {
+            start: 1.2,
+            end: 2.0,
+            text: "world".to_string(),
+        }],
+    )
+    .expect("structured cues should append to vtt");
+    let vtt = std::fs::read_to_string(&vtt_path).expect("vtt append should be readable");
+    assert_eq!(vtt.matches("WEBVTT").count(), 1);
+    assert!(vtt.contains("00:00:01.200 --> 00:00:02.000\nworld"));
+
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
+#[test]
 fn enables_real_audio_visualizer_for_audio_files_only() {
     assert!(is_likely_audio_path(Path::new("song.MP3")));
     assert!(is_likely_audio_path(Path::new("voice.amr")));

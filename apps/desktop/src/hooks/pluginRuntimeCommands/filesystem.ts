@@ -67,6 +67,16 @@ function generatedSubtitleCuesPayload(record: Record<string, unknown>, command: 
   };
 }
 
+function generatedSubtitleAppendCuesPayload(record: Record<string, unknown>, command: string) {
+  if (!Array.isArray(record.cues)) {
+    throw new Error(`${command} requires subtitle cues`);
+  }
+  return {
+    cues: record.cues as GeneratedSubtitleCue[],
+    select: typeof record.select === "boolean" ? record.select : null,
+  };
+}
+
 export async function pickPluginMediaPaths(context: PluginRuntimeCommandContext, permissions: Set<string>, multiple = true) {
   if (!permissions.has("filesystem.pick")) {
     throw new Error("plugin runtime command requires filesystem.pick");
@@ -259,6 +269,29 @@ export const handlePluginFilesystemRuntimeCommand: PluginRuntimeCommandHandler =
         pluginId,
         trackId,
         ...payload,
+      });
+      context.applyCommandSnapshot(result.snapshot);
+      if (record.select !== false) {
+        const selectedSubtitle = result.snapshot.tracks.find((track) => track.kind === "sub" && track.selected);
+        context.persistMediaPlaybackSettings(context.media.path, { subtitleTrackId: selectedSubtitle?.id ?? null });
+      }
+      return result;
+    }
+    case "subtitle.appendGeneratedCues": {
+      if (!context.media) {
+        throw new Error("subtitle.appendGeneratedCues requires loaded media");
+      }
+      if (!permissions.has("subtitle.write")) {
+        throw new Error("plugin runtime command requires subtitle.write");
+      }
+      const trackId = generatedSubtitleTrackId(record, "subtitle.appendGeneratedCues");
+      const payload = generatedSubtitleAppendCuesPayload(record, "subtitle.appendGeneratedCues");
+      context.invalidatePendingSnapshots();
+      const result = await invoke<GeneratedSubtitleLoadResult>("mpv_embed_append_generated_subtitle_cues", {
+        pluginId,
+        trackId,
+        cues: payload.cues,
+        select: payload.select,
       });
       context.applyCommandSnapshot(result.snapshot);
       if (record.select !== false) {

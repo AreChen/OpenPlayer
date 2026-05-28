@@ -340,14 +340,19 @@ write access and should not use raw mpv `sub-add` or provider-specific host
 commands.
 
 Generated subtitle tracks are plugin-owned resources. A plugin can inspect,
-replace, or unload only tracks backed by files in its own managed subtitle
-directory:
+append to, replace, or unload only tracks backed by files in its own managed
+subtitle directory:
 
 ```js
 const generatedTracks = await openplayer.subtitle.listGenerated();
 const currentTranscript = generatedTracks.find((track) => track.selected);
 
 if (currentTranscript) {
+  await openplayer.subtitle.appendGeneratedCues(currentTranscript.id, {
+    cues: latestTranscriptSegments,
+    select: true,
+  });
+
   await openplayer.subtitle.replaceGeneratedCues(currentTranscript.id, {
     name: "Updated Transcript",
     format: "vtt",
@@ -360,6 +365,11 @@ for (const staleTrack of generatedTracks.filter((track) => !track.selected)) {
   await openplayer.subtitle.removeGenerated(staleTrack.id);
 }
 ```
+
+For real-time transcription, create a VTT or SRT track once with
+`loadGeneratedCues`, then append new `SubtitleCue[]` chunks with
+`appendGeneratedCues`. The host keeps the write scoped to the current plugin's
+managed subtitle file and asks mpv to reload that subtitle track.
 
 For larger audio clips, avoid `includeBase64` and upload the managed artifact
 directly:

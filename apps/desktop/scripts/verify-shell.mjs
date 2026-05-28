@@ -465,13 +465,17 @@ assert.match(appSource, /listGenerated\(\)[\s\S]*subtitle\.listGenerated/, "plug
 assert.match(appSource, /removeGenerated\(trackId\)[\s\S]*subtitle\.removeGenerated/, "plugin bridge must expose generated subtitle removal");
 assert.match(appSource, /replaceGenerated\(trackId,\s*args\)[\s\S]*subtitle\.replaceGenerated/, "plugin bridge must expose generated subtitle replacement");
 assert.match(appSource, /replaceGeneratedCues\(trackId,\s*args\)[\s\S]*subtitle\.replaceGeneratedCues/, "plugin bridge must expose structured cue subtitle replacement");
+assert.match(appSource, /appendGeneratedCues\(trackId,\s*args\)[\s\S]*subtitle\.appendGeneratedCues/, "plugin bridge must expose structured cue subtitle append");
 assert.match(mpvEmbedSource, /format_generated_subtitle_cues/, "mpv backend must format structured subtitle cues centrally");
+assert.match(mpvEmbedSource, /append_generated_subtitle_cues_file/, "mpv backend must append structured subtitle cues centrally");
+assert.match(mpvEmbedSource, /sub-reload/, "mpv backend must reload generated subtitle tracks after appending cues");
 assert.match(appSource, /permissions\.has\("subtitle\.write"\)/, "generated subtitle loading must require the subtitle.write plugin permission");
 assert.match(tauriRuntimeSource, /mpv_embed_list_generated_subtitles/, "mpv runtime must register plugin generated subtitle listing");
 assert.match(tauriRuntimeSource, /mpv_embed_remove_generated_subtitle/, "mpv runtime must register plugin generated subtitle removal");
 assert.match(tauriRuntimeSource, /mpv_embed_replace_generated_subtitle/, "mpv runtime must register plugin generated subtitle replacement");
 assert.match(tauriRuntimeSource, /mpv_embed_load_generated_subtitle_cues/, "mpv runtime must register structured cue subtitle loading");
 assert.match(tauriRuntimeSource, /mpv_embed_replace_generated_subtitle_cues/, "mpv runtime must register structured cue subtitle replacement");
+assert.match(tauriRuntimeSource, /mpv_embed_append_generated_subtitle_cues/, "mpv runtime must register structured cue subtitle append");
 assert.match(tauriRuntimeSource, /plugin_generated_subtitle_path/, "generated subtitle management must validate current-plugin ownership");
 assert.match(appSource, /"audio\.extractClip"/, "plugin bridge must advertise managed audio clip extraction as a host capability");
 assert.match(appSource, /extractClip\(args\)[\s\S]*audio\.extractClip/, "plugin bridge must expose a high-level audio clip extractor");

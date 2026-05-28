@@ -69,8 +69,8 @@ custom views, and verification commands, read
   plugin-scoped managed directory and loads them as mpv subtitle tracks.
 - Let plugins list, replace, and remove only their own generated subtitle
   tracks with `openplayer.subtitle.listGenerated`,
-  `openplayer.subtitle.replaceGenerated`, and
-  `openplayer.subtitle.removeGenerated`.
+  `openplayer.subtitle.replaceGenerated`, `openplayer.subtitle.appendGeneratedCues`,
+  and `openplayer.subtitle.removeGenerated`.
 
 ## Package Format
 
