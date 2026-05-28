@@ -132,6 +132,7 @@ pub(super) fn is_supported_plugin_permission(permission: &str) -> bool {
             | "filesystem.reveal"
             | "network.request"
             | "audio.extract"
+            | "subtitle.read"
             | "subtitle.write"
     )
 }

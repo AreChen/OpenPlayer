@@ -3,6 +3,9 @@ export function pluginWorkerSubtitleApiSource() {
       pickExternal() {
         return requestHost("subtitle.pickExternal");
       },
+      currentCue() {
+        return requestHost("subtitle.currentCue");
+      },
       loadGenerated(args) {
         return requestHost("subtitle.loadGenerated", args);
       },

@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { playableExtensions, subtitleExtensions } from "../../app/constants";
 import { runtimeNumberArg, runtimeStringArg } from "../../app/pluginRuntime";
-import type { MpvSnapshot } from "../../app/types";
+import type { CurrentSubtitleCue, MpvSnapshot } from "../../app/types";
 import { focusOverlayWindow } from "../../app/windowControls";
 import { PLUGIN_RUNTIME_COMMAND_NOT_HANDLED, type PluginRuntimeCommandContext, type PluginRuntimeCommandHandler } from "./types";
 
@@ -168,6 +168,15 @@ export const handlePluginFilesystemRuntimeCommand: PluginRuntimeCommandHandler =
         context.setIsPickerOpen(false);
         focusOverlayWindow();
       }
+    }
+    case "subtitle.currentCue": {
+      if (!context.media) {
+        throw new Error("subtitle.currentCue requires loaded media");
+      }
+      if (!permissions.has("subtitle.read")) {
+        throw new Error("plugin runtime command requires subtitle.read");
+      }
+      return await invoke<CurrentSubtitleCue | null>("mpv_embed_current_subtitle_cue");
     }
     case "subtitle.loadGenerated": {
       if (!context.media) {

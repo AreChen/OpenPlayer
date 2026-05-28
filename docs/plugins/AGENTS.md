@@ -43,9 +43,11 @@ plugins, SDK examples, and AI-facing plugin instructions.
   use `openplayer.media.currentSegment` for host-normalized time windows,
   `audio.extract` with `openplayer.audio.extractClip` for short current media
   WAV clips, `mpv.capture` with `openplayer.capture.frame` for current video
-  frame artifacts, `network.request` for provider calls, and `subtitle.write`
-  with `openplayer.subtitle.loadGeneratedCues` for timestamped `SubtitleCue[]`
-  or `openplayer.subtitle.loadGenerated` for standard subtitle text.
+  frame artifacts, `subtitle.read` with `openplayer.subtitle.currentCue` for
+  current displayed subtitle text, `network.request` for provider calls, and
+  `subtitle.write` with `openplayer.subtitle.loadGeneratedCues` for timestamped
+  `SubtitleCue[]` or `openplayer.subtitle.loadGenerated` for standard subtitle
+  text.
 - Use `openplayer.tasks` for long-running transcription, translation, analysis,
   and batch operations. Report progress with `tasks.update`, request cooperative
   cancellation with `tasks.cancel`, and finish cancellation with

@@ -140,6 +140,7 @@ export const zhCN = {
           "filesystem.reveal": "可在系统文件管理器中显示本地文件。",
           "media.openStream": "可通过 OpenPlayer 打开网络流。",
           "audio.extract": "可从当前媒体导出短时宿主管理音频片段。",
+          "subtitle.read": "可读取当前正在显示的字幕片段。",
           "subtitle.write": "可为当前媒体创建并加载插件生成的字幕轨道。",
           default: "使用受限的 OpenPlayer 插件能力。",
         },

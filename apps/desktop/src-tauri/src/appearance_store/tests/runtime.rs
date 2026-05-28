@@ -107,6 +107,7 @@ fn accepts_phase_two_plugin_sdk_permissions() {
     assert!(is_supported_plugin_permission("filesystem.pick"));
     assert!(is_supported_plugin_permission("filesystem.reveal"));
     assert!(is_supported_plugin_permission("audio.extract"));
+    assert!(is_supported_plugin_permission("subtitle.read"));
     assert!(is_supported_plugin_permission("subtitle.write"));
 }
 

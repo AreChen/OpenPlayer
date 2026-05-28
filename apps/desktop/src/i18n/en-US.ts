@@ -140,6 +140,7 @@ export const enUS = {
           "filesystem.reveal": "Can reveal local files in the system file manager.",
           "media.openStream": "Can open network streams through OpenPlayer.",
           "audio.extract": "Can export short managed audio clips from the current media.",
+          "subtitle.read": "Can read the currently displayed subtitle cue.",
           "subtitle.write": "Can create and load generated subtitle tracks for the current media.",
           default: "Uses a scoped OpenPlayer plugin capability.",
         },

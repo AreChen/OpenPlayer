@@ -51,6 +51,35 @@ pub async fn mpv_embed_add_subtitle(
 }
 
 #[tauri::command]
+pub async fn mpv_embed_current_subtitle_cue(
+    app: AppHandle,
+) -> Result<Option<CurrentSubtitleCue>, String> {
+    run_mpv_command(app, move |state| {
+        with_player(state, |player| {
+            let Some(track) = read_tracks(&player.mpv)
+                .into_iter()
+                .find(|track| track.kind == "sub" && track.selected)
+            else {
+                return Ok(None);
+            };
+            let Some(text) = read_current_subtitle_text(&player.mpv) else {
+                return Ok(None);
+            };
+
+            Ok(Some(CurrentSubtitleCue {
+                track_id: track.id,
+                title: track.title,
+                language: track.language,
+                start: read_current_subtitle_time(&player.mpv, "sub-start"),
+                end: read_current_subtitle_time(&player.mpv, "sub-end"),
+                text,
+            }))
+        })
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn mpv_embed_load_generated_subtitle(
     app: AppHandle,
     plugin_id: String,
@@ -382,4 +411,18 @@ fn is_generated_subtitle_track(mpv: &libmpv2::Mpv, index: i64) -> bool {
 fn read_generated_subtitle_track_path(mpv: &libmpv2::Mpv, index: i64) -> Option<String> {
     read_optional_string(mpv, &format!("track-list/{index}/external-filename"))
         .or_else(|| read_optional_string(mpv, &format!("track-list/{index}/filename")))
+}
+
+fn read_current_subtitle_text(mpv: &libmpv2::Mpv) -> Option<String> {
+    mpv.get_property::<String>("sub-text")
+        .ok()
+        .map(|text| text.replace("\r\n", "\n").replace('\r', "\n"))
+        .map(|text| text.trim().to_string())
+        .filter(|text| !text.is_empty())
+}
+
+fn read_current_subtitle_time(mpv: &libmpv2::Mpv, property: &str) -> Option<f64> {
+    mpv.get_property::<f64>(property)
+        .ok()
+        .filter(|value| value.is_finite() && *value >= 0.0)
 }

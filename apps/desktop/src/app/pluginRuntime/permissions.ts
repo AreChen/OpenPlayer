@@ -17,6 +17,7 @@ export function pluginPermissionRisk(permission: string): PluginPermissionRisk {
     permission === "filesystem.reveal" ||
     permission === "media.openStream" ||
     permission === "audio.extract" ||
+    permission === "subtitle.read" ||
     permission === "subtitle.write"
   ) {
     return "warning";

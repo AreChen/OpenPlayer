@@ -477,6 +477,11 @@ assert.match(tauriRuntimeSource, /mpv_embed_load_generated_subtitle_cues/, "mpv 
 assert.match(tauriRuntimeSource, /mpv_embed_replace_generated_subtitle_cues/, "mpv runtime must register structured cue subtitle replacement");
 assert.match(tauriRuntimeSource, /mpv_embed_append_generated_subtitle_cues/, "mpv runtime must register structured cue subtitle append");
 assert.match(tauriRuntimeSource, /plugin_generated_subtitle_path/, "generated subtitle management must validate current-plugin ownership");
+assert.match(appSource, /"subtitle\.read"/, "plugin bridge must advertise current subtitle reading as a host capability");
+assert.match(appSource, /currentCue\(\)[\s\S]*subtitle\.currentCue/, "plugin bridge must expose a high-level current subtitle cue reader");
+assert.match(appSource, /permissions\.has\("subtitle\.read"\)/, "current subtitle reading must require the subtitle.read plugin permission");
+assert.match(tauriRuntimeSource, /mpv_embed_current_subtitle_cue/, "mpv runtime must register current subtitle cue reading");
+assert.match(tauriRuntimeSource, /sub-text/, "current subtitle cue reading must use mpv subtitle text properties");
 assert.match(appSource, /"audio\.extractClip"/, "plugin bridge must advertise managed audio clip extraction as a host capability");
 assert.match(appSource, /extractClip\(args\)[\s\S]*audio\.extractClip/, "plugin bridge must expose a high-level audio clip extractor");
 assert.match(appSource, /permissions\.has\("audio\.extract"\)/, "audio clip extraction must require the audio.extract plugin permission");

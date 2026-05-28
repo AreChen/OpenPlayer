@@ -70,6 +70,10 @@ custom views, and verification commands, read
   input with `openplayer.subtitle.loadGeneratedCues`, or from standard subtitle
   text with `openplayer.subtitle.loadGenerated`; the host writes results into a
   plugin-scoped managed directory and loads them as mpv subtitle tracks.
+- Let runtime and view plugins read only the selected subtitle track's currently
+  displayed cue with `openplayer.subtitle.currentCue`, so translation and
+  cleanup plugins can compose read, network, and generated subtitle write APIs
+  without arbitrary subtitle file access.
 - Let plugins list, replace, and remove only their own generated subtitle
   tracks with `openplayer.subtitle.listGenerated`,
   `openplayer.subtitle.replaceGenerated`, `openplayer.subtitle.appendGeneratedCues`,
@@ -408,6 +412,7 @@ Supported permission declarations:
 - `filesystem.reveal`
 - `network.request`
 - `audio.extract`
+- `subtitle.read`
 - `subtitle.write`
 
 `contributes.settings` adds validated controls. Supported setting kinds:

@@ -52,6 +52,15 @@ export type MpvCaptureArtifact = {
   copiedToClipboard: boolean;
 };
 
+export type CurrentSubtitleCue = {
+  trackId: number;
+  title: string | null;
+  language: string | null;
+  start: number | null;
+  end: number | null;
+  text: string;
+};
+
 export type MpvFrameCaptureArtifact = {
   path: string;
   format: "png" | "jpg" | "webp";

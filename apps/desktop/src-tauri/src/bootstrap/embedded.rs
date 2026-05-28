@@ -70,6 +70,7 @@ pub fn run() {
             crate::mpv_embed::mpv_embed_stop_recording,
             crate::mpv_embed::mpv_embed_select_track,
             crate::mpv_embed::mpv_embed_add_subtitle,
+            crate::mpv_embed::mpv_embed_current_subtitle_cue,
             crate::mpv_embed::mpv_embed_load_generated_subtitle,
             crate::mpv_embed::mpv_embed_load_generated_subtitle_cues,
             crate::mpv_embed::mpv_embed_list_generated_subtitles,

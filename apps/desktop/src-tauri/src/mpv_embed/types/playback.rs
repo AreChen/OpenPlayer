@@ -51,6 +51,17 @@ pub struct GeneratedSubtitleTrack {
     pub(crate) path: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CurrentSubtitleCue {
+    pub(crate) track_id: i64,
+    pub(crate) title: Option<String>,
+    pub(crate) language: Option<String>,
+    pub(crate) start: Option<f64>,
+    pub(crate) end: Option<f64>,
+    pub(crate) text: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GeneratedSubtitleCue {

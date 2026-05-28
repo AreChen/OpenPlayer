@@ -139,6 +139,8 @@ Important permissions:
 - `filesystem.reveal`: reveal/open local paths in the system file manager.
 - `audio.extract`: export short managed WAV clips from the currently loaded
   media for transcription, analysis, or media-understanding plugins.
+- `subtitle.read`: read only the currently displayed subtitle cue from the
+  selected subtitle track.
 - `subtitle.write`: create and load plugin-generated subtitle tracks for the
   currently loaded media.
 
@@ -318,6 +320,7 @@ primitives. Use them for AI transcription, translation, OCR subtitle extraction,
 subtitle cleanup, and other plugins that produce standard subtitle text. Request
 `audio.extract` when the plugin needs a short WAV clip from the current media,
 request `mpv.capture` when it needs a current-frame image artifact, request
+`subtitle.read` when it reads the current displayed subtitle cue, request
 `subtitle.write` when it creates a subtitle track, and request `network.request`
 only when it calls an external provider.
 
@@ -348,6 +351,28 @@ await openplayer.subtitle.loadGeneratedCues({
   })),
   select: true,
 });
+```
+
+For subtitle translation or cleanup, read the selected track's current cue,
+send only that text through a provider, then write a generated cue track. The
+host does not expose arbitrary subtitle file reads:
+
+```js
+const cue = await openplayer.subtitle.currentCue();
+if (cue && cue.start !== null && cue.end !== null) {
+  const response = await openplayer.network.request({
+    url: "https://example.com/translate",
+    method: "POST",
+    body: JSON.stringify({ text: cue.text, targetLanguage: "zh-CN" }),
+    timeoutMs: 30000,
+  });
+  await openplayer.subtitle.loadGeneratedCues({
+    name: "Translated Subtitles",
+    format: "vtt",
+    cues: [{ start: cue.start, end: cue.end, text: response.text }],
+    select: true,
+  });
+}
 ```
 
 The host writes audio clips and generated subtitle files into plugin-scoped
