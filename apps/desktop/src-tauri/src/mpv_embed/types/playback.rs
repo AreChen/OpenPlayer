@@ -52,6 +52,14 @@ pub struct GeneratedSubtitleTrack {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeneratedSubtitleCue {
+    pub(crate) start: f64,
+    pub(crate) end: f64,
+    pub(crate) text: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct MpvLoadOptions {
     #[serde(flatten)]
     pub(crate) options: BTreeMap<String, String>,

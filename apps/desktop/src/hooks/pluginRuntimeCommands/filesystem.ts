@@ -20,6 +20,12 @@ type GeneratedSubtitleTrack = {
   path: string;
 };
 
+type GeneratedSubtitleCue = {
+  start: number;
+  end: number;
+  text: string;
+};
+
 function generatedSubtitleTrackId(record: Record<string, unknown>, command: string) {
   const trackId = runtimeNumberArg(record, "trackId");
   if (trackId === null || !Number.isInteger(trackId) || trackId <= 0) {
@@ -41,6 +47,22 @@ function generatedSubtitlePayload(record: Record<string, unknown>, command: stri
     name: runtimeStringArg(record, "name"),
     format,
     content,
+    select: typeof record.select === "boolean" ? record.select : null,
+  };
+}
+
+function generatedSubtitleCuesPayload(record: Record<string, unknown>, command: string) {
+  const format = runtimeStringArg(record, "format");
+  if (!format) {
+    throw new Error(`${command} requires a subtitle cue format`);
+  }
+  if (!Array.isArray(record.cues)) {
+    throw new Error(`${command} requires subtitle cues`);
+  }
+  return {
+    name: runtimeStringArg(record, "name"),
+    format,
+    cues: record.cues as GeneratedSubtitleCue[],
     select: typeof record.select === "boolean" ? record.select : null,
   };
 }
@@ -157,6 +179,26 @@ export const handlePluginFilesystemRuntimeCommand: PluginRuntimeCommandHandler =
       }
       return result;
     }
+    case "subtitle.loadGeneratedCues": {
+      if (!context.media) {
+        throw new Error("subtitle.loadGeneratedCues requires loaded media");
+      }
+      if (!permissions.has("subtitle.write")) {
+        throw new Error("plugin runtime command requires subtitle.write");
+      }
+      const payload = generatedSubtitleCuesPayload(record, "subtitle.loadGeneratedCues");
+      context.invalidatePendingSnapshots();
+      const result = await invoke<GeneratedSubtitleLoadResult>("mpv_embed_load_generated_subtitle_cues", {
+        pluginId,
+        ...payload,
+      });
+      context.applyCommandSnapshot(result.snapshot);
+      if (record.select !== false) {
+        const selectedSubtitle = result.snapshot.tracks.find((track) => track.kind === "sub" && track.selected);
+        context.persistMediaPlaybackSettings(context.media.path, { subtitleTrackId: selectedSubtitle?.id ?? null });
+      }
+      return result;
+    }
     case "subtitle.listGenerated": {
       if (!context.media) {
         throw new Error("subtitle.listGenerated requires loaded media");
@@ -192,6 +234,28 @@ export const handlePluginFilesystemRuntimeCommand: PluginRuntimeCommandHandler =
       const payload = generatedSubtitlePayload(record, "subtitle.replaceGenerated");
       context.invalidatePendingSnapshots();
       const result = await invoke<GeneratedSubtitleLoadResult>("mpv_embed_replace_generated_subtitle", {
+        pluginId,
+        trackId,
+        ...payload,
+      });
+      context.applyCommandSnapshot(result.snapshot);
+      if (record.select !== false) {
+        const selectedSubtitle = result.snapshot.tracks.find((track) => track.kind === "sub" && track.selected);
+        context.persistMediaPlaybackSettings(context.media.path, { subtitleTrackId: selectedSubtitle?.id ?? null });
+      }
+      return result;
+    }
+    case "subtitle.replaceGeneratedCues": {
+      if (!context.media) {
+        throw new Error("subtitle.replaceGeneratedCues requires loaded media");
+      }
+      if (!permissions.has("subtitle.write")) {
+        throw new Error("plugin runtime command requires subtitle.write");
+      }
+      const trackId = generatedSubtitleTrackId(record, "subtitle.replaceGeneratedCues");
+      const payload = generatedSubtitleCuesPayload(record, "subtitle.replaceGeneratedCues");
+      context.invalidatePendingSnapshots();
+      const result = await invoke<GeneratedSubtitleLoadResult>("mpv_embed_replace_generated_subtitle_cues", {
         pluginId,
         trackId,
         ...payload,

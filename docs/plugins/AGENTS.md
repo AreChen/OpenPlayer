@@ -38,6 +38,7 @@ plugins, SDK examples, and AI-facing plugin instructions.
   use `openplayer.media.currentSegment` for host-normalized time windows,
   `audio.extract` with `openplayer.audio.extractClip` for short current media
   WAV clips, `network.request` for provider calls, and `subtitle.write` with
+  `openplayer.subtitle.loadGeneratedCues` for timestamped `SubtitleCue[]` or
   `openplayer.subtitle.loadGenerated` for standard subtitle text.
 - Use `openplayer.tasks` for long-running transcription, translation, analysis,
   and batch operations. Report progress with `tasks.update`, request cooperative
@@ -45,7 +46,8 @@ plugins, SDK examples, and AI-facing plugin instructions.
   `tasks.markCancelled`.
 - Use `openplayer.subtitle.listGenerated`, `replaceGenerated`, and
   `removeGenerated` when a plugin needs to update or clean up its own generated
-  tracks; do not use raw mpv subtitle commands.
+  tracks. Prefer `replaceGeneratedCues` when the plugin owns structured
+  transcript segments; do not use raw mpv subtitle commands.
 - Use `network.request` `bodyFile` for larger host-managed artifacts returned by
   APIs such as `audio.extractClip`; do not describe it as arbitrary local file
   upload access.

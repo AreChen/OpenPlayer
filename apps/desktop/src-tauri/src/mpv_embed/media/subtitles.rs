@@ -1,7 +1,9 @@
 use super::*;
 
 pub(in crate::mpv_embed) const MAX_GENERATED_SUBTITLE_BYTES: usize = 2 * 1024 * 1024;
+const MAX_GENERATED_SUBTITLE_CUES: usize = 10_000;
 const GENERATED_SUBTITLE_EXTENSIONS: &[&str] = &["srt", "vtt", "ass", "ssa", "sub"];
+const GENERATED_SUBTITLE_CUE_FORMATS: &[&str] = &["srt", "vtt"];
 
 pub(in crate::mpv_embed) fn validate_subtitle_path(path: &str) -> Result<PathBuf, String> {
     let path = validate_media_path(path)?;
@@ -81,6 +83,38 @@ pub(in crate::mpv_embed) fn write_generated_subtitle_file(
     Ok(path)
 }
 
+pub(in crate::mpv_embed) fn format_generated_subtitle_cues(
+    format: &str,
+    cues: &[GeneratedSubtitleCue],
+) -> Result<String, String> {
+    let format = normalize_generated_subtitle_cue_format(format)?;
+    if cues.is_empty() {
+        return Err("generated subtitle cues cannot be empty".to_string());
+    }
+    if cues.len() > MAX_GENERATED_SUBTITLE_CUES {
+        return Err(format!(
+            "generated subtitle cues exceed maximum count: {} > {}",
+            cues.len(),
+            MAX_GENERATED_SUBTITLE_CUES
+        ));
+    }
+
+    let mut cues = cues.to_vec();
+    cues.sort_by(|left, right| {
+        left.start
+            .total_cmp(&right.start)
+            .then_with(|| left.end.total_cmp(&right.end))
+    });
+
+    match format {
+        "srt" => format_generated_srt_cues(&cues),
+        "vtt" => format_generated_vtt_cues(&cues),
+        _ => Err(format!(
+            "unsupported generated subtitle cue format: {format}"
+        )),
+    }
+}
+
 pub(in crate::mpv_embed) fn generated_subtitle_directory(
     app_data_dir: &Path,
     plugin_id: &str,
@@ -122,6 +156,76 @@ fn normalize_generated_subtitle_format(format: &str) -> Result<&'static str, Str
         .copied()
         .find(|extension| normalized == *extension)
         .ok_or_else(|| format!("unsupported generated subtitle format: {format}"))
+}
+
+fn normalize_generated_subtitle_cue_format(format: &str) -> Result<&'static str, String> {
+    let normalized = format.trim().to_ascii_lowercase();
+    GENERATED_SUBTITLE_CUE_FORMATS
+        .iter()
+        .copied()
+        .find(|extension| normalized == *extension)
+        .ok_or_else(|| format!("unsupported generated subtitle cue format: {format}"))
+}
+
+fn format_generated_srt_cues(cues: &[GeneratedSubtitleCue]) -> Result<String, String> {
+    let mut output = String::new();
+    for (index, cue) in cues.iter().enumerate() {
+        validate_generated_subtitle_cue(cue)?;
+        output.push_str(&(index + 1).to_string());
+        output.push('\n');
+        output.push_str(&format!(
+            "{} --> {}\n",
+            format_generated_subtitle_timecode(cue.start, ','),
+            format_generated_subtitle_timecode(cue.end, ',')
+        ));
+        output.push_str(&normalize_generated_subtitle_cue_text(&cue.text));
+        output.push_str("\n\n");
+    }
+    Ok(output)
+}
+
+fn format_generated_vtt_cues(cues: &[GeneratedSubtitleCue]) -> Result<String, String> {
+    let mut output = String::from("WEBVTT\n\n");
+    for cue in cues {
+        validate_generated_subtitle_cue(cue)?;
+        output.push_str(&format!(
+            "{} --> {}\n",
+            format_generated_subtitle_timecode(cue.start, '.'),
+            format_generated_subtitle_timecode(cue.end, '.')
+        ));
+        output.push_str(&normalize_generated_subtitle_cue_text(&cue.text));
+        output.push_str("\n\n");
+    }
+    Ok(output)
+}
+
+fn validate_generated_subtitle_cue(cue: &GeneratedSubtitleCue) -> Result<(), String> {
+    if !cue.start.is_finite() || !cue.end.is_finite() || cue.start < 0.0 || cue.end <= cue.start {
+        return Err(
+            "generated subtitle cues require finite non-overlapping start/end times".to_string(),
+        );
+    }
+    if cue.text.trim().is_empty() {
+        return Err("generated subtitle cues require non-empty text".to_string());
+    }
+    Ok(())
+}
+
+fn normalize_generated_subtitle_cue_text(text: &str) -> String {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn format_generated_subtitle_timecode(seconds: f64, millisecond_separator: char) -> String {
+    let total_ms = (seconds * 1000.0).round().max(0.0) as u64;
+    let hours = total_ms / 3_600_000;
+    let minutes = (total_ms / 60_000) % 60;
+    let seconds = (total_ms / 1_000) % 60;
+    let milliseconds = total_ms % 1_000;
+    format!("{hours:02}:{minutes:02}:{seconds:02}{millisecond_separator}{milliseconds:03}")
 }
 
 fn validate_generated_subtitle_plugin_id(plugin_id: &str) -> Result<&str, String> {

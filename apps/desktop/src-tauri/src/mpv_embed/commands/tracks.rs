@@ -96,6 +96,19 @@ pub async fn mpv_embed_load_generated_subtitle(
 }
 
 #[tauri::command]
+pub async fn mpv_embed_load_generated_subtitle_cues(
+    app: AppHandle,
+    plugin_id: String,
+    name: Option<String>,
+    format: String,
+    cues: Vec<GeneratedSubtitleCue>,
+    select: Option<bool>,
+) -> Result<GeneratedSubtitleLoadResult, String> {
+    let content = format_generated_subtitle_cues(&format, &cues)?;
+    mpv_embed_load_generated_subtitle(app, plugin_id, name, format, content, select).await
+}
+
+#[tauri::command]
 pub async fn mpv_embed_list_generated_subtitles(
     app: AppHandle,
     plugin_id: String,
@@ -207,6 +220,21 @@ pub async fn mpv_embed_replace_generated_subtitle(
         path: result_path,
         snapshot,
     })
+}
+
+#[tauri::command]
+pub async fn mpv_embed_replace_generated_subtitle_cues(
+    app: AppHandle,
+    plugin_id: String,
+    track_id: i64,
+    name: Option<String>,
+    format: String,
+    cues: Vec<GeneratedSubtitleCue>,
+    select: Option<bool>,
+) -> Result<GeneratedSubtitleLoadResult, String> {
+    let content = format_generated_subtitle_cues(&format, &cues)?;
+    mpv_embed_replace_generated_subtitle(app, plugin_id, track_id, name, format, content, select)
+        .await
 }
 
 fn read_plugin_generated_subtitle_tracks(

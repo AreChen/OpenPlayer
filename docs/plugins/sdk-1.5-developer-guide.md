@@ -321,18 +321,23 @@ const response = await openplayer.network.request({
   timeoutMs: 30000,
 });
 
-await openplayer.subtitle.loadGenerated({
+await openplayer.subtitle.loadGeneratedCues({
   name: "AI Transcript",
-  format: "srt",
-  content: response.text,
+  format: "vtt",
+  cues: JSON.parse(response.text).segments.map((segment) => ({
+    start: segment.start,
+    end: segment.end,
+    text: segment.text,
+  })),
   select: true,
 });
 ```
 
 The host writes audio clips and generated subtitle files into plugin-scoped
-managed directories and loads generated subtitle text through mpv. Plugins do
-not receive raw filesystem write access and should not use raw mpv `sub-add` or
-provider-specific host commands.
+managed directories, formats structured `SubtitleCue[]` input as SRT/VTT, and
+loads generated subtitle text through mpv. Plugins do not receive raw filesystem
+write access and should not use raw mpv `sub-add` or provider-specific host
+commands.
 
 Generated subtitle tracks are plugin-owned resources. A plugin can inspect,
 replace, or unload only tracks backed by files in its own managed subtitle
@@ -343,10 +348,10 @@ const generatedTracks = await openplayer.subtitle.listGenerated();
 const currentTranscript = generatedTracks.find((track) => track.selected);
 
 if (currentTranscript) {
-  await openplayer.subtitle.replaceGenerated(currentTranscript.id, {
+  await openplayer.subtitle.replaceGeneratedCues(currentTranscript.id, {
     name: "Updated Transcript",
-    format: "srt",
-    content: updatedSrtText,
+    format: "vtt",
+    cues: updatedTranscriptSegments,
     select: true,
   });
 }

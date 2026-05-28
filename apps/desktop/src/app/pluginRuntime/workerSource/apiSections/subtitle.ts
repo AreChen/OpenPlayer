@@ -6,6 +6,9 @@ export function pluginWorkerSubtitleApiSource() {
       loadGenerated(args) {
         return requestHost("subtitle.loadGenerated", args);
       },
+      loadGeneratedCues(args) {
+        return requestHost("subtitle.loadGeneratedCues", args);
+      },
       listGenerated() {
         return requestHost("subtitle.listGenerated");
       },
@@ -14,6 +17,9 @@ export function pluginWorkerSubtitleApiSource() {
       },
       replaceGenerated(trackId, args) {
         return requestHost("subtitle.replaceGenerated", { ...args, trackId });
+      },
+      replaceGeneratedCues(trackId, args) {
+        return requestHost("subtitle.replaceGeneratedCues", { ...args, trackId });
       },
       setDelay(delay) {
         return requestHost("player.setSubtitleDelay", { delay });

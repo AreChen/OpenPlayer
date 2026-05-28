@@ -283,6 +283,63 @@ fn rejects_invalid_generated_subtitle_requests() {
 }
 
 #[test]
+fn formats_structured_generated_subtitle_cues() {
+    let cues = vec![
+        GeneratedSubtitleCue {
+            start: 2.5,
+            end: 4.25,
+            text: " second line ".to_string(),
+        },
+        GeneratedSubtitleCue {
+            start: 0.0,
+            end: 1.234,
+            text: " Hello\nworld ".to_string(),
+        },
+    ];
+
+    let srt =
+        format_generated_subtitle_cues("srt", &cues).expect("structured cues should format as srt");
+    assert!(srt.contains("1\n00:00:00,000 --> 00:00:01,234\nHello\nworld"));
+    assert!(srt.contains("2\n00:00:02,500 --> 00:00:04,250\nsecond line"));
+
+    let vtt =
+        format_generated_subtitle_cues("vtt", &cues).expect("structured cues should format as vtt");
+    assert!(vtt.starts_with("WEBVTT\n\n"));
+    assert!(vtt.contains("00:00:00.000 --> 00:00:01.234\nHello\nworld"));
+}
+
+#[test]
+fn rejects_invalid_structured_generated_subtitle_cues() {
+    let invalid_timing = vec![GeneratedSubtitleCue {
+        start: 3.0,
+        end: 3.0,
+        text: "stuck".to_string(),
+    }];
+    assert!(
+        format_generated_subtitle_cues("srt", &invalid_timing)
+            .expect_err("zero-length cues should be rejected")
+            .contains("start/end")
+    );
+
+    let empty_text = vec![GeneratedSubtitleCue {
+        start: 0.0,
+        end: 1.0,
+        text: "   ".to_string(),
+    }];
+    assert!(
+        format_generated_subtitle_cues("vtt", &empty_text)
+            .expect_err("empty cue text should be rejected")
+            .contains("non-empty text")
+    );
+
+    assert!(
+        format_generated_subtitle_cues("ass", &empty_text)
+            .expect_err("structured cues should allow only direct cue formats")
+            .contains("unsupported generated subtitle cue format")
+    );
+}
+
+#[test]
 fn enables_real_audio_visualizer_for_audio_files_only() {
     assert!(is_likely_audio_path(Path::new("song.MP3")));
     assert!(is_likely_audio_path(Path::new("voice.amr")));

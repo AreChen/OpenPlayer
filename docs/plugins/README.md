@@ -63,9 +63,10 @@ custom views, and verification commands, read
 - Let runtime and view plugins upload current-plugin managed artifacts through
   `openplayer.network.request({ bodyFile })` without exposing arbitrary local
   filesystem reads.
-- Let runtime and view plugins create standard subtitle text with
-  `openplayer.subtitle.loadGenerated`; the host writes it into a plugin-scoped
-  managed directory and loads it as an mpv subtitle track.
+- Let runtime and view plugins create subtitles from structured `SubtitleCue[]`
+  input with `openplayer.subtitle.loadGeneratedCues`, or from standard subtitle
+  text with `openplayer.subtitle.loadGenerated`; the host writes results into a
+  plugin-scoped managed directory and loads them as mpv subtitle tracks.
 - Let plugins list, replace, and remove only their own generated subtitle
   tracks with `openplayer.subtitle.listGenerated`,
   `openplayer.subtitle.replaceGenerated`, and
