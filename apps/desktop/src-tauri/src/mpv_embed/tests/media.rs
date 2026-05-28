@@ -161,6 +161,128 @@ fn discovers_same_stem_sidecar_subtitles() {
 }
 
 #[test]
+fn writes_generated_subtitle_files_in_plugin_scoped_directory() {
+    let directory = std::env::temp_dir().join(format!(
+        "openplayer-generated-subtitles-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos()
+    ));
+
+    let content = "1\n00:00:00,000 --> 00:00:01,000\nHello from a plugin\n";
+    let path = write_generated_subtitle_file(
+        &directory,
+        "dev.openplayer.ai-transcript",
+        Some("../Live Transcript: Segment 01"),
+        "SRT",
+        content,
+    )
+    .expect("generated subtitle should be written");
+
+    let scoped_directory = directory
+        .join("generated-subtitles")
+        .join("dev.openplayer.ai-transcript");
+    assert!(path.starts_with(&scoped_directory));
+    assert_eq!(
+        path.extension().and_then(|value| value.to_str()),
+        Some("srt")
+    );
+    assert!(
+        path.file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .ends_with("-live-transcript-segment-01.srt")
+    );
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("generated subtitle should be readable"),
+        content
+    );
+
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
+#[test]
+fn generated_subtitle_management_is_limited_to_owning_plugin_paths() {
+    let directory = std::env::temp_dir().join(format!(
+        "openplayer-generated-subtitle-ownership-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos()
+    ));
+    let owned_path = write_generated_subtitle_file(
+        &directory,
+        "dev.openplayer.transcriber",
+        Some("live transcript"),
+        "srt",
+        "1\n00:00:00,000 --> 00:00:01,000\nOwned\n",
+    )
+    .expect("owned generated subtitle should be written");
+    let outside_path = directory.join("outside.srt");
+    std::fs::write(&outside_path, "outside").expect("outside subtitle should be written");
+
+    let owned = plugin_generated_subtitle_path(
+        &directory,
+        "dev.openplayer.transcriber",
+        &owned_path.to_string_lossy(),
+    )
+    .expect("owning plugin should be allowed to manage its generated subtitle");
+    let cross_plugin_error = plugin_generated_subtitle_path(
+        &directory,
+        "dev.openplayer.translator",
+        &owned_path.to_string_lossy(),
+    )
+    .expect_err("another plugin must not manage this generated subtitle");
+    let outside_error = plugin_generated_subtitle_path(
+        &directory,
+        "dev.openplayer.transcriber",
+        &outside_path.to_string_lossy(),
+    )
+    .expect_err("plugin must not manage arbitrary subtitle files");
+    let owned_canonical = owned_path
+        .canonicalize()
+        .expect("owned generated subtitle should canonicalize");
+    let _ = std::fs::remove_dir_all(&directory);
+
+    assert_eq!(owned, owned_canonical);
+    assert!(cross_plugin_error.contains("not owned by the current plugin"));
+    assert!(outside_error.contains("not owned by the current plugin"));
+}
+
+#[test]
+fn rejects_invalid_generated_subtitle_requests() {
+    let directory = std::env::temp_dir();
+
+    assert!(
+        write_generated_subtitle_file(
+            &directory,
+            "dev.openplayer.ai-transcript",
+            Some("transcript"),
+            "exe",
+            "subtitle"
+        )
+        .expect_err("unsupported generated subtitle formats should be rejected")
+        .contains("unsupported generated subtitle format")
+    );
+
+    let oversized = "x".repeat(MAX_GENERATED_SUBTITLE_BYTES + 1);
+    assert!(
+        write_generated_subtitle_file(
+            &directory,
+            "dev.openplayer.ai-transcript",
+            Some("transcript"),
+            "srt",
+            &oversized
+        )
+        .expect_err("oversized generated subtitles should be rejected")
+        .contains("too large")
+    );
+}
+
+#[test]
 fn enables_real_audio_visualizer_for_audio_files_only() {
     assert!(is_likely_audio_path(Path::new("song.MP3")));
     assert!(is_likely_audio_path(Path::new("voice.amr")));

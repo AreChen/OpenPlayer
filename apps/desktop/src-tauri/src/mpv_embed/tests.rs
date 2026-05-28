@@ -1,5 +1,6 @@
 use super::*;
 
+mod audio_export;
 mod capture_recording;
 mod media;
 mod playback_state;

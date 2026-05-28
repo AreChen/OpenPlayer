@@ -88,6 +88,29 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
         return requestHost("plugin.getSettings");
       },
     }),
+    tasks: Object.freeze({
+      start(input) {
+        return requestHost("tasks.start", input);
+      },
+      update(taskId, patch) {
+        return requestHost("tasks.update", { ...patch, taskId });
+      },
+      complete(taskId, result = null) {
+        return requestHost("tasks.complete", { taskId, result });
+      },
+      fail(taskId, error) {
+        return requestHost("tasks.fail", { taskId, error });
+      },
+      cancel(taskId) {
+        return requestHost("tasks.cancel", { taskId });
+      },
+      markCancelled(taskId) {
+        return requestHost("tasks.markCancelled", { taskId });
+      },
+      list() {
+        return requestHost("tasks.list");
+      },
+    }),
     storage: Object.freeze({
       get(key) {
         return requestHost("plugin.storage.get", { key });
@@ -105,6 +128,45 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
     network: Object.freeze({
       request(args) {
         return requestHost("network.request", args);
+      },
+    }),
+    media: Object.freeze({
+      current() {
+        return requestHost("player.currentMedia");
+      },
+      currentSegment(args = {}) {
+        return requestHost("player.currentSegment", args);
+      },
+      snapshot() {
+        return requestHost("player.snapshot");
+      },
+    }),
+    audio: Object.freeze({
+      extractClip(args) {
+        return requestHost("audio.extractClip", args);
+      },
+    }),
+    subtitle: Object.freeze({
+      pickExternal() {
+        return requestHost("subtitle.pickExternal");
+      },
+      loadGenerated(args) {
+        return requestHost("subtitle.loadGenerated", args);
+      },
+      listGenerated() {
+        return requestHost("subtitle.listGenerated");
+      },
+      removeGenerated(trackId) {
+        return requestHost("subtitle.removeGenerated", { trackId });
+      },
+      replaceGenerated(trackId, args) {
+        return requestHost("subtitle.replaceGenerated", { ...args, trackId });
+      },
+      setDelay(delay) {
+        return requestHost("player.setSubtitleDelay", { delay });
+      },
+      selectTrack(trackId) {
+        return requestHost("player.selectTrack", { kind: "subtitle", trackId });
       },
     }),
     player: Object.freeze({

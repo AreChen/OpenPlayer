@@ -29,6 +29,7 @@ use windows_sys::Win32::{
     },
 };
 
+mod audio_export;
 mod capture_recording;
 pub(crate) mod commands;
 mod constants;
@@ -64,6 +65,7 @@ mod wall_state;
 #[cfg(any(windows, test))]
 mod wall_status;
 
+use audio_export::*;
 use capture_recording::*;
 pub use commands::*;
 use constants::*;

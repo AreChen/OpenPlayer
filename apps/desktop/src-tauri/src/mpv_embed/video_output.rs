@@ -10,7 +10,6 @@ pub(super) use errors::mpv_error_message;
 pub(super) use factory::create_embed_player;
 #[cfg(windows)]
 pub(super) use factory::create_embed_player_without_logs;
-#[cfg(test)]
 pub(super) use locale::prepare_libmpv_numeric_locale;
 #[cfg(test)]
 pub(super) use logging::is_mpv_video_diagnostic_log;

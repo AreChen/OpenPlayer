@@ -15,7 +15,9 @@ export function pluginPermissionRisk(permission: string): PluginPermissionRisk {
     permission === "mpv.filters" ||
     permission === "mpv.wall" ||
     permission === "filesystem.reveal" ||
-    permission === "media.openStream"
+    permission === "media.openStream" ||
+    permission === "audio.extract" ||
+    permission === "subtitle.write"
   ) {
     return "warning";
   }

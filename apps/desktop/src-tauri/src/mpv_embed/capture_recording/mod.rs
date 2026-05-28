@@ -12,7 +12,9 @@ pub(super) use formats::{
     normalize_capture_image_format, normalize_recording_container_format,
     recording_container_format_for_method,
 };
-pub(super) use paths::{capture_output_path, current_time_ms_for_capture, recording_output_path};
+pub(super) use paths::{
+    capture_file_stem, capture_output_path, current_time_ms_for_capture, recording_output_path,
+};
 #[cfg(test)]
 pub(super) use recording::{
     ensure_recording_output_has_content, recording_dump_start_position,

@@ -136,6 +136,16 @@ Important permissions:
 - `network.request`: validated HTTP(S) requests.
 - `filesystem.pick`: user-mediated file or directory picking.
 - `filesystem.reveal`: reveal/open local paths in the system file manager.
+- `audio.extract`: export short managed WAV clips from the currently loaded
+  media for transcription, analysis, or media-understanding plugins.
+- `subtitle.write`: create and load plugin-generated subtitle tracks for the
+  currently loaded media.
+
+There is no current provider-specific AI permission. Transcription,
+translation, subtitle cleanup, OCR subtitle extraction, and media-understanding
+plugins should compose the generic media segment, audio, network, subtitle,
+player, task, and storage APIs instead of asking the core for one-off provider
+support.
 
 Do not document or implement plugins that bypass these permissions with raw
 Tauri calls, raw filesystem access, raw sockets, arbitrary mpv commands, or
@@ -189,6 +199,41 @@ Supported events in SDK 1.5 include:
 - `plugin.view.opened`
 - `plugin.view.closed`
 
+### Plugin Tasks
+
+Use `openplayer.tasks` for long-running plugin work such as transcription,
+translation, subtitle cleanup, OCR subtitle extraction, media analysis, or batch
+playlist operations. Task state is host-managed and scoped to the current
+plugin. It is session-local runtime state, not persistent plugin storage.
+
+```js
+const task = await openplayer.tasks.start({
+  title: "Transcribing current media",
+  detail: "Extracting the next audio segment",
+  progress: 0,
+  cancellable: true,
+  metadata: { mediaPath: "/media/movie.mkv" },
+});
+
+for (let segment = 0; segment < segments.length; segment += 1) {
+  const latest = await openplayer.tasks.update(task.id, {
+    detail: `Transcribing segment ${segment + 1} / ${segments.length}`,
+    progress: segment / segments.length,
+  });
+  if (latest.status === "cancelRequested") {
+    await openplayer.tasks.markCancelled(task.id);
+    return;
+  }
+}
+
+await openplayer.tasks.complete(task.id, { subtitleTrack: generated.path });
+```
+
+`cancel(taskId)` requests cooperative cancellation and changes a running task to
+`cancelRequested` only when the task was created with `cancellable: true`.
+Plugins should poll the returned task snapshot from `update` or `list`, stop
+their own work, and then call `markCancelled(taskId)`.
+
 ### Media And Playlist
 
 ```js
@@ -198,6 +243,7 @@ openplayer.media.openStream(url, {
 });
 openplayer.media.openStreamDialog();
 openplayer.media.current();
+openplayer.media.currentSegment({ before: 2, duration: 8 });
 openplayer.media.snapshot();
 openplayer.playlist.current();
 openplayer.playlist.playIndex(0);
@@ -207,6 +253,30 @@ openplayer.playlist.clear();
 `openplayer.media.onBeforeOpen(handler)` can return a new path, display name,
 or safe load options. Path rewrites require `media.openStream`; load options
 require `mpv.loadOptions`.
+
+`openplayer.media.currentSegment()` returns a host-normalized window around the
+current playback position. Use `before` for already-played audio, `duration` for
+bounded chunk size, and pass `segment.clip` into `openplayer.audio.extractClip`.
+The host clamps segment boundaries to the loaded media duration, so transcription
+plugins do not each need to reimplement time-window math.
+
+### Audio Clips
+
+```js
+const segment = await openplayer.media.currentSegment({ before: 2, duration: 8 });
+const clip = await openplayer.audio.extractClip({
+  ...segment.clip,
+  sampleRate: 16000,
+  channels: "mono",
+  includeBase64: true,
+});
+```
+
+`openplayer.audio.extractClip` exports a short WAV clip from the current media
+with a separate mpv instance, so it does not interrupt playback. It requires
+`audio.extract`. Use small chunks when requesting `includeBase64`; larger
+provider uploads should stay host-mediated instead of giving plugins raw
+filesystem access.
 
 ### Player Controls
 
@@ -224,6 +294,94 @@ openplayer.player.selectTrack("subtitle", 2);
 
 Commands that change mpv playback should return or apply host snapshots. Plugin
 code should not guess playback state.
+
+### Subtitle Generation
+
+Generated subtitles and audio clips are composable SDK primitives. Use them for
+AI transcription, translation, OCR subtitle extraction, subtitle cleanup, and
+other plugins that produce standard subtitle text. Request `audio.extract` when
+the plugin needs a short WAV clip from the current media, request
+`subtitle.write` when it creates a subtitle track, and request `network.request`
+only when it calls an external provider.
+
+```js
+const segment = await openplayer.media.currentSegment({ before: 2, duration: 8 });
+const clip = await openplayer.audio.extractClip({
+  ...segment.clip,
+  sampleRate: 16000,
+  channels: "mono",
+  includeBase64: true,
+});
+
+const response = await openplayer.network.request({
+  url: "https://example.com/transcribe",
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ audioBase64: clip.bodyBase64 }),
+  timeoutMs: 30000,
+});
+
+await openplayer.subtitle.loadGenerated({
+  name: "AI Transcript",
+  format: "srt",
+  content: response.text,
+  select: true,
+});
+```
+
+The host writes audio clips and generated subtitle files into plugin-scoped
+managed directories and loads generated subtitle text through mpv. Plugins do
+not receive raw filesystem write access and should not use raw mpv `sub-add` or
+provider-specific host commands.
+
+Generated subtitle tracks are plugin-owned resources. A plugin can inspect,
+replace, or unload only tracks backed by files in its own managed subtitle
+directory:
+
+```js
+const generatedTracks = await openplayer.subtitle.listGenerated();
+const currentTranscript = generatedTracks.find((track) => track.selected);
+
+if (currentTranscript) {
+  await openplayer.subtitle.replaceGenerated(currentTranscript.id, {
+    name: "Updated Transcript",
+    format: "srt",
+    content: updatedSrtText,
+    select: true,
+  });
+}
+
+for (const staleTrack of generatedTracks.filter((track) => !track.selected)) {
+  await openplayer.subtitle.removeGenerated(staleTrack.id);
+}
+```
+
+For larger audio clips, avoid `includeBase64` and upload the managed artifact
+directly:
+
+```js
+const segment = await openplayer.media.currentSegment({ before: 20, duration: 20 });
+const clip = await openplayer.audio.extractClip({
+  ...segment.clip,
+  sampleRate: 16000,
+  channels: "mono",
+});
+
+const response = await openplayer.network.request({
+  url: "https://example.com/transcribe",
+  method: "POST",
+  headers: { "Content-Type": "audio/wav" },
+  bodyFile: {
+    path: clip.path,
+    contentType: clip.mimeType,
+  },
+  timeoutMs: 30000,
+});
+```
+
+`bodyFile` is limited to host-managed artifacts for the current plugin, such as
+files returned by `openplayer.audio.extractClip`. It is not raw filesystem
+upload access.
 
 ### Permissioned mpv Controls
 

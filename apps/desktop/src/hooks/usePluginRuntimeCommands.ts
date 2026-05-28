@@ -1,4 +1,5 @@
 import { runtimeArgsRecord } from "../app/pluginRuntime";
+import { handlePluginAudioRuntimeCommand } from "./pluginRuntimeCommands/audio";
 import { handlePluginDataRuntimeCommand } from "./pluginRuntimeCommands/data";
 import { handlePluginFilesystemRuntimeCommand } from "./pluginRuntimeCommands/filesystem";
 import { handlePluginMpvRuntimeCommand } from "./pluginRuntimeCommands/mpv";
@@ -9,11 +10,14 @@ import {
   type PluginRuntimeCommandContext,
   type PluginRuntimeCommandHandler,
 } from "./pluginRuntimeCommands/types";
+import { handlePluginTasksRuntimeCommand } from "./pluginRuntimeCommands/tasks";
 import { handlePluginUiRuntimeCommand } from "./pluginRuntimeCommands/ui";
 import { handlePluginWallRuntimeCommand } from "./pluginRuntimeCommands/wall";
 
 const pluginRuntimeCommandHandlers: PluginRuntimeCommandHandler[] = [
   handlePluginDataRuntimeCommand,
+  handlePluginTasksRuntimeCommand,
+  handlePluginAudioRuntimeCommand,
   handlePluginMpvRuntimeCommand,
   handlePluginWallRuntimeCommand,
   handlePluginUiRuntimeCommand,

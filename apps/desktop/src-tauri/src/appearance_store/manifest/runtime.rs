@@ -112,12 +112,7 @@ pub(super) fn validate_plugin_view(view: &PluginViewManifest) -> Result<(), Stri
 fn is_supported_capability_kind(kind: &str) -> bool {
     matches!(
         kind,
-        "subtitleStyle"
-            | "capture"
-            | "streamSource"
-            | "mpvControl"
-            | "aiTranscription"
-            | "aiTranslation"
+        "subtitleStyle" | "capture" | "streamSource" | "audioTool" | "subtitleTool" | "mpvControl"
     )
 }
 
@@ -136,8 +131,8 @@ pub(super) fn is_supported_plugin_permission(permission: &str) -> bool {
             | "filesystem.pick"
             | "filesystem.reveal"
             | "network.request"
-            | "ai.transcribe"
-            | "ai.translate"
+            | "audio.extract"
+            | "subtitle.write"
     )
 }
 

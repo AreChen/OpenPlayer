@@ -1,4 +1,9 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
+
+const MAX_PLUGIN_NETWORK_BODY_FILE_BYTES: u64 = 25 * 1024 * 1024;
 
 pub(super) fn plugin_network_request_url(value: &str) -> Result<reqwest::Url, String> {
     if value.is_empty() || value.len() > 2048 || value.chars().any(char::is_whitespace) {
@@ -52,6 +57,77 @@ pub(super) fn plugin_network_headers(
     Ok(headers)
 }
 
+pub(super) fn plugin_network_body_file_path(
+    app_data_dir: &Path,
+    plugin_id: &str,
+    path: &str,
+) -> Result<PathBuf, String> {
+    let plugin_id = validate_plugin_network_body_file_plugin_id(plugin_id)?;
+    if path.trim().is_empty() || path.len() > 4096 {
+        return Err("network.request bodyFile path is required".to_string());
+    }
+    let candidate = PathBuf::from(path);
+    if !candidate.is_absolute() {
+        return Err("network.request bodyFile path must be absolute".to_string());
+    }
+    let allowed_directory = app_data_dir.join("audio-clips").join(plugin_id);
+    let allowed_directory = std::fs::canonicalize(&allowed_directory)
+        .map_err(|_| "network.request bodyFile must be a managed plugin artifact".to_string())?;
+    let candidate = std::fs::canonicalize(candidate)
+        .map_err(|_| "network.request bodyFile must be a managed plugin artifact".to_string())?;
+    if !candidate.starts_with(&allowed_directory) {
+        return Err("network.request bodyFile must be a managed plugin artifact".to_string());
+    }
+    let metadata = std::fs::metadata(&candidate)
+        .map_err(|_| "network.request bodyFile must be a readable file".to_string())?;
+    if !metadata.is_file() {
+        return Err("network.request bodyFile must be a readable file".to_string());
+    }
+    if metadata.len() == 0 {
+        return Err("network.request bodyFile must not be empty".to_string());
+    }
+    if metadata.len() > MAX_PLUGIN_NETWORK_BODY_FILE_BYTES {
+        return Err("network.request bodyFile is too large".to_string());
+    }
+    Ok(candidate)
+}
+
+pub(super) fn plugin_network_body_file_content_type(
+    value: Option<&str>,
+) -> Result<Option<String>, String> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let value = value.trim();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    if value.len() > 128 || value.contains(['\r', '\n']) || !value.contains('/') {
+        return Err("network.request bodyFile contentType is invalid".to_string());
+    }
+    Ok(Some(value.to_string()))
+}
+
+fn validate_plugin_network_body_file_plugin_id(plugin_id: &str) -> Result<&str, String> {
+    let plugin_id = plugin_id.trim();
+    if plugin_id.len() > 128
+        || !plugin_id.contains('.')
+        || plugin_id.split('.').any(|segment| {
+            segment.is_empty()
+                || !segment
+                    .chars()
+                    .next()
+                    .is_some_and(|character| character.is_ascii_lowercase())
+                || !segment.chars().all(|character| {
+                    character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
+                })
+        })
+    {
+        return Err("network.request bodyFile invalid plugin id".to_string());
+    }
+    Ok(plugin_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -75,5 +151,96 @@ mod tests {
             reqwest::Method::OPTIONS
         );
         assert!(plugin_network_request_method(Some("TRACE")).is_err());
+    }
+
+    #[test]
+    fn plugin_network_body_file_accepts_current_plugin_audio_artifacts_only() {
+        let directory = std::env::temp_dir().join(format!(
+            "openplayer-network-body-file-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after unix epoch")
+                .as_nanos()
+        ));
+        let artifact_directory = directory
+            .join("audio-clips")
+            .join("dev.openplayer.ai-transcript");
+        std::fs::create_dir_all(&artifact_directory).expect("artifact directory should be created");
+        let artifact = artifact_directory.join("clip.wav");
+        std::fs::write(&artifact, b"wav").expect("artifact should be written");
+
+        assert_eq!(
+            plugin_network_body_file_path(
+                &directory,
+                "dev.openplayer.ai-transcript",
+                &artifact.to_string_lossy()
+            )
+            .expect("current plugin artifacts should be uploadable"),
+            std::fs::canonicalize(&artifact).expect("artifact should canonicalize")
+        );
+
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn plugin_network_body_file_rejects_unmanaged_or_cross_plugin_paths() {
+        let directory = std::env::temp_dir().join(format!(
+            "openplayer-network-body-file-reject-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after unix epoch")
+                .as_nanos()
+        ));
+        let current_directory = directory
+            .join("audio-clips")
+            .join("dev.openplayer.ai-transcript");
+        let other_directory = directory.join("audio-clips").join("dev.openplayer.other");
+        std::fs::create_dir_all(&current_directory)
+            .expect("current artifact directory should be created");
+        std::fs::create_dir_all(&other_directory)
+            .expect("other artifact directory should be created");
+        let current_artifact = current_directory.join("clip.wav");
+        let other_artifact = other_directory.join("clip.wav");
+        let unmanaged = directory.join("unmanaged.wav");
+        std::fs::write(&current_artifact, b"wav").expect("current artifact should be written");
+        std::fs::write(&other_artifact, b"wav").expect("other artifact should be written");
+        std::fs::write(&unmanaged, b"wav").expect("unmanaged file should be written");
+
+        assert!(
+            plugin_network_body_file_path(
+                &directory,
+                "dev.openplayer.ai-transcript",
+                &other_artifact.to_string_lossy()
+            )
+            .expect_err("plugins must not upload another plugin artifact")
+            .contains("managed plugin artifact")
+        );
+        assert!(
+            plugin_network_body_file_path(
+                &directory,
+                "dev.openplayer.ai-transcript",
+                &unmanaged.to_string_lossy()
+            )
+            .expect_err("plugins must not upload unmanaged files")
+            .contains("managed plugin artifact")
+        );
+        assert!(
+            plugin_network_body_file_path(
+                &directory,
+                "../plugin",
+                &current_artifact.to_string_lossy()
+            )
+            .expect_err("invalid plugin ids should be rejected")
+            .contains("invalid plugin id")
+        );
+        assert!(
+            plugin_network_body_file_path(&directory, "dev.openplayer.ai-transcript", "")
+                .expect_err("empty paths should be rejected")
+                .contains("bodyFile path")
+        );
+
+        let _ = std::fs::remove_dir_all(&directory);
     }
 }

@@ -40,9 +40,9 @@ export type PluginCapabilityKind =
   | "subtitleStyle"
   | "capture"
   | "streamSource"
-  | "mpvControl"
-  | "aiTranscription"
-  | "aiTranslation";
+  | "audioTool"
+  | "subtitleTool"
+  | "mpvControl";
 export type PluginSettingKind = "boolean" | "number" | "text" | "select" | "color" | "directory";
 export type PluginSettingPlacement =
   | "pluginSettings"

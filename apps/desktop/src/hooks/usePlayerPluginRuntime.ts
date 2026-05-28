@@ -74,7 +74,7 @@ export function usePlayerPluginRuntime({
     openSettingsDialog,
   } = commandContext;
   const runtimeRefreshKey = appearanceState?.plugins.map((plugin) => `${plugin.id}:${plugin.enabled}:${plugin.runtime}:${plugin.version}`).join("|") ?? "";
-  const executePluginRuntimeCommand = usePluginRuntimeCommands(commandContext);
+  const executePluginRuntimeCommand = usePluginRuntimeCommands({ ...commandContext, duration });
   const { broadcastPluginRuntimeEvent, executePluginRuntimeAction, runMediaOpeningHooks } = usePluginRuntimeHost({
     activePluginView,
     plugins: appearanceState?.plugins ?? [],

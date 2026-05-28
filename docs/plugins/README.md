@@ -34,6 +34,9 @@ custom views, and verification commands, read
 - Enable or disable imported plugins.
 - Persist plugin manifests and plugin setting values in redb.
 - Render plugin settings in the central Plugins settings page.
+- Let plugins create session-local host-managed task snapshots for long-running
+  transcription, translation, analysis, and batch work with
+  `openplayer.tasks`.
 - Render settings assigned to the subtitle/track panel in that panel.
 - Render plugin actions in UI slots such as the control strip, context menu, and
   playlist actions.
@@ -54,6 +57,19 @@ custom views, and verification commands, read
 - Send playback and media lifecycle events to runtime plugins.
 - Let runtime plugins participate in `media.opening` and return safe mpv
   `loadfile` options such as HLS demuxer hints before playback starts.
+- Let runtime and view plugins ask the host for normalized current playback
+  windows with `openplayer.media.currentSegment`, then export short managed WAV
+  clips from those windows with `openplayer.audio.extractClip`.
+- Let runtime and view plugins upload current-plugin managed artifacts through
+  `openplayer.network.request({ bodyFile })` without exposing arbitrary local
+  filesystem reads.
+- Let runtime and view plugins create standard subtitle text with
+  `openplayer.subtitle.loadGenerated`; the host writes it into a plugin-scoped
+  managed directory and loads it as an mpv subtitle track.
+- Let plugins list, replace, and remove only their own generated subtitle
+  tracks with `openplayer.subtitle.listGenerated`,
+  `openplayer.subtitle.replaceGenerated`, and
+  `openplayer.subtitle.removeGenerated`.
 
 ## Package Format
 
@@ -369,9 +385,9 @@ capability kinds:
 - `subtitleStyle`
 - `capture`
 - `streamSource`
+- `audioTool`
+- `subtitleTool`
 - `mpvControl`
-- `aiTranscription`
-- `aiTranslation`
 
 Supported permission declarations:
 
@@ -387,8 +403,8 @@ Supported permission declarations:
 - `filesystem.pick`
 - `filesystem.reveal`
 - `network.request`
-- `ai.transcribe`
-- `ai.translate`
+- `audio.extract`
+- `subtitle.write`
 
 `contributes.settings` adds validated controls. Supported setting kinds:
 

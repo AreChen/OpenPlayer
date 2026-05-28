@@ -36,7 +36,7 @@ export const handlePluginDataRuntimeCommand: PluginRuntimeCommandHandler = async
       if (!permissions.has("network.request")) {
         throw new Error("plugin runtime command requires network.request");
       }
-      return await runPluginNetworkRequest(record);
+      return await runPluginNetworkRequest(record, pluginId);
     }
     default:
       return PLUGIN_RUNTIME_COMMAND_NOT_HANDLED;

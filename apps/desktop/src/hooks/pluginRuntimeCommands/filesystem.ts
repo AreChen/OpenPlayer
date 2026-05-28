@@ -1,10 +1,49 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { playableExtensions, subtitleExtensions } from "../../app/constants";
-import { runtimeStringArg } from "../../app/pluginRuntime";
+import { runtimeNumberArg, runtimeStringArg } from "../../app/pluginRuntime";
 import type { MpvSnapshot } from "../../app/types";
 import { focusOverlayWindow } from "../../app/windowControls";
 import { PLUGIN_RUNTIME_COMMAND_NOT_HANDLED, type PluginRuntimeCommandContext, type PluginRuntimeCommandHandler } from "./types";
+
+type GeneratedSubtitleLoadResult = {
+  path: string;
+  snapshot: MpvSnapshot;
+};
+
+type GeneratedSubtitleTrack = {
+  id: number;
+  title: string | null;
+  language: string | null;
+  codec: string | null;
+  selected: boolean;
+  path: string;
+};
+
+function generatedSubtitleTrackId(record: Record<string, unknown>, command: string) {
+  const trackId = runtimeNumberArg(record, "trackId");
+  if (trackId === null || !Number.isInteger(trackId) || trackId <= 0) {
+    throw new Error(`${command} requires a positive numeric trackId`);
+  }
+  return trackId;
+}
+
+function generatedSubtitlePayload(record: Record<string, unknown>, command: string) {
+  const format = runtimeStringArg(record, "format");
+  const content = typeof record.content === "string" ? record.content : "";
+  if (!format) {
+    throw new Error(`${command} requires a subtitle format`);
+  }
+  if (!content.trim()) {
+    throw new Error(`${command} requires subtitle content`);
+  }
+  return {
+    name: runtimeStringArg(record, "name"),
+    format,
+    content,
+    select: typeof record.select === "boolean" ? record.select : null,
+  };
+}
 
 export async function pickPluginMediaPaths(context: PluginRuntimeCommandContext, permissions: Set<string>, multiple = true) {
   if (!permissions.has("filesystem.pick")) {
@@ -26,7 +65,7 @@ export async function pickPluginMediaPaths(context: PluginRuntimeCommandContext,
   }
 }
 
-export const handlePluginFilesystemRuntimeCommand: PluginRuntimeCommandHandler = async (context, command, record, permissions) => {
+export const handlePluginFilesystemRuntimeCommand: PluginRuntimeCommandHandler = async (context, command, record, permissions, pluginId) => {
   switch (command) {
     case "filesystem.pickMedia":
       return await pickPluginMediaPaths(context, permissions, record.multiple !== false);
@@ -97,6 +136,72 @@ export const handlePluginFilesystemRuntimeCommand: PluginRuntimeCommandHandler =
         context.setIsPickerOpen(false);
         focusOverlayWindow();
       }
+    }
+    case "subtitle.loadGenerated": {
+      if (!context.media) {
+        throw new Error("subtitle.loadGenerated requires loaded media");
+      }
+      if (!permissions.has("subtitle.write")) {
+        throw new Error("plugin runtime command requires subtitle.write");
+      }
+      const payload = generatedSubtitlePayload(record, "subtitle.loadGenerated");
+      context.invalidatePendingSnapshots();
+      const result = await invoke<GeneratedSubtitleLoadResult>("mpv_embed_load_generated_subtitle", {
+        pluginId,
+        ...payload,
+      });
+      context.applyCommandSnapshot(result.snapshot);
+      if (record.select !== false) {
+        const selectedSubtitle = result.snapshot.tracks.find((track) => track.kind === "sub" && track.selected);
+        context.persistMediaPlaybackSettings(context.media.path, { subtitleTrackId: selectedSubtitle?.id ?? null });
+      }
+      return result;
+    }
+    case "subtitle.listGenerated": {
+      if (!context.media) {
+        throw new Error("subtitle.listGenerated requires loaded media");
+      }
+      if (!permissions.has("subtitle.write")) {
+        throw new Error("plugin runtime command requires subtitle.write");
+      }
+      return await invoke<GeneratedSubtitleTrack[]>("mpv_embed_list_generated_subtitles", { pluginId });
+    }
+    case "subtitle.removeGenerated": {
+      if (!context.media) {
+        throw new Error("subtitle.removeGenerated requires loaded media");
+      }
+      if (!permissions.has("subtitle.write")) {
+        throw new Error("plugin runtime command requires subtitle.write");
+      }
+      const trackId = generatedSubtitleTrackId(record, "subtitle.removeGenerated");
+      context.invalidatePendingSnapshots();
+      const snapshot = await invoke<MpvSnapshot>("mpv_embed_remove_generated_subtitle", { pluginId, trackId });
+      context.applyCommandSnapshot(snapshot);
+      const selectedSubtitle = snapshot.tracks.find((track) => track.kind === "sub" && track.selected);
+      context.persistMediaPlaybackSettings(context.media.path, { subtitleTrackId: selectedSubtitle?.id ?? null });
+      return snapshot;
+    }
+    case "subtitle.replaceGenerated": {
+      if (!context.media) {
+        throw new Error("subtitle.replaceGenerated requires loaded media");
+      }
+      if (!permissions.has("subtitle.write")) {
+        throw new Error("plugin runtime command requires subtitle.write");
+      }
+      const trackId = generatedSubtitleTrackId(record, "subtitle.replaceGenerated");
+      const payload = generatedSubtitlePayload(record, "subtitle.replaceGenerated");
+      context.invalidatePendingSnapshots();
+      const result = await invoke<GeneratedSubtitleLoadResult>("mpv_embed_replace_generated_subtitle", {
+        pluginId,
+        trackId,
+        ...payload,
+      });
+      context.applyCommandSnapshot(result.snapshot);
+      if (record.select !== false) {
+        const selectedSubtitle = result.snapshot.tracks.find((track) => track.kind === "sub" && track.selected);
+        context.persistMediaPlaybackSettings(context.media.path, { subtitleTrackId: selectedSubtitle?.id ?? null });
+      }
+      return result;
     }
     default:
       return PLUGIN_RUNTIME_COMMAND_NOT_HANDLED;

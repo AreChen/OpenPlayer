@@ -33,6 +33,24 @@ pub struct MpvEmbedTrack {
     pub(crate) external: bool,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeneratedSubtitleLoadResult {
+    pub(crate) path: String,
+    pub(crate) snapshot: MpvEmbedSnapshot,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeneratedSubtitleTrack {
+    pub(crate) id: i64,
+    pub(crate) title: Option<String>,
+    pub(crate) language: Option<String>,
+    pub(crate) codec: Option<String>,
+    pub(crate) selected: bool,
+    pub(crate) path: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct MpvLoadOptions {
     #[serde(flatten)]

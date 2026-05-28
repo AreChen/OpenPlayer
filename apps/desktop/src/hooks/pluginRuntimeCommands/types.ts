@@ -31,6 +31,7 @@ export type PluginRuntimeCommandContext = {
   queue: MediaItem[];
   currentIndex: number | null;
   displayTime: number;
+  duration: number;
   isPickerOpen: boolean;
   setIsPickerOpen: (isPickerOpen: boolean) => void;
   setSettingsSection: (section: SettingsSection) => void;

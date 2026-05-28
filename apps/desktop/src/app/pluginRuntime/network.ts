@@ -33,7 +33,20 @@ export function pluginNetworkUrl(value: unknown) {
   }
 }
 
-export async function runPluginNetworkRequest(args: Record<string, unknown>) {
+export function normalizePluginNetworkBodyFile(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const path = runtimeStringArg(record, "path");
+  if (!path) {
+    return null;
+  }
+  const contentType = runtimeStringArg(record, "contentType");
+  return contentType ? { path, contentType } : { path };
+}
+
+export async function runPluginNetworkRequest(args: Record<string, unknown>, pluginId: string) {
   const url = pluginNetworkUrl(args.url);
   if (!url) {
     throw new Error("network.request requires an http or https url");
@@ -49,19 +62,27 @@ export async function runPluginNetworkRequest(args: Record<string, unknown>) {
   const timeoutMs = Math.min(MAX_PLUGIN_NETWORK_TIMEOUT_MS, Math.max(1000, runtimeNumberArg(args, "timeoutMs") ?? 15_000));
   const headers = normalizePluginNetworkHeaders(args.headers);
   let body: BodyInit | undefined;
+  const bodyFile = normalizePluginNetworkBodyFile(args.bodyFile);
+  if (typeof args.body === "string" && bodyFile) {
+    throw new Error("network.request cannot use both body and bodyFile");
+  }
   if (method !== "GET" && method !== "HEAD" && typeof args.body === "string") {
     if (args.body.length > 256 * 1024) {
       throw new Error("network.request body is too large");
     }
     body = args.body;
+  } else if ((method === "GET" || method === "HEAD") && (typeof args.body === "string" || bodyFile)) {
+    throw new Error("network.request body requires a non-GET method");
   }
 
   const response = await invoke("plugin_network_request", {
+    pluginId,
     args: {
       url,
       method,
       headers,
       body,
+      bodyFile,
       timeoutMs,
       responseType,
     },

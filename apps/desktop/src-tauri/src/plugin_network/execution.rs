@@ -1,8 +1,9 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 use super::{
     types::{PluginNetworkRequestArgs, PluginNetworkResponse},
     validation::{
+        plugin_network_body_file_content_type, plugin_network_body_file_path,
         plugin_network_headers, plugin_network_request_method, plugin_network_request_url,
     },
 };
@@ -15,6 +16,8 @@ const PLUGIN_NETWORK_RESPONSE_TYPE_BASE64: &str = "base64";
 const PLUGIN_NETWORK_RESPONSE_TYPE_TEXT: &str = "text";
 
 pub(super) async fn execute_plugin_network_request(
+    app_data_dir: PathBuf,
+    plugin_id: String,
     args: PluginNetworkRequestArgs,
 ) -> Result<PluginNetworkResponse, String> {
     let url = plugin_network_request_url(&args.url)?;
@@ -42,14 +45,33 @@ pub(super) async fn execute_plugin_network_request(
         .map_err(|error| format!("network.request client setup failed: {error}"))?
         .request(method.clone(), url)
         .headers(headers);
-    if method != reqwest::Method::GET
-        && method != reqwest::Method::HEAD
-        && let Some(body) = args.body
-    {
-        if body.len() > MAX_PLUGIN_NETWORK_BODY_BYTES {
-            return Err("network.request body is too large".to_string());
+    if method != reqwest::Method::GET && method != reqwest::Method::HEAD {
+        match (args.body, args.body_file) {
+            (Some(_), Some(_)) => {
+                return Err("network.request cannot use both body and bodyFile".to_string());
+            }
+            (Some(body), None) => {
+                if body.len() > MAX_PLUGIN_NETWORK_BODY_BYTES {
+                    return Err("network.request body is too large".to_string());
+                }
+                request = request.body(body);
+            }
+            (None, Some(body_file)) => {
+                let path =
+                    plugin_network_body_file_path(&app_data_dir, &plugin_id, &body_file.path)?;
+                let content_type =
+                    plugin_network_body_file_content_type(body_file.content_type.as_deref())?;
+                if let Some(content_type) = content_type {
+                    request = request.header(reqwest::header::CONTENT_TYPE, content_type);
+                }
+                let body = std::fs::read(path)
+                    .map_err(|error| format!("network.request bodyFile read failed: {error}"))?;
+                request = request.body(body);
+            }
+            (None, None) => {}
         }
-        request = request.body(body);
+    } else if args.body.is_some() || args.body_file.is_some() {
+        return Err("network.request body requires a non-GET method".to_string());
     }
 
     let response = request

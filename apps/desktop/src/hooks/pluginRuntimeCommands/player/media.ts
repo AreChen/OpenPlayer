@@ -1,5 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
-import { normalizePluginLoadOptions, runtimeStringArg } from "../../../app/pluginRuntime";
+import {
+  normalizePluginLoadOptions,
+  normalizePluginMediaSegment,
+  runtimeNumberArg,
+  runtimeStringArg,
+} from "../../../app/pluginRuntime";
 import type { MpvSnapshot } from "../../../app/types";
 import {
   PLUGIN_RUNTIME_COMMAND_NOT_HANDLED,
@@ -17,6 +22,19 @@ export const handlePluginPlayerMediaCommand: PluginRuntimeCommandHandler = async
       return { media: context.media, queue: context.queue, currentIndex: context.currentIndex };
     case "player.snapshot":
       return invoke<MpvSnapshot | null>("mpv_embed_snapshot");
+    case "player.currentSegment":
+      return normalizePluginMediaSegment(
+        {
+          start: runtimeNumberArg(record, "start") ?? undefined,
+          before: runtimeNumberArg(record, "before") ?? undefined,
+          duration: runtimeNumberArg(record, "duration") ?? undefined,
+        },
+        {
+          media: context.media,
+          position: context.displayTime,
+          mediaDuration: context.duration,
+        },
+      );
     case "player.openMedia":
       context.openNativeMediaFiles();
       return null;
