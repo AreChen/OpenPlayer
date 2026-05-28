@@ -356,14 +356,16 @@ shell-like commands, arbitrary filter graphs, or unsafe process/configuration
 properties.
 `openplayer.plugin.getSettings()` returns the current values declared in
 `contributes.settings`. `plugin.storage.get`, `plugin.storage.set`,
-`plugin.storage.remove`, and `plugin.storage.list` provide redb-backed
-plugin-private JSON storage. Storage keys are namespaced by plugin ID and
-removed when the plugin is uninstalled. Plugins that persist state can declare
-`contributes.storage` with a positive `version` and JSON `defaults`; the host
-initializes missing defaults on install, preserves existing values on upgrade,
-and exposes schema metadata through `openplayer.storage.info()` so plugins can
-run their own migrations and call `openplayer.storage.markMigrated()` without
-adding core feature toggles.
+`plugin.storage.update`, `plugin.storage.remove`, and `plugin.storage.list`
+provide redb-backed plugin-private JSON storage. Storage keys are namespaced by
+plugin ID and removed when the plugin is uninstalled. Plugins that persist state
+can declare `contributes.storage` with a positive `version` and JSON `defaults`;
+the host initializes missing defaults on install, preserves existing values on
+upgrade, and exposes schema metadata through `openplayer.storage.info()` so
+plugins can run their own migrations and call
+`openplayer.storage.markMigrated()` without adding core feature toggles. Use
+`plugin.storage.update` for atomic `{ set, remove }` batches during migrations,
+queue updates, and cache index refreshes.
 `player.openStreamDialog` is available to declarative actions and opens the
 host-owned network stream dialog.
 Capture requests such as `player.startRecording`, `player.stopRecording`,

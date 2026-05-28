@@ -215,6 +215,61 @@ impl AppearanceStore {
             .map_err(|error| format!("failed to commit plugin runtime storage: {error}"))
     }
 
+    pub(in crate::appearance_store) fn update_plugin_runtime_storage_values(
+        &mut self,
+        plugin_id: &str,
+        set: HashMap<String, Value>,
+        remove: Vec<String>,
+    ) -> Result<PluginStorageInfo, String> {
+        let plugin_id = plugin_id.trim();
+        self.plugin_manifest(plugin_id)?;
+
+        let mut encoded_set = Vec::new();
+        for (key, value) in set {
+            let key = validate_plugin_runtime_storage_key(&key)?.to_string();
+            let encoded = serde_json::to_string(&value).map_err(|error| {
+                format!("failed to encode plugin runtime storage value: {error}")
+            })?;
+            if encoded.len() > MAX_PLUGIN_RUNTIME_STORAGE_VALUE_BYTES {
+                return Err("plugin runtime storage value is too large".to_string());
+            }
+            encoded_set.push((plugin_runtime_storage_key(plugin_id, &key), encoded));
+        }
+
+        let mut remove_keys = Vec::new();
+        for key in remove {
+            let key = validate_plugin_runtime_storage_key(&key)?.to_string();
+            remove_keys.push(plugin_runtime_storage_key(plugin_id, &key));
+        }
+
+        let transaction = self
+            .database
+            .begin_write()
+            .map_err(|error| format!("failed to update plugin runtime storage: {error}"))?;
+        {
+            let mut storage = transaction
+                .open_table(PLUGIN_RUNTIME_STORAGE)
+                .map_err(|error| format!("failed to open plugin runtime storage table: {error}"))?;
+            for key in remove_keys {
+                storage.remove(key.as_str()).map_err(|error| {
+                    format!("failed to remove plugin runtime storage value: {error}")
+                })?;
+            }
+            for (key, encoded) in encoded_set {
+                storage
+                    .insert(key.as_str(), encoded.as_str())
+                    .map_err(|error| {
+                        format!("failed to store plugin runtime storage value: {error}")
+                    })?;
+            }
+        }
+        transaction
+            .commit()
+            .map_err(|error| format!("failed to commit plugin runtime storage update: {error}"))?;
+
+        self.plugin_runtime_storage_info(plugin_id)
+    }
+
     pub(in crate::appearance_store) fn remove_plugin_runtime_storage_value(
         &mut self,
         plugin_id: &str,

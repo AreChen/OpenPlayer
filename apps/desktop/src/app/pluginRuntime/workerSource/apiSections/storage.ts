@@ -12,6 +12,9 @@ export function pluginWorkerStorageApiSource() {
       markMigrated(schemaVersion) {
         return requestHost("plugin.storage.markMigrated", { schemaVersion });
       },
+      update(patch) {
+        return requestHost("plugin.storage.update", patch);
+      },
       set(key, value) {
         return requestHost("plugin.storage.set", { key, value });
       },

@@ -63,9 +63,10 @@ plugins, SDK examples, and AI-facing plugin instructions.
 - Use `contributes.storage` for persistent plugin-private data. Keep defaults
   small and JSON-serializable, bump the storage `version` when changing the
   plugin's schema, read `openplayer.storage.info()` at runtime for migrations,
-  call `openplayer.storage.markMigrated()` after successful migration, and rely
-  on uninstall cleanup instead of writing plugin data outside the host storage
-  API.
+  use `openplayer.storage.update({ set, remove })` for atomic redb-backed
+  migration/cache/queue updates, call `openplayer.storage.markMigrated()` after
+  successful migration, and rely on uninstall cleanup instead of writing plugin
+  data outside the host storage API.
 
 ## Verification
 

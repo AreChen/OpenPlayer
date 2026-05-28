@@ -518,6 +518,13 @@ const settings = await openplayer.plugin.getSettings();
 const storageInfo = await openplayer.storage.info();
 await openplayer.storage.set("state", { enabled: true });
 const state = await openplayer.storage.get("state");
+await openplayer.storage.update({
+  set: {
+    "queue.active": { id: "job-1", status: "running" },
+    "settings.model": "small",
+  },
+  remove: ["queue.pending"],
+});
 
 const response = await openplayer.network.request({
   url: "https://example.com/whep",
@@ -568,10 +575,22 @@ plugin-owned migrations:
 const info = await openplayer.storage.info();
 if (info.schemaVersion < info.manifestVersion) {
   const queue = (await openplayer.storage.get("transcript.queue")) ?? [];
-  await openplayer.storage.set("transcript.queue", queue);
+  await openplayer.storage.update({
+    set: {
+      "transcript.queue": queue,
+      "transcript.lastMigration": Date.now(),
+    },
+    remove: ["transcript.legacyQueue"],
+  });
   await openplayer.storage.markMigrated();
 }
 ```
+
+Use `openplayer.storage.update({ set, remove })` when a migration, cache
+refresh, playlist index, transcription queue, or generated-subtitle review pass
+needs multiple key changes to land together. The host validates every key and
+value before opening the redb write transaction; if any entry is invalid, none
+of the batch is persisted.
 
 ## Custom Views
 

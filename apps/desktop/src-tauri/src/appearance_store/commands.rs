@@ -181,6 +181,16 @@ pub fn appearance_plugin_kv_set(
 }
 
 #[tauri::command]
+pub fn appearance_plugin_kv_update(
+    state: State<'_, AppearanceStoreState>,
+    plugin_id: String,
+    set: HashMap<String, Value>,
+    remove: Vec<String>,
+) -> Result<PluginStorageInfo, String> {
+    state.with_store(|store| store.update_plugin_runtime_storage_values(&plugin_id, set, remove))
+}
+
+#[tauri::command]
 pub fn appearance_plugin_kv_remove(
     state: State<'_, AppearanceStoreState>,
     plugin_id: String,

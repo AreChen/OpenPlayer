@@ -55,6 +55,7 @@ pub fn run() {
             crate::appearance_store::commands::appearance_plugin_kv_info,
             crate::appearance_store::commands::appearance_plugin_kv_mark_migrated,
             crate::appearance_store::commands::appearance_plugin_kv_set,
+            crate::appearance_store::commands::appearance_plugin_kv_update,
             crate::appearance_store::commands::appearance_plugin_kv_remove,
             crate::appearance_store::commands::appearance_uninstall_plugin,
             crate::plugin_network::plugin_network_request,

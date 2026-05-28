@@ -32,6 +32,10 @@ export const handlePluginDataRuntimeCommand: PluginRuntimeCommandHandler = async
       await invoke("appearance_plugin_kv_set", { pluginId, key, value: record.value ?? null });
       return null;
     }
+    case "plugin.storage.update": {
+      const patch = runtimeStorageUpdatePatch(record);
+      return await invoke("appearance_plugin_kv_update", { pluginId, ...patch });
+    }
     case "plugin.storage.remove": {
       const key = runtimeStringArg(record, "key");
       if (!key) {
@@ -49,3 +53,30 @@ export const handlePluginDataRuntimeCommand: PluginRuntimeCommandHandler = async
       return PLUGIN_RUNTIME_COMMAND_NOT_HANDLED;
   }
 };
+
+function runtimeStorageUpdatePatch(record: Record<string, unknown>) {
+  const rawSet = record.set;
+  const set = rawSet === undefined ? {} : runtimeStorageSetValues(rawSet);
+  const rawRemove = record.remove;
+  const remove = rawRemove === undefined ? [] : runtimeStorageRemoveKeys(rawRemove);
+  return { set, remove };
+}
+
+function runtimeStorageSetValues(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("plugin storage update set requires an object of key/value pairs");
+  }
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, item ?? null]));
+}
+
+function runtimeStorageRemoveKeys(value: unknown) {
+  if (!Array.isArray(value)) {
+    throw new Error("plugin storage update remove requires an array of keys");
+  }
+  return value.map((item) => {
+    if (typeof item !== "string" || !item.trim()) {
+      throw new Error("plugin storage update remove requires string keys");
+    }
+    return item.trim();
+  });
+}

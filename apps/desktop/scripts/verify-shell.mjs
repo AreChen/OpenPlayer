@@ -499,8 +499,10 @@ assert.match(appearanceStoreSource, /PLUGIN_RUNTIME_STORAGE_META/, "plugin stora
 assert.match(appearanceStoreSource, /initialize_plugin_runtime_storage_defaults/, "plugin install and upgrade must initialize missing storage defaults");
 assert.match(appSource, /storage:\s*Object\.freeze\(\{[\s\S]*info\(\)[\s\S]*plugin\.storage\.info/, "plugin bridge must expose storage.info for migration-aware plugins");
 assert.match(appSource, /markMigrated\(schemaVersion\)[\s\S]*plugin\.storage\.markMigrated/, "plugin bridge must let plugins acknowledge completed storage migrations");
+assert.match(appSource, /update\(patch\)[\s\S]*plugin\.storage\.update/, "plugin bridge must expose atomic storage batch updates");
 assert.match(appSource, /appearance_plugin_kv_info/, "plugin storage info must be routed through the backend store");
 assert.match(appSource, /appearance_plugin_kv_mark_migrated/, "plugin storage migration acknowledgement must be routed through the backend store");
+assert.match(appSource, /appearance_plugin_kv_update/, "plugin storage batch updates must be routed through the backend store");
 assert.match(pluginSdkGuide, /`contributes\.storage`[\s\S]*defaults[\s\S]*upgrade[\s\S]*`openplayer\.storage\.info`/, "SDK guide must document storage defaults, upgrade schema versions, and storage.info");
 assert.doesNotMatch(appSource, /"ai\.transcribe"|"ai\.translate"/, "plugin SDK should not advertise AI-specific permissions without a real host AI API");
 assert.doesNotMatch(tauriRuntimeSource, /"ai\.transcribe"|"ai\.translate"/, "plugin manifest validation should reject reserved AI-specific permissions");

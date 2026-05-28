@@ -1,4 +1,5 @@
 use super::*;
+use std::collections::HashMap;
 
 #[test]
 fn plugin_runtime_storage_is_isolated_and_persistent() {
@@ -32,6 +33,64 @@ fn plugin_runtime_storage_is_isolated_and_persistent() {
         values.get("history.last"),
         Some(&serde_json::json!({ "url": "https://example.com/live.m3u8" }))
     );
+}
+
+#[test]
+fn plugin_runtime_storage_batch_update_is_atomic() {
+    let (mut store, directory) = temp_store();
+    store
+        .import_theme_plugin_json(webview_runtime_plugin_json())
+        .expect("runtime plugin should import");
+    store
+        .set_plugin_runtime_storage_value(
+            "dev.openplayer.runtime.worker",
+            "queue.legacy",
+            serde_json::json!({ "status": "pending" }),
+        )
+        .expect("initial runtime storage value should persist");
+
+    let info = store
+        .update_plugin_runtime_storage_values(
+            "dev.openplayer.runtime.worker",
+            HashMap::from([
+                (
+                    "queue.active".to_string(),
+                    serde_json::json!({ "status": "running" }),
+                ),
+                ("settings.model".to_string(), serde_json::json!("small")),
+            ]),
+            vec!["queue.legacy".to_string()],
+        )
+        .expect("batch storage update should persist atomically");
+    assert_eq!(info.keys, vec!["queue.active", "settings.model"]);
+    assert_eq!(
+        store
+            .plugin_runtime_storage_value("dev.openplayer.runtime.worker", "queue.legacy")
+            .expect("removed runtime storage value should be readable"),
+        None
+    );
+    assert_eq!(
+        store
+            .plugin_runtime_storage_value("dev.openplayer.runtime.worker", "queue.active")
+            .expect("batch runtime storage value should be readable"),
+        Some(serde_json::json!({ "status": "running" }))
+    );
+
+    let error = store
+        .update_plugin_runtime_storage_values(
+            "dev.openplayer.runtime.worker",
+            HashMap::from([(".bad".to_string(), serde_json::json!(true))]),
+            vec!["queue.active".to_string()],
+        )
+        .expect_err("invalid batch storage keys should reject the whole transaction");
+    assert!(error.contains("plugin runtime storage key is invalid"));
+    assert_eq!(
+        store
+            .plugin_runtime_storage_value("dev.openplayer.runtime.worker", "queue.active")
+            .expect("failed batch update should leave existing values untouched"),
+        Some(serde_json::json!({ "status": "running" }))
+    );
+    let _ = std::fs::remove_dir_all(&directory);
 }
 
 #[test]
