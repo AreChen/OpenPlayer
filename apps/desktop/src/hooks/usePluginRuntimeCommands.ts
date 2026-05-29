@@ -1,4 +1,5 @@
 import { runtimeArgsRecord } from "../app/pluginRuntime";
+import { handlePluginArtifactsRuntimeCommand } from "./pluginRuntimeCommands/artifacts";
 import { handlePluginAudioRuntimeCommand } from "./pluginRuntimeCommands/audio";
 import { handlePluginDataRuntimeCommand } from "./pluginRuntimeCommands/data";
 import { handlePluginFilesystemRuntimeCommand } from "./pluginRuntimeCommands/filesystem";
@@ -17,6 +18,7 @@ import { handlePluginWallRuntimeCommand } from "./pluginRuntimeCommands/wall";
 const pluginRuntimeCommandHandlers: PluginRuntimeCommandHandler[] = [
   handlePluginDataRuntimeCommand,
   handlePluginTasksRuntimeCommand,
+  handlePluginArtifactsRuntimeCommand,
   handlePluginAudioRuntimeCommand,
   handlePluginMpvRuntimeCommand,
   handlePluginWallRuntimeCommand,

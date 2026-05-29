@@ -72,6 +72,9 @@ custom views, and verification commands, read
 - Let runtime and view plugins upload current-plugin managed artifacts through
   `openplayer.network.request({ bodyFile })` without exposing arbitrary local
   filesystem reads.
+- Let plugins list, inspect, remove, and clear their own managed audio clips
+  and frame captures with `openplayer.artifacts`, so AI and analysis plugins can
+  clean up batch artifacts without raw filesystem access.
 - Let runtime and view plugins call JSON provider APIs with
   `openplayer.network.requestJson`, a convenience wrapper over the same
   host-mediated `network.request` permission and validation path.
@@ -105,8 +108,8 @@ OCR plugin should be an orchestration of these blocks:
 - playback context: `openplayer.media.currentSegment`,
   `openplayer.media.segmentTimeline`, `openplayer.media.current`, and
   `openplayer.media.snapshot`;
-- media artifacts: `openplayer.audio.extractClip` and
-  `openplayer.capture.frame`;
+- media artifacts: `openplayer.audio.extractClip`,
+  `openplayer.capture.frame`, and `openplayer.artifacts` lifecycle helpers;
 - provider I/O: `openplayer.network.request` and
   `openplayer.network.requestJson`;
 - subtitle documents: `openplayer.subtitle.currentCue`,

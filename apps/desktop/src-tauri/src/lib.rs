@@ -12,6 +12,7 @@ mod media_paths;
 mod native_shortcuts;
 mod platform_support;
 mod playback_store;
+mod plugin_artifacts;
 mod plugin_network;
 mod shell_preview;
 mod system_fonts;

@@ -93,6 +93,10 @@ plugins, SDK examples, and AI-facing plugin instructions.
 - Use `network.request` `bodyFile` for larger host-managed artifacts returned by
   APIs such as `audio.extractClip` or `capture.frame`; do not describe it as
   arbitrary local file upload access.
+- Use `openplayer.artifacts.list`, `info`, `remove`, and `clear` to manage
+  plugin-owned audio clips and frame captures after provider uploads or failed
+  AI jobs. Audio artifact management requires `audio.extract`; frame artifact
+  management requires `mpv.capture`.
 - Use `openplayer.network.requestJson` for JSON AI provider APIs instead of
   repeating manual `JSON.stringify` and `JSON.parse`; it still requires
   `network.request`.

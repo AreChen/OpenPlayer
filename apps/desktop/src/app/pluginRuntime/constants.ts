@@ -14,6 +14,7 @@ export const OPENPLAYER_HOST_CAPABILITIES = Object.freeze([
   "plugin.commands",
   "plugin.logs",
   "plugin.settings",
+  "plugin.artifacts",
   "plugin.storage",
   "plugin.tasks",
   "plugin.views",

@@ -505,6 +505,12 @@ assert.match(appSource, /"capture\.frame"/, "plugin bridge must advertise manage
 assert.match(appSource, /frame\(args\)[\s\S]*capture\.frame/, "plugin bridge must expose a managed frame capture helper");
 assert.match(tauriRuntimeSource, /mpv_embed_capture_plugin_frame/, "mpv runtime must register plugin frame capture");
 assert.match(tauriRuntimeSource, /frame-captures/, "frame captures must use a plugin-scoped managed directory");
+assert.match(appSource, /"plugin\.artifacts"/, "plugin bridge must advertise managed artifact lifecycle helpers as a host capability");
+assert.match(appSource, /artifacts:\s*Object\.freeze\(\{[\s\S]*list\(args[\s\S]*plugin\.artifacts\.list[\s\S]*info\(path\)[\s\S]*plugin\.artifacts\.info[\s\S]*remove\(path\)[\s\S]*plugin\.artifacts\.remove[\s\S]*clear\(args/, "plugin bridge must expose managed artifact lifecycle helpers");
+assert.match(appSource, /handlePluginArtifactsRuntimeCommand[\s\S]*audio\.extract[\s\S]*mpv\.capture/, "plugin artifact lifecycle commands must be permission-scoped by artifact kind");
+assert.match(tauriRuntimeSource, /plugin_artifacts_list[\s\S]*plugin_artifacts_info[\s\S]*plugin_artifacts_remove[\s\S]*plugin_artifacts_clear/, "desktop runtimes must register plugin artifact lifecycle commands");
+assert.match(tauriRuntimeSource, /clear_plugin_artifacts_for_plugin[\s\S]*audio-clips[\s\S]*frame-captures/, "plugin artifact cleanup must cover audio clips and frame captures");
+assert.match(tauriRuntimeSource, /rejects_cross_plugin_or_unmanaged_artifact_paths[\s\S]*removes_and_clears_current_plugin_artifacts/, "plugin artifact ownership and cleanup must have regression coverage");
 assert.match(appearanceStoreSource, /PluginStorageManifest/, "plugin manifests must support declarative storage lifecycle metadata");
 assert.match(appearanceStoreSource, /PLUGIN_RUNTIME_STORAGE_META/, "plugin storage schema versions must live in backend redb metadata");
 assert.match(appearanceStoreSource, /initialize_plugin_runtime_storage_defaults/, "plugin install and upgrade must initialize missing storage defaults");
@@ -528,6 +534,9 @@ assert.match(pluginReadme, /Do not add `ai\.\*`, `transcription\.\*`, `translati
 assert.match(pluginSdkGuide, /no current provider-specific AI permission[\s\S]*Do not add `ai\.\*`, `transcription\.\*`, `translation\.\*`[\s\S]*missing[\s\S]*generic primitive/, "SDK guide must define AI-like work as generic primitive composition");
 assert.match(pluginSdkGuide, /Custom views can react to player state[\s\S]*window\.openplayer\.onEvent\(\)[\s\S]*runtime\.events/, "SDK guide must document custom view event subscriptions");
 assert.match(pluginReadme, /Custom views use the same event contract[\s\S]*runtime\.events[\s\S]*rejects view subscriptions to undeclared events/, "plugin README must document custom view event declaration rules");
+assert.match(pluginSdkGuide, /openplayer\.artifacts[\s\S]*audioClip[\s\S]*audio\.extract[\s\S]*frameCapture[\s\S]*mpv\.capture/, "SDK guide must document managed artifact lifecycle helpers and permission gating");
+assert.match(pluginReadme, /managed audio clips[\s\S]*openplayer\.artifacts/, "plugin README must document managed artifact lifecycle helpers");
+assert.match(pluginDocsAgents, /openplayer\.artifacts\.list[\s\S]*audio\.extract[\s\S]*mpv\.capture/, "docs plugin AGENTS guide must steer AI plugins to managed artifact lifecycle helpers");
 assert.match(appSource, /Content-Security-Policy/, "plugin custom views must inject a Content Security Policy");
 assert.match(appSource, /img-src data: blob: https:/, "plugin custom views must allow HTTPS channel icons");
 assert.match(appSource, /connect-src 'none'/, "plugin custom views must block direct network access");
@@ -552,7 +561,7 @@ assert.match(appSource, /bodyFile[\s\S]*path/, "plugin network requests must acc
 assert.match(appSource, /plugin_network_request[\s\S]*pluginId/, "plugin network requests must pass plugin identity to backend path validation");
 assert.match(tauriRuntimeSource, /body_base64/, "plugin network backend must return optional base64 response bodies");
 assert.match(tauriRuntimeSource, /plugin_network_body_file_path/, "plugin network backend must validate managed artifact body file paths");
-assert.match(tauriRuntimeSource, /audio-clips/, "plugin network body files must be limited to managed audio clip artifacts");
+assert.match(tauriRuntimeSource, /audio-clips[\s\S]*frame-captures/, "plugin network body files must be limited to current-plugin managed media artifacts");
 assert.match(styles, /\.plugin-view-shell[\s\S]*inset:\s*0/, "plugin overlay views must still render as transparent full-stage overlays");
 assert.match(styles, /plugin-view-shell--sidePanel[\s\S]*inset:\s*10px\s+24px\s+24px\s+auto/, "plugin side panels must align with window controls and transport margins");
 assert.match(styles, /plugin-view-shell--sidePanel[\s\S]*width:\s*min\(444px,\s*calc\(100vw - 48px\)\)/, "plugin side panels must leave a right margin instead of filling the edge");

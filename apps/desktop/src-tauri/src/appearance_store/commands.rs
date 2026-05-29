@@ -1,7 +1,7 @@
 use std::{collections::HashMap, path::PathBuf};
 
 use serde_json::Value;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 
 use super::{
     INCOGNITO_MODE_KEY, QUIET_KEYBOARD_CONTROLS_KEY, store::AppearanceStoreState, types::*,
@@ -111,10 +111,19 @@ pub fn appearance_plugin_view_html(
 
 #[tauri::command]
 pub fn appearance_uninstall_plugin(
+    app: AppHandle,
     state: State<'_, AppearanceStoreState>,
     plugin_id: String,
 ) -> Result<AppearanceState, String> {
-    state.with_store(|store| store.uninstall_plugin(&plugin_id))
+    let state = state.with_store(|store| store.uninstall_plugin(&plugin_id))?;
+    if let Ok(app_data_dir) = app.path().app_data_dir() {
+        let _ = crate::plugin_artifacts::clear_plugin_artifacts_for_plugin(
+            &app_data_dir,
+            &plugin_id,
+            None,
+        );
+    }
+    Ok(state)
 }
 
 #[tauri::command]

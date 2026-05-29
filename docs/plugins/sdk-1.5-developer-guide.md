@@ -515,6 +515,22 @@ const response = await openplayer.network.request({
 files returned by `openplayer.audio.extractClip` or
 `openplayer.capture.frame`. It is not raw filesystem upload access.
 
+Use `openplayer.artifacts` to inspect and clean plugin-owned managed artifacts
+after uploads, cancelled tasks, or failed AI jobs. Listing or clearing
+`audioClip` artifacts requires `audio.extract`; listing or clearing
+`frameCapture` artifacts requires `mpv.capture`. When no kind is supplied, the
+host only acts on artifact kinds covered by the current plugin's permissions:
+
+```js
+const artifacts = await openplayer.artifacts.list({ kind: "audioClip" });
+for (const artifact of artifacts) {
+  await openplayer.artifacts.remove(artifact.path);
+}
+
+const cleanup = await openplayer.artifacts.clear({ kind: "frameCapture" });
+await openplayer.log.info(`Removed ${cleanup.removedCount} frame captures`);
+```
+
 For OCR or visual understanding, use the same managed artifact pattern:
 
 ```js
@@ -606,6 +622,11 @@ const logo = await openplayer.network.request({
   responseType: "base64",
 });
 const logoDataUrl = `data:${logo.headers["content-type"] || "image/png"};base64,${logo.bodyBase64}`;
+
+const generatedArtifacts = await openplayer.artifacts.list();
+const artifactInfo = generatedArtifacts[0]
+  ? await openplayer.artifacts.info(generatedArtifacts[0].path)
+  : null;
 
 const files = await openplayer.filesystem.pickMedia({ multiple: true });
 const directory = await openplayer.filesystem.pickDirectory();

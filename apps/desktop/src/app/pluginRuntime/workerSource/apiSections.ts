@@ -1,4 +1,5 @@
 import { pluginWorkerAudioApiSource } from "./apiSections/audio";
+import { pluginWorkerArtifactsApiSource } from "./apiSections/artifacts";
 import { pluginWorkerCaptureApiSource } from "./apiSections/capture";
 import { pluginWorkerCommandsApiSource } from "./apiSections/commands";
 import { pluginWorkerFilesystemApiSource } from "./apiSections/filesystem";
@@ -20,6 +21,7 @@ export function pluginWorkerApiObjectMembersSource() {
     pluginWorkerPluginApiSource(),
     pluginWorkerLogApiSource(),
     pluginWorkerTasksApiSource(),
+    pluginWorkerArtifactsApiSource(),
     pluginWorkerMediaApiSource(),
     pluginWorkerPlayerApiSource(),
     pluginWorkerAudioApiSource(),
