@@ -1,6 +1,21 @@
 use super::*;
 use std::collections::HashMap;
 
+fn runtime_plugin_with_storage(version: u32, defaults: &str) -> String {
+    webview_runtime_plugin_json().replace(
+        r#""actions": ["#,
+        &format!(
+            r#""storage": {{
+              "version": {version},
+              "defaults": {{
+                {defaults}
+              }}
+            }},
+            "actions": ["#
+        ),
+    )
+}
+
 #[test]
 fn plugin_runtime_storage_is_isolated_and_persistent() {
     let (mut store, directory) = temp_store();
@@ -241,6 +256,116 @@ fn plugin_runtime_storage_schema_upgrade_from_legacy_storage_starts_at_zero() {
     assert_eq!(info.schema_version, 0);
     assert_eq!(info.manifest_version, 2);
     assert_eq!(info.keys, vec!["legacy.schema", "legacy.state"]);
+}
+
+#[test]
+fn rejects_invalid_plugin_runtime_storage_manifests() {
+    let (mut store, directory) = temp_store();
+    let invalid_version = runtime_plugin_with_storage(0, r#""state": "new""#);
+    assert!(
+        store
+            .import_theme_plugin_json(&invalid_version)
+            .expect_err("zero storage schema version should be rejected")
+            .contains("plugin storage version must be at least 1")
+    );
+
+    let invalid_key = runtime_plugin_with_storage(1, r#""..bad": true"#);
+    assert!(
+        store
+            .import_theme_plugin_json(&invalid_key)
+            .expect_err("invalid storage default key should be rejected")
+            .contains("plugin runtime storage key is invalid")
+    );
+
+    let too_many_defaults = (0..257)
+        .map(|index| format!(r#""key.{index}": {index}"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    let invalid_defaults = runtime_plugin_with_storage(1, &too_many_defaults);
+    let error = store
+        .import_theme_plugin_json(&invalid_defaults)
+        .expect_err("oversized storage defaults should be rejected");
+    let _ = std::fs::remove_dir_all(&directory);
+
+    assert!(error.contains("plugin storage defaults define too many keys"));
+}
+
+#[test]
+fn rejects_invalid_plugin_runtime_storage_migration_targets() {
+    let (mut store, directory) = temp_store();
+    store
+        .import_theme_plugin_json(webview_runtime_plugin_json())
+        .expect("runtime plugin should import");
+    assert!(
+        store
+            .mark_plugin_runtime_storage_migrated("dev.openplayer.runtime.worker", None)
+            .expect_err("plugins without storage schema should not mark migrations")
+            .contains("plugin does not declare a storage schema")
+    );
+
+    let schema_manifest = runtime_plugin_with_storage(2, r#""state": "new""#);
+    store
+        .import_theme_plugin_json(&schema_manifest)
+        .expect("storage schema plugin should import");
+    assert!(
+        store
+            .mark_plugin_runtime_storage_migrated("dev.openplayer.runtime.worker", Some(3))
+            .expect_err("migration target must not exceed manifest storage version")
+            .contains("exceeds manifest version 2")
+    );
+    assert!(
+        store
+            .mark_plugin_runtime_storage_migrated("dev.openplayer.runtime.worker", Some(1))
+            .expect_err("migration target must not move backward")
+            .contains("older than current schema version 2")
+    );
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
+#[test]
+fn uninstalling_plugin_clears_runtime_storage_metadata_before_reinstall() {
+    let (mut store, directory) = temp_store();
+    let schema_v2 = runtime_plugin_with_storage(2, r#""state": "new""#);
+    store
+        .import_theme_plugin_json(&schema_v2)
+        .expect("storage schema plugin should import");
+    store
+        .set_plugin_runtime_storage_value(
+            "dev.openplayer.runtime.worker",
+            "state",
+            serde_json::json!("custom"),
+        )
+        .expect("runtime storage value should persist");
+    store
+        .mark_plugin_runtime_storage_migrated("dev.openplayer.runtime.worker", Some(2))
+        .expect("schema v2 marker should persist");
+
+    store
+        .uninstall_plugin("dev.openplayer.runtime.worker")
+        .expect("plugin uninstall should succeed");
+    assert!(
+        store
+            .plugin_runtime_storage_values("dev.openplayer.runtime.worker")
+            .expect("runtime storage scan should succeed after uninstall")
+            .is_empty()
+    );
+
+    let schema_v1 = runtime_plugin_with_storage(1, r#""state": "fresh""#);
+    store
+        .import_theme_plugin_json(&schema_v1)
+        .expect("storage schema plugin should reinstall cleanly");
+    let info = store
+        .plugin_runtime_storage_info("dev.openplayer.runtime.worker")
+        .expect("reinstalled storage info should be readable");
+    let value = store
+        .plugin_runtime_storage_value("dev.openplayer.runtime.worker", "state")
+        .expect("reinstalled storage default should be readable");
+    let _ = std::fs::remove_dir_all(&directory);
+
+    assert_eq!(info.schema_version, 1);
+    assert_eq!(info.manifest_version, 1);
+    assert_eq!(info.keys, vec!["state"]);
+    assert_eq!(value, Some(serde_json::json!("fresh")));
 }
 
 #[test]

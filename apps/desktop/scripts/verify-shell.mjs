@@ -508,6 +508,10 @@ assert.match(tauriRuntimeSource, /frame-captures/, "frame captures must use a pl
 assert.match(appearanceStoreSource, /PluginStorageManifest/, "plugin manifests must support declarative storage lifecycle metadata");
 assert.match(appearanceStoreSource, /PLUGIN_RUNTIME_STORAGE_META/, "plugin storage schema versions must live in backend redb metadata");
 assert.match(appearanceStoreSource, /initialize_plugin_runtime_storage_defaults/, "plugin install and upgrade must initialize missing storage defaults");
+assert.match(appearanceStoreSource, /plugin_runtime_storage_meta[\s\S]*remove\(plugin_id\)/, "plugin uninstall must clear runtime storage schema metadata");
+assert.match(appearanceStoreSource, /rejects_invalid_plugin_runtime_storage_manifests[\s\S]*zero storage schema version[\s\S]*invalid storage default key[\s\S]*oversized storage defaults/, "plugin storage schema validation must have regression coverage");
+assert.match(appearanceStoreSource, /rejects_invalid_plugin_runtime_storage_migration_targets[\s\S]*without storage schema[\s\S]*exceed manifest storage version[\s\S]*move backward/, "plugin storage migration target errors must have regression coverage");
+assert.match(appearanceStoreSource, /uninstalling_plugin_clears_runtime_storage_metadata_before_reinstall[\s\S]*schema_version,\s*1[\s\S]*manifest_version,\s*1/, "plugin uninstall and reinstall must have runtime storage metadata cleanup coverage");
 assert.match(appSource, /storage:\s*Object\.freeze\(\{[\s\S]*info\(\)[\s\S]*plugin\.storage\.info/, "plugin bridge must expose storage.info for migration-aware plugins");
 assert.match(appSource, /markMigrated\(schemaVersion\)[\s\S]*plugin\.storage\.markMigrated/, "plugin bridge must let plugins acknowledge completed storage migrations");
 assert.match(appSource, /update\(patch\)[\s\S]*plugin\.storage\.update/, "plugin bridge must expose atomic storage batch updates");
