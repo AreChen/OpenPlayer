@@ -1,5 +1,6 @@
 import { runtimeArgsRecord } from "../../app/pluginRuntime";
 import type { PluginRuntimeWorkerState } from "../../app/types";
+import { supportedPluginRuntimeEvents } from "./events";
 import type { PluginRuntimeCommandHandler } from "./types";
 
 type HandlePluginRuntimeWorkerMessageOptions = {
@@ -44,7 +45,6 @@ export function handlePluginRuntimeWorkerMessage({
     handlePluginRuntimeCommandRequest(workerState, record, commandHandler, onRuntimeLog);
   }
 }
-
 function handlePluginRuntimeHookResponse(
   workerState: PluginRuntimeWorkerState,
   record: Record<string, unknown>,
@@ -149,22 +149,3 @@ function handlePluginRuntimeEventSubscriptionCommand(
   }
   return { handled: true, result: Array.from(workerState.eventSubscriptions).sort() };
 }
-
-const supportedPluginRuntimeEvents = Object.freeze([
-  "app.ready",
-  "media.opening",
-  "media.loaded",
-  "playback.snapshot",
-  "playback.started",
-  "playback.paused",
-  "playback.ended",
-  "playback.stopped",
-  "playback.seeked",
-  "playback.volumeChanged",
-  "playback.speedChanged",
-  "tracks.changed",
-  "theme.changed",
-  "window.fullscreenChanged",
-  "plugin.view.opened",
-  "plugin.view.closed",
-]);

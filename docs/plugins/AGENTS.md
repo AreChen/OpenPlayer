@@ -11,6 +11,19 @@ plugins, SDK examples, and AI-facing plugin instructions.
 - Do not document APIs unless the host bridge, backend validation, official
   plugin examples, and tests already support them.
 
+## Subagent Workflow
+
+- Use subagents when plugin SDK work naturally splits into independent lanes,
+  such as host bridge implementation, official SDK type updates, documentation,
+  UI component review, storage lifecycle review, or verification.
+- Keep write ownership disjoint when delegating. For example, one agent may
+  audit `apps/desktop/src/app/pluginRuntime/` while another audits
+  `docs/plugins/`; do not ask multiple agents to edit the same files in
+  parallel.
+- Use read-only explorer agents for gap audits, verifier agents for acceptance
+  evidence, and implementation workers only when the file ownership is clear.
+  Integrate and review their output locally before committing.
+
 ## Custom Views
 
 - Prefer `presentation: "sidePanel"` for playlist-like right panels.
@@ -32,6 +45,10 @@ plugins, SDK examples, and AI-facing plugin instructions.
   `height: 100%`, and avoid extra outer padding.
 - Use `color-mix(..., transparent)` when a plugin needs layered panel surfaces
   so video remains subtly visible through the plugin UI.
+- Custom views should use `window.openplayer.onEvent()` and
+  `window.openplayer.events.subscribe(event)` for playback-reactive UI instead
+  of polling. Declare the consumed events in `runtime.events`; view
+  subscriptions to undeclared events are rejected by the host.
 
 ## Manifest Style
 
@@ -40,6 +57,13 @@ plugins, SDK examples, and AI-facing plugin instructions.
 - Keep permissions minimal and feature-detect with
   `openplayer.capabilities.has(...)` or
   `openplayer.capabilities.hasPermission(...)`.
+- Do not invent `ai.*`, `transcription.*`, `translation.*`, provider-specific,
+  or model-specific host permissions. AI-like plugins should be built from
+  generic SDK primitives; if the composition is impossible, add the missing
+  primitive instead of a feature-specific wrapper.
+- Treat manifest capability kinds as broad UI/discovery categories. Use
+  `audioTool` or `subtitleTool` for plugin grouping, but do not add per-feature
+  AI capability kinds as permission gates.
 - For AI transcription, translation, subtitle cleanup, or OCR subtitle tools,
   compose generic permissions instead of inventing feature-specific host code:
   use `openplayer.media.currentSegment` for host-normalized time windows,

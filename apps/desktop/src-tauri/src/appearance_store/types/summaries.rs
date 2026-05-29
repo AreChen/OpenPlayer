@@ -22,6 +22,7 @@ pub struct ThemePluginSummary {
     pub(in crate::appearance_store) installed_at_ms: Option<u64>,
     pub(in crate::appearance_store) theme_count: usize,
     pub(in crate::appearance_store) runtime: String,
+    pub(in crate::appearance_store) events: Vec<String>,
     pub(in crate::appearance_store) capability_count: usize,
     pub(in crate::appearance_store) setting_count: usize,
     pub(in crate::appearance_store) action_count: usize,

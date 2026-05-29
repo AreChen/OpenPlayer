@@ -16,6 +16,7 @@ export type ThemePluginSummary = {
   installedAtMs: number | null;
   themeCount: number;
   runtime: "manifest" | "webviewJs" | "wasm";
+  events: PluginRuntimeEventName[];
   capabilityCount: number;
   settingCount: number;
   actionCount: number;

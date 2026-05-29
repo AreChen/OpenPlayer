@@ -16,7 +16,11 @@ import {
 } from "./pluginRuntimeHost/hooks";
 import { handlePluginRuntimeWorkerMessage } from "./pluginRuntimeHost/messages";
 import type { PluginRuntimeCommandHandler } from "./pluginRuntimeHost/types";
-import { handlePluginViewBridgeMessage } from "./pluginRuntimeHost/viewBridge";
+import {
+  handlePluginViewBridgeMessage,
+  postPluginViewEvent,
+  type PluginViewEventBridgeState,
+} from "./pluginRuntimeHost/viewBridge";
 import {
   reconcilePluginRuntimeWorkers,
   terminateAllPluginRuntimeWorkers,
@@ -38,6 +42,8 @@ export function usePluginRuntimeHost({ activePluginView, plugins, runtimeRefresh
     throw new Error("plugin runtime is not ready");
   });
   const activePluginViewRef = useRef<ActivePluginView | null>(null);
+  const activePluginViewKeyRef = useRef<string | null>(null);
+  const pluginViewEventStateRef = useRef<PluginViewEventBridgeState>({ eventSubscriptions: new Set() });
   const pluginsRef = useRef<ThemePluginSummary[]>([]);
   const hostStateRef = useRef(hostState);
   const onRuntimeLogRef = useRef(onRuntimeLog);
@@ -47,9 +53,24 @@ export function usePluginRuntimeHost({ activePluginView, plugins, runtimeRefresh
   pluginsRef.current = plugins;
   hostStateRef.current = hostState;
   onRuntimeLogRef.current = onRuntimeLog;
+  const activePluginViewPlugin = activePluginView ? plugins.find((plugin) => plugin.id === activePluginView.pluginId) : null;
+  const activePluginViewKey = activePluginView
+    ? `${activePluginView.pluginId}:${activePluginView.viewId}:${(activePluginViewPlugin?.events ?? []).join("|")}`
+    : null;
+  if (activePluginViewKeyRef.current !== activePluginViewKey) {
+    activePluginViewKeyRef.current = activePluginViewKey;
+    pluginViewEventStateRef.current.eventSubscriptions.clear();
+  }
 
   function broadcastPluginRuntimeEvent(event: string, payload: unknown) {
     broadcastPluginRuntimeEventToWorkers(workersRef.current.values(), event, payload);
+    postPluginViewEvent({
+      activePluginView: activePluginViewRef.current,
+      pluginViewFrame: pluginViewFrameRef.current,
+      eventState: pluginViewEventStateRef.current,
+      event,
+      payload,
+    });
   }
 
   async function runMediaOpeningHooks(input: PluginMediaOpenInput): Promise<PluginMediaOpenResult> {
@@ -102,6 +123,9 @@ export function usePluginRuntimeHost({ activePluginView, plugins, runtimeRefresh
         plugins: pluginsRef.current,
         pluginViewFrame: pluginViewFrameRef.current,
         commandHandler: commandHandlerRef.current,
+        eventState: pluginViewEventStateRef.current,
+        onRuntimeLog: (pluginId, level, message) =>
+          onRuntimeLogRef.current?.(pluginId, level, message),
       });
     }
 

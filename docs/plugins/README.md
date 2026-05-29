@@ -96,6 +96,37 @@ custom views, and verification commands, read
   logs as reusable primitives instead of adding one-off core toggles for
   transcription, translation, OCR, or a specific provider.
 
+## Composable SDK Model
+
+OpenPlayer host APIs should expose durable media-player primitives, not
+provider-shaped AI features. A transcription, translation, subtitle cleanup, or
+OCR plugin should be an orchestration of these blocks:
+
+- playback context: `openplayer.media.currentSegment`,
+  `openplayer.media.segmentTimeline`, `openplayer.media.current`, and
+  `openplayer.media.snapshot`;
+- media artifacts: `openplayer.audio.extractClip` and
+  `openplayer.capture.frame`;
+- provider I/O: `openplayer.network.request` and
+  `openplayer.network.requestJson`;
+- subtitle documents: `openplayer.subtitle.currentCue`,
+  `openplayer.subtitle.loadGeneratedCues`,
+  `openplayer.subtitle.appendGeneratedCues`,
+  `openplayer.subtitle.replaceGeneratedCues`,
+  `openplayer.subtitle.readGenerated`, and
+  `openplayer.subtitle.removeGenerated`;
+- runtime state: `openplayer.tasks`, `openplayer.storage`, and
+  `openplayer.log`.
+
+Do not add `ai.*`, `transcription.*`, `translation.*`, or provider-specific host
+permissions for one plugin. If a plugin cannot be built from the existing
+blocks, add the missing generic block, such as a safer artifact lifecycle API,
+subtitle document operation, audio extraction option, or event bridge.
+
+Manifest capability kinds are broad UI/discovery categories such as
+`audioTool` or `subtitleTool`; they are not permission gates and should not
+become per-feature AI taxonomy.
+
 ## Package Format
 
 `.opplugin` is a zip archive:
@@ -283,6 +314,11 @@ The current script size limit is 1 MiB.
 payloads that they declare here. Plugins can then enable or disable those
 declared subscriptions at runtime with `openplayer.events.subscribe()` and
 `openplayer.events.unsubscribe()`.
+
+Custom views use the same event contract through `window.openplayer`. A
+view-only plugin should still declare the events it needs in `runtime.events`;
+the host rejects view subscriptions to undeclared events. This keeps rich plugin
+panels reactive without giving every iframe every playback event by default.
 
 Inside the worker, plugins use the injected `openplayer` bridge:
 
@@ -607,7 +643,8 @@ Action arguments:
   newer than the running OpenPlayer version.
 - `author`, when present, must be non-empty.
 - `updateUrl`, when present, must be an HTTP(S) URL.
-- A plugin must contribute at least one theme, capability, setting, or action.
+- A plugin must contribute at least one theme, capability, setting, action,
+  view, or storage schema.
 - Unknown manifest fields are rejected.
 - Setting defaults must match their declared type.
 - Locale maps such as `labelI18n` must use short ASCII locale keys and

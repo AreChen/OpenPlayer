@@ -72,6 +72,7 @@ impl AppearanceStore {
                 installed_at_ms: install.as_ref().map(|install| install.installed_at_ms),
                 theme_count: manifest.contributes.themes.len(),
                 runtime: runtime_kind_label(&manifest.runtime.kind).to_string(),
+                events: manifest.runtime.events.clone(),
                 capability_count: manifest.contributes.capabilities.len(),
                 setting_count,
                 action_count: manifest.contributes.actions.len(),

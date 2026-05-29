@@ -110,6 +110,7 @@ const macosBundleScriptUrl = new URL("./bundle-macos-libmpv.mjs", import.meta.ur
 const macosBundleScriptSource = existsSync(macosBundleScriptUrl) ? await readFile(macosBundleScriptUrl, "utf8") : "";
 const releaseMpvManifestUrl = new URL("../../../docs/native-deps/mpv-windows-x64.json", import.meta.url);
 const pluginSdkGuide = await readFile(new URL("../../../docs/plugins/sdk-1.5-developer-guide.md", import.meta.url), "utf8");
+const pluginReadme = await readFile(new URL("../../../docs/plugins/README.md", import.meta.url), "utf8");
 const pluginDocsAgentsUrl = new URL("../../../docs/plugins/AGENTS.md", import.meta.url);
 const pluginDocsAgents = existsSync(pluginDocsAgentsUrl) ? await readFile(pluginDocsAgentsUrl, "utf8") : "";
 const workspaceToml = await readFile(new URL("../../../Cargo.toml", import.meta.url), "utf8");
@@ -517,9 +518,21 @@ assert.match(pluginSdkGuide, /`contributes\.storage`[\s\S]*defaults[\s\S]*upgrad
 assert.doesNotMatch(appSource, /"ai\.transcribe"|"ai\.translate"/, "plugin SDK should not advertise AI-specific permissions without a real host AI API");
 assert.doesNotMatch(tauriRuntimeSource, /"ai\.transcribe"|"ai\.translate"/, "plugin manifest validation should reject reserved AI-specific permissions");
 assert.doesNotMatch(pluginSdkGuide, /`ai\.transcribe`|`ai\.translate`/, "SDK guide should steer AI-like plugins to generic audio, network, and subtitle primitives");
+assert.doesNotMatch(appearanceStoreSource, /"aiTool"|"transcription"|"translation"/, "manifest capability kinds must stay broad and must not grow AI-specific feature gates");
+assert.match(pluginReadme, /Composable SDK Model[\s\S]*playback context[\s\S]*media artifacts[\s\S]*provider I\/O[\s\S]*subtitle documents[\s\S]*runtime state/, "plugin README must document AI-like plugins as compositions of generic SDK primitives");
+assert.match(pluginReadme, /Do not add `ai\.\*`, `transcription\.\*`, `translation\.\*`[\s\S]*add the missing generic block/, "plugin README must reject feature-specific AI host permissions");
+assert.match(pluginSdkGuide, /no current provider-specific AI permission[\s\S]*Do not add `ai\.\*`, `transcription\.\*`, `translation\.\*`[\s\S]*missing[\s\S]*generic primitive/, "SDK guide must define AI-like work as generic primitive composition");
+assert.match(pluginSdkGuide, /Custom views can react to player state[\s\S]*window\.openplayer\.onEvent\(\)[\s\S]*runtime\.events/, "SDK guide must document custom view event subscriptions");
+assert.match(pluginReadme, /Custom views use the same event contract[\s\S]*runtime\.events[\s\S]*rejects view subscriptions to undeclared events/, "plugin README must document custom view event declaration rules");
 assert.match(appSource, /Content-Security-Policy/, "plugin custom views must inject a Content Security Policy");
 assert.match(appSource, /img-src data: blob: https:/, "plugin custom views must allow HTTPS channel icons");
 assert.match(appSource, /connect-src 'none'/, "plugin custom views must block direct network access");
+assert.match(appSource, /openplayer:viewEvent/, "plugin custom views must receive host-pushed runtime events through the view bridge");
+assert.match(appSource, /onEvent\(handler\)[\s\S]*eventHandlers\.push\(handler\)/, "plugin custom views must expose openplayer.onEvent like worker runtimes");
+assert.match(appSource, /events:\s*Object\.freeze\(\{[\s\S]*subscribe\(event\)[\s\S]*events\.subscribe/, "plugin custom views must expose event subscription APIs");
+assert.match(appSource, /handlePluginViewEventSubscriptionCommand[\s\S]*plugin\?\.events[\s\S]*eventSubscriptions/, "plugin custom view event subscriptions must be checked against declared manifest events");
+assert.match(appSource, /postPluginViewEvent[\s\S]*eventSubscriptions\.has\(event\)/, "plugin custom view events must only be delivered after subscription");
+assert.match(appearanceStoreSource, /events:\s*manifest\.runtime\.events\.clone\(\)/, "plugin summaries must expose declared runtime events for custom view subscription checks");
 assert.match(appSource, /--op-radius:/, "plugin custom views must receive standardized radius tokens");
 assert.match(appSource, /\.op-button[\s\S]*var\(--op-accent\)/, "plugin custom views must receive a theme-aware standard button class");
 assert.match(appSource, /\.op-input[\s\S]*\.op-select/, "plugin custom views must receive standard input and select classes");
@@ -555,6 +568,8 @@ assert.match(appearanceStoreSource, /\|\s*"tv"/, "backend plugin manifest valida
 assert.match(pluginSdkGuide, /`sidePanel`[\s\S]*semi-transparent[\s\S]*plugin settings[\s\S]*`frameOpacitySetting`/, "SDK guide must document setting-backed translucent themed sidePanel views");
 assert.match(pluginSdkGuide, /`tv`[\s\S]*TV-like/, "SDK guide must document the tv action icon for TV-like plugins");
 assert.match(pluginDocsAgents, /sidePanel[\s\S]*semi-transparent[\s\S]*frameOpacitySetting[\s\S]*theme tokens/, "docs plugin AGENTS guide must steer AI authors toward themed translucent side panels");
+assert.match(pluginDocsAgents, /Subagent Workflow[\s\S]*independent lanes[\s\S]*write ownership/, "docs plugin AGENTS guide must require scoped subagent use for parallel SDK work");
+assert.match(pluginDocsAgents, /Do not invent `ai\.\*`, `transcription\.\*`, `translation\.\*`[\s\S]*missing\s+primitive/, "docs plugin AGENTS guide must steer AI-like plugins away from feature-specific host APIs");
 assert.match(appSource, /openplayer:request[\s\S]*commandHandler\(command,\s*record\.args,\s*workerState\.permissions,\s*workerState\.pluginId\)/, "plugin runtime bridge must route worker requests through the host command handler");
 assert.match(appSource, /commandHandlerRef[\s\S]*handlePluginRuntimeWorkerMessage/, "plugin runtime host must pass the current command handler into worker message handling");
 assert.match(appSource, /permissions\.has\("media\.openStream"\)/, "plugin runtime host stream commands must enforce declared plugin permissions");

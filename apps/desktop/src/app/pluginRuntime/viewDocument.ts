@@ -29,8 +29,21 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
   const OPENPLAYER_HOST_CAPABILITIES = Object.freeze(${JSON.stringify(OPENPLAYER_HOST_CAPABILITIES)});
   const OPENPLAYER_PLUGIN_PERMISSIONS = Object.freeze(${JSON.stringify(plugin.permissions)});
   const OPENPLAYER_API_COMPATIBILITY = Object.freeze(${JSON.stringify(OPENPLAYER_API_COMPATIBILITY)});
+  const OPENPLAYER_VIEW_EVENT_SUBSCRIPTIONS = new Set();
+  const eventHandlers = [];
   const pending = new Map();
   let nextRequestId = 1;
+  const updateSubscribedPluginEvents = (events) => {
+    if (Array.isArray(events)) {
+      OPENPLAYER_VIEW_EVENT_SUBSCRIPTIONS.clear();
+      for (const event of events) {
+        if (typeof event === "string") {
+          OPENPLAYER_VIEW_EVENT_SUBSCRIPTIONS.add(event);
+        }
+      }
+    }
+    return [...OPENPLAYER_VIEW_EVENT_SUBSCRIPTIONS];
+  };
   const requestHost = (command, args = {}) => {
     if (typeof command !== "string" || !command.trim()) {
       return Promise.reject(new Error("OpenPlayer plugin command is required"));
@@ -43,6 +56,18 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
   };
   window.addEventListener("message", (event) => {
     const message = event.data || {};
+    if (message.type === "openplayer:viewEvent" && message.pluginId === pluginId) {
+      for (const handler of eventHandlers) {
+        try {
+          handler(message.event, message.payload);
+        } catch (error) {
+          requestHost("plugin.log.error", {
+            message: String(error && error.message ? error.message : error),
+          }).catch(() => {});
+        }
+      }
+      return;
+    }
     if (message.type !== "openplayer:viewResponse" || message.pluginId !== pluginId) {
       return;
     }
@@ -83,6 +108,25 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
       },
     }),
     request: requestHost,
+    onEvent(handler) {
+      if (typeof handler === "function") {
+        eventHandlers.push(handler);
+      }
+    },
+    events: Object.freeze({
+      list() {
+        return requestHost("events.list");
+      },
+      subscribed() {
+        return [...OPENPLAYER_VIEW_EVENT_SUBSCRIPTIONS];
+      },
+      subscribe(event) {
+        return requestHost("events.subscribe", { event }).then(updateSubscribedPluginEvents);
+      },
+      unsubscribe(event) {
+        return requestHost("events.unsubscribe", { event }).then(updateSubscribedPluginEvents);
+      },
+    }),
     plugin: Object.freeze({
       getSettings() {
         return requestHost("plugin.getSettings");

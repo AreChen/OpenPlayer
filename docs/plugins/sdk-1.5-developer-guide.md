@@ -148,11 +148,11 @@ Important permissions:
 - `subtitle.write`: create and load plugin-generated subtitle tracks for the
   currently loaded media.
 
-There is no current provider-specific AI permission. Transcription,
-translation, subtitle cleanup, OCR subtitle extraction, and media-understanding
-plugins should compose the generic media segment, audio, capture, network,
-subtitle, player, task, and storage APIs instead of asking the core for one-off
-provider support.
+There is no current provider-specific AI permission or high-level
+`openplayer.ai.*` API. Transcription, translation, subtitle cleanup, OCR
+subtitle extraction, and media-understanding plugins should compose the generic
+media segment, audio, capture, network, subtitle, player, task, and storage APIs
+instead of asking the core for one-off provider support.
 
 That composition model is intentional. A real-time transcription plugin should
 be built by combining `openplayer.media.currentSegment`,
@@ -162,6 +162,13 @@ be built by combining `openplayer.media.currentSegment`,
 `openplayer.log`. The host should add or harden one of those generic primitives
 only when the composition itself is impossible or unsafe, not add a provider- or
 feature-specific `openplayer.ai.*` wrapper.
+
+Use broad manifest capability kinds such as `audioTool` and `subtitleTool` for
+UI grouping only. Do not add `ai.*`, `transcription.*`, `translation.*`, model
+provider, or per-feature capability kinds as permission gates. When a plugin
+needs something the SDK cannot express, the correct host change is a missing
+generic primitive such as an artifact lifecycle API, subtitle document
+operation, audio extraction option, or event bridge.
 
 Do not document or implement plugins that bypass these permissions with raw
 Tauri calls, raw filesystem access, raw sockets, arbitrary mpv commands, or
@@ -199,13 +206,18 @@ from worker runtimes and custom views.
 ```js
 await openplayer.events.subscribe("media.loaded");
 await openplayer.events.unsubscribe("media.loaded");
-const declared = openplayer.events.subscribed();
+const subscribed = openplayer.events.subscribed();
 const supported = await openplayer.events.list();
 
 openplayer.onEvent((event, payload) => {
   // event is delivered only when declared and subscribed.
 });
 ```
+
+Worker runtimes and custom views use the same event API. Declare the events in
+`runtime.events` even when the plugin only consumes them from a custom view; the
+host uses that manifest declaration as the allowlist before a view subscription
+is accepted.
 
 Supported events in SDK 1.5 include:
 
@@ -706,6 +718,12 @@ Custom views are best for rich plugin-owned UI. Keep these rules:
 
 - Set view `presentation` to `sidePanel` for playlist-like transparent right
   panels. The default `overlay` presentation keeps a full-stage custom view.
+- Custom views can react to player state with `window.openplayer.onEvent()` and
+  `window.openplayer.events.subscribe(event)`. The event must be supported by
+  the host and declared in the plugin manifest's `runtime.events` list. This is
+  the preferred model for AI review panels, live transcription panels,
+  subtitle editors, and channel browsers that need playback snapshots without
+  polling.
 - HTTPS images are allowed for passive artwork such as channel logos. Direct
   HTTP requests from views remain blocked; use `openplayer.network.request` for
   playlist, API, and signaling requests.

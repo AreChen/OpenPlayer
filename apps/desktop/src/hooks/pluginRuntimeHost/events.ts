@@ -1,0 +1,18 @@
+export const supportedPluginRuntimeEvents = Object.freeze([
+  "app.ready",
+  "media.opening",
+  "media.loaded",
+  "playback.snapshot",
+  "playback.started",
+  "playback.paused",
+  "playback.ended",
+  "playback.stopped",
+  "playback.seeked",
+  "playback.volumeChanged",
+  "playback.speedChanged",
+  "tracks.changed",
+  "theme.changed",
+  "window.fullscreenChanged",
+  "plugin.view.opened",
+  "plugin.view.closed",
+]);
