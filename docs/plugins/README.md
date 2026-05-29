@@ -78,9 +78,9 @@ custom views, and verification commands, read
 - Let runtime and view plugins call JSON provider APIs with
   `openplayer.network.requestJson`, a convenience wrapper over the same
   host-mediated `network.request` permission and validation path.
-- Let runtime and view plugins create subtitles from structured `SubtitleCue[]`
-  input with `openplayer.subtitle.loadGeneratedCues`, or from standard subtitle
-  text with `openplayer.subtitle.loadGenerated`; the host writes results into a
+- Let runtime and view plugins create subtitle documents from structured
+  `SubtitleCue[]` input or standard subtitle text with
+  `openplayer.subtitle.documents.create`; the host writes results into a
   plugin-scoped managed directory and loads them as mpv subtitle tracks.
 - Let runtime and view plugins read only the selected subtitle track's currently
   displayed cue with `openplayer.subtitle.currentCue`, so translation and
@@ -89,11 +89,10 @@ custom views, and verification commands, read
 - Let runtime and view plugins update subtitle presentation with
   `openplayer.subtitle.setStyle` through the same safe `mpv.subtitleStyle`
   allowlist used by manifest-backed subtitle settings.
-- Let plugins list, read, replace, and remove only their own generated subtitle
-  tracks with `openplayer.subtitle.listGenerated`,
-  `openplayer.subtitle.readGenerated`, `openplayer.subtitle.replaceGenerated`,
-  `openplayer.subtitle.appendGeneratedCues`, and
-  `openplayer.subtitle.removeGenerated`.
+- Let plugins manage only their own generated subtitle documents through
+  `openplayer.subtitle.documents.create`, `list`, `read`, `replace`,
+  `appendCues`, and `remove`; the older `loadGenerated*` and `*Generated*`
+  helpers remain compatibility aliases over the same managed subtitle files.
 - Keep AI-like features plugin-composed: use media segments, audio extraction,
   frame capture, subtitle read/write, network requests, tasks, storage, and
   logs as reusable primitives instead of adding one-off core toggles for
@@ -113,11 +112,11 @@ OCR plugin should be an orchestration of these blocks:
 - provider I/O: `openplayer.network.request` and
   `openplayer.network.requestJson`;
 - subtitle documents: `openplayer.subtitle.currentCue`,
-  `openplayer.subtitle.loadGeneratedCues`,
-  `openplayer.subtitle.appendGeneratedCues`,
-  `openplayer.subtitle.replaceGeneratedCues`,
-  `openplayer.subtitle.readGenerated`, and
-  `openplayer.subtitle.removeGenerated`;
+  `openplayer.subtitle.documents.create`,
+  `openplayer.subtitle.documents.appendCues`,
+  `openplayer.subtitle.documents.replace`,
+  `openplayer.subtitle.documents.read`, and
+  `openplayer.subtitle.documents.remove`;
 - runtime state: `openplayer.tasks`, `openplayer.storage`, and
   `openplayer.log`.
 

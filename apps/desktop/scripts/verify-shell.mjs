@@ -468,9 +468,11 @@ assert.match(appSource, /setAbLoop\(start,\s*end\)/, "plugin bridge must expose 
 assert.match(appSource, /"subtitle\.generated"/, "plugin bridge must advertise generated subtitle loading as a host capability");
 assert.match(appSource, /"subtitle\.cues"/, "plugin bridge must advertise structured subtitle cue helpers");
 assert.match(appSource, /"subtitle\.style"/, "plugin bridge must advertise high-level subtitle styling as a host capability");
+assert.match(appSource, /"subtitle\.documents"/, "plugin bridge must advertise unified subtitle document helpers as a host capability");
 assert.match(appSource, /loadGenerated\(args\)[\s\S]*subtitle\.loadGenerated/, "plugin bridge must expose a high-level generated subtitle loader");
 assert.match(appSource, /loadGeneratedCues\(args\)[\s\S]*subtitle\.loadGeneratedCues/, "plugin bridge must expose structured cue subtitle loading");
 assert.match(appSource, /setStyle\(args\)[\s\S]*subtitle\.setStyle/, "plugin bridge must expose high-level subtitle style updates");
+assert.match(appSource, /documents:\s*Object\.freeze\(\{[\s\S]*create\(args\)[\s\S]*subtitle\.documents\.create[\s\S]*list\(\)[\s\S]*subtitle\.documents\.list[\s\S]*read\(trackId\)[\s\S]*subtitle\.documents\.read[\s\S]*appendCues\(trackId,\s*args\)/, "plugin bridge must expose a unified subtitle document API");
 assert.match(appSource, /listGenerated\(\)[\s\S]*subtitle\.listGenerated/, "plugin bridge must expose generated subtitle listing");
 assert.match(appSource, /removeGenerated\(trackId\)[\s\S]*subtitle\.removeGenerated/, "plugin bridge must expose generated subtitle removal");
 assert.match(appSource, /replaceGenerated\(trackId,\s*args\)[\s\S]*subtitle\.replaceGenerated/, "plugin bridge must expose generated subtitle replacement");
@@ -480,6 +482,10 @@ assert.match(mpvEmbedSource, /format_generated_subtitle_cues/, "mpv backend must
 assert.match(mpvEmbedSource, /append_generated_subtitle_cues_file/, "mpv backend must append structured subtitle cues centrally");
 assert.match(mpvEmbedSource, /sub-reload/, "mpv backend must reload generated subtitle tracks after appending cues");
 assert.match(appSource, /permissions\.has\("subtitle\.write"\)/, "generated subtitle loading must require the subtitle.write plugin permission");
+assert.match(appSource, /function requireSubtitleWrite\(permissions:[\s\S]*permissions\.has\("subtitle\.write"\)/, "subtitle document helpers must centralize subtitle.write permission checks");
+assert.match(appSource, /case "subtitle\.documents\.create"[\s\S]*requireSubtitleWrite\(permissions\)[\s\S]*createGeneratedSubtitleDocument/, "subtitle document creation must require subtitle.write and use the shared document helper");
+assert.match(appSource, /createGeneratedSubtitleDocument[\s\S]*mpv_embed_load_generated_subtitle_cues[\s\S]*mpv_embed_load_generated_subtitle/, "subtitle document creation must support both structured cues and subtitle text");
+assert.match(appSource, /replaceGeneratedSubtitleDocument[\s\S]*mpv_embed_replace_generated_subtitle_cues[\s\S]*mpv_embed_replace_generated_subtitle/, "subtitle document replacement must support both structured cues and subtitle text");
 assert.match(tauriRuntimeSource, /mpv_embed_list_generated_subtitles/, "mpv runtime must register plugin generated subtitle listing");
 assert.match(tauriRuntimeSource, /mpv_embed_remove_generated_subtitle/, "mpv runtime must register plugin generated subtitle removal");
 assert.match(tauriRuntimeSource, /mpv_embed_replace_generated_subtitle/, "mpv runtime must register plugin generated subtitle replacement");
@@ -532,6 +538,9 @@ assert.doesNotMatch(appearanceStoreSource, /"aiTool"|"transcription"|"translatio
 assert.match(pluginReadme, /Composable SDK Model[\s\S]*playback context[\s\S]*media artifacts[\s\S]*provider I\/O[\s\S]*subtitle documents[\s\S]*runtime state/, "plugin README must document AI-like plugins as compositions of generic SDK primitives");
 assert.match(pluginReadme, /Do not add `ai\.\*`, `transcription\.\*`, `translation\.\*`[\s\S]*add the missing generic block/, "plugin README must reject feature-specific AI host permissions");
 assert.match(pluginSdkGuide, /no current provider-specific AI permission[\s\S]*Do not add `ai\.\*`, `transcription\.\*`, `translation\.\*`[\s\S]*missing[\s\S]*generic primitive/, "SDK guide must define AI-like work as generic primitive composition");
+assert.match(pluginSdkGuide, /openplayer\.subtitle\.documents[\s\S]*create[\s\S]*appendCues[\s\S]*read[\s\S]*compatibility/, "SDK guide must document the unified subtitle document API");
+assert.match(pluginReadme, /subtitle documents:[\s\S]*openplayer\.subtitle\.documents\.create[\s\S]*appendCues[\s\S]*remove/, "plugin README must steer new subtitle plugins to the document model");
+assert.match(pluginDocsAgents, /openplayer\.subtitle\.documents\.create[\s\S]*compatibility aliases/, "docs plugin AGENTS guide must steer new subtitle plugins to the document model");
 assert.match(pluginSdkGuide, /Custom views can react to player state[\s\S]*window\.openplayer\.onEvent\(\)[\s\S]*runtime\.events/, "SDK guide must document custom view event subscriptions");
 assert.match(pluginReadme, /Custom views use the same event contract[\s\S]*runtime\.events[\s\S]*rejects view subscriptions to undeclared events/, "plugin README must document custom view event declaration rules");
 assert.match(pluginSdkGuide, /openplayer\.artifacts[\s\S]*audioClip[\s\S]*audio\.extract[\s\S]*frameCapture[\s\S]*mpv\.capture/, "SDK guide must document managed artifact lifecycle helpers and permission gating");

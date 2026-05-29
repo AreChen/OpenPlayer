@@ -73,8 +73,8 @@ plugins, SDK examples, and AI-facing plugin instructions.
   frame artifacts, `subtitle.read` with `openplayer.subtitle.currentCue` for
   current displayed subtitle text, `network.request` or
   `openplayer.network.requestJson` for provider calls, and `subtitle.write`
-  with `openplayer.subtitle.loadGeneratedCues` for timestamped `SubtitleCue[]`
-  or `openplayer.subtitle.loadGenerated` for standard subtitle text.
+  with `openplayer.subtitle.documents.create` for timestamped `SubtitleCue[]`
+  or standard subtitle text.
 - Use `openplayer.tasks` for long-running transcription, translation, analysis,
   and batch operations. Report progress with `tasks.update`, request cooperative
   cancellation with `tasks.cancel`, and finish cancellation with
@@ -82,11 +82,11 @@ plugins, SDK examples, and AI-facing plugin instructions.
 - Use `openplayer.log.info`, `openplayer.log.warn`, and
   `openplayer.log.error` for host-visible diagnostics in the plugin runtime log
   panel instead of relying on worker console output.
-- Use `openplayer.subtitle.listGenerated`, `readGenerated`, `replaceGenerated`,
-  and `removeGenerated` when a plugin needs to review, update, or clean up its
-  own generated tracks. Prefer `replaceGeneratedCues` when the plugin owns
-  structured transcript segments, and `appendGeneratedCues` for real-time
-  transcription chunks; do not use raw mpv subtitle commands.
+- Use `openplayer.subtitle.documents.create`, `list`, `read`, `replace`,
+  `appendCues`, and `remove` when a plugin needs to create, review, update, or
+  clean up its own generated subtitle documents. The older `loadGenerated*` and
+  `*Generated*` helpers are compatibility aliases; new plugins should use the
+  document model instead of raw mpv subtitle commands.
 - Use `openplayer.subtitle.setStyle` for runtime subtitle presentation changes
   when the plugin declares `mpv.subtitleStyle`; do not route subtitle typography
   through raw `openplayer.mpv.setProperty`.

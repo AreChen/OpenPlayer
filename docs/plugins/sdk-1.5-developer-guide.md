@@ -157,7 +157,7 @@ instead of asking the core for one-off provider support.
 That composition model is intentional. A real-time transcription plugin should
 be built by combining `openplayer.media.currentSegment`,
 `openplayer.audio.extractClip`, `openplayer.network.request`,
-`openplayer.subtitle.loadGeneratedCues` or `appendGeneratedCues`,
+`openplayer.subtitle.documents.create` or `documents.appendCues`,
 `openplayer.subtitle.setStyle`, `openplayer.tasks`, `openplayer.storage`, and
 `openplayer.log`. The host should add or harden one of those generic primitives
 only when the composition itself is impossible or unsafe, not add a provider- or
@@ -392,7 +392,7 @@ const response = await openplayer.network.requestJson({
   timeoutMs: 30000,
 });
 
-await openplayer.subtitle.loadGeneratedCues({
+await openplayer.subtitle.documents.create({
   name: "AI Transcript",
   format: "vtt",
   cues: response.json.segments.map((segment) => ({
@@ -417,7 +417,7 @@ if (cue && cue.start !== null && cue.end !== null) {
     body: { text: cue.text, targetLanguage: "zh-CN" },
     timeoutMs: 30000,
   });
-  await openplayer.subtitle.loadGeneratedCues({
+  await openplayer.subtitle.documents.create({
     name: "Translated Subtitles",
     format: "vtt",
     cues: [{ start: cue.start, end: cue.end, text: response.json.text }],
@@ -432,23 +432,34 @@ loads generated subtitle text through mpv. Plugins do not receive raw filesystem
 write access and should not use raw mpv `sub-add` or provider-specific host
 commands.
 
-Generated subtitle tracks are plugin-owned resources. A plugin can inspect, read
-back, append to, replace, or unload only tracks backed by files in its own
-managed subtitle directory:
+Generated subtitle tracks are plugin-owned resources. Prefer the unified
+`openplayer.subtitle.documents` namespace when creating or modifying subtitles:
+it accepts either standard subtitle text through `content` or structured
+`SubtitleCue[]` through `cues`, then maps to the same managed subtitle files and
+mpv reload path as the older `loadGenerated*` helpers. A plugin can inspect,
+read back, append to, replace, or unload only documents backed by files in its
+own managed subtitle directory:
 
 ```js
-const generatedTracks = await openplayer.subtitle.listGenerated();
+await openplayer.subtitle.documents.create({
+  name: "AI Transcript",
+  format: "vtt",
+  cues: initialTranscriptSegments,
+  select: true,
+});
+
+const generatedTracks = await openplayer.subtitle.documents.list();
 const currentTranscript = generatedTracks.find((track) => track.selected);
 
 if (currentTranscript) {
-  const currentContent = await openplayer.subtitle.readGenerated(currentTranscript.id);
+  const currentContent = await openplayer.subtitle.documents.read(currentTranscript.id);
 
-  await openplayer.subtitle.appendGeneratedCues(currentTranscript.id, {
+  await openplayer.subtitle.documents.appendCues(currentTranscript.id, {
     cues: latestTranscriptSegments,
     select: true,
   });
 
-  await openplayer.subtitle.replaceGeneratedCues(currentTranscript.id, {
+  await openplayer.subtitle.documents.replace(currentTranscript.id, {
     name: "Updated Transcript",
     format: "vtt",
     cues: (currentContent.cues ?? updatedTranscriptSegments).map((cue) => ({
@@ -460,17 +471,22 @@ if (currentTranscript) {
 }
 
 for (const staleTrack of generatedTracks.filter((track) => !track.selected)) {
-  await openplayer.subtitle.removeGenerated(staleTrack.id);
+  await openplayer.subtitle.documents.remove(staleTrack.id);
 }
 ```
 
 For real-time transcription, create a VTT or SRT track once with
-`loadGeneratedCues`, append new `SubtitleCue[]` chunks with
-`appendGeneratedCues`, and use `readGenerated` for review, translation, cleanup,
-or resumable plugin state. `readGenerated` returns the raw subtitle content and
-parsed `SubtitleCue[]` for SRT/VTT. The host keeps all reads and writes scoped to
-the current plugin's managed subtitle files and asks mpv to reload updated
-subtitle tracks.
+`subtitle.documents.create`, append new `SubtitleCue[]` chunks with
+`subtitle.documents.appendCues`, and use `subtitle.documents.read` for review,
+translation, cleanup, or resumable plugin state. `documents.read` returns the
+raw subtitle content and parsed `SubtitleCue[]` for SRT/VTT. The host keeps all
+reads and writes scoped to the current plugin's managed subtitle files and asks
+mpv to reload updated subtitle tracks. Existing `listGenerated`,
+`readGenerated`, `replaceGenerated`, `replaceGeneratedCues`,
+`appendGeneratedCues`, and `removeGenerated` remain available for compatibility.
+Document ids in these APIs are current mpv subtitle track ids returned by
+`documents.list`, not stable database ids. Store resumable queues, provider job
+ids, and migration metadata in `openplayer.storage`.
 
 Use `setStyle` for runtime subtitle presentation changes instead of raw mpv
 property writes:

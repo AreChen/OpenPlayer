@@ -9,6 +9,26 @@ export function pluginWorkerSubtitleApiSource() {
       setStyle(args) {
         return requestHost("subtitle.setStyle", args);
       },
+      documents: Object.freeze({
+        create(args) {
+          return requestHost("subtitle.documents.create", args);
+        },
+        list() {
+          return requestHost("subtitle.documents.list");
+        },
+        read(trackId) {
+          return requestHost("subtitle.documents.read", { trackId });
+        },
+        remove(trackId) {
+          return requestHost("subtitle.documents.remove", { trackId });
+        },
+        replace(trackId, args) {
+          return requestHost("subtitle.documents.replace", { ...args, trackId });
+        },
+        appendCues(trackId, args) {
+          return requestHost("subtitle.documents.appendCues", { ...args, trackId });
+        },
+      }),
       loadGenerated(args) {
         return requestHost("subtitle.loadGenerated", args);
       },

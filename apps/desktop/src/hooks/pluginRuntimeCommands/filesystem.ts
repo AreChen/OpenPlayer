@@ -33,6 +33,16 @@ type GeneratedSubtitleCue = {
   text: string;
 };
 
+type GeneratedSubtitleDocumentPayload =
+  | {
+      kind: "content";
+      payload: ReturnType<typeof generatedSubtitlePayload>;
+    }
+  | {
+      kind: "cues";
+      payload: ReturnType<typeof generatedSubtitleCuesPayload>;
+    };
+
 type SubtitleStyleWrite = {
   property: string;
   value: string | number;
@@ -159,6 +169,133 @@ function generatedSubtitleAppendCuesPayload(record: Record<string, unknown>, com
   };
 }
 
+function generatedSubtitleDocumentPayload(record: Record<string, unknown>, command: string): GeneratedSubtitleDocumentPayload {
+  const hasContent = typeof record.content === "string" && record.content.trim().length > 0;
+  const hasCues = Array.isArray(record.cues);
+  if (hasContent && hasCues) {
+    throw new Error(`${command} accepts either content or cues, not both`);
+  }
+  if (hasCues) {
+    return { kind: "cues", payload: generatedSubtitleCuesPayload(record, command) };
+  }
+  return { kind: "content", payload: generatedSubtitlePayload(record, command) };
+}
+
+function shouldPersistGeneratedSubtitleSelection(record: Record<string, unknown>) {
+  return record.select !== false;
+}
+
+function persistGeneratedSubtitleSelection(context: PluginRuntimeCommandContext, snapshot: MpvSnapshot) {
+  if (!context.media) {
+    return;
+  }
+  const selectedSubtitle = snapshot.tracks.find((track) => track.kind === "sub" && track.selected);
+  context.persistMediaPlaybackSettings(context.media.path, { subtitleTrackId: selectedSubtitle?.id ?? null });
+}
+
+function requireLoadedMedia(context: PluginRuntimeCommandContext, command: string) {
+  if (!context.media) {
+    throw new Error(`${command} requires loaded media`);
+  }
+}
+
+function requireSubtitleWrite(permissions: Set<string>) {
+  if (!permissions.has("subtitle.write")) {
+    throw new Error("plugin runtime command requires subtitle.write");
+  }
+}
+
+async function createGeneratedSubtitleDocument(
+  context: PluginRuntimeCommandContext,
+  pluginId: string,
+  document: GeneratedSubtitleDocumentPayload,
+  record: Record<string, unknown>,
+) {
+  context.invalidatePendingSnapshots();
+  const result =
+    document.kind === "cues"
+      ? await invoke<GeneratedSubtitleLoadResult>("mpv_embed_load_generated_subtitle_cues", {
+          pluginId,
+          ...document.payload,
+        })
+      : await invoke<GeneratedSubtitleLoadResult>("mpv_embed_load_generated_subtitle", {
+          pluginId,
+          ...document.payload,
+        });
+  context.applyCommandSnapshot(result.snapshot);
+  if (shouldPersistGeneratedSubtitleSelection(record)) {
+    persistGeneratedSubtitleSelection(context, result.snapshot);
+  }
+  return result;
+}
+
+async function listGeneratedSubtitleDocuments(pluginId: string) {
+  return await invoke<GeneratedSubtitleTrack[]>("mpv_embed_list_generated_subtitles", { pluginId });
+}
+
+async function readGeneratedSubtitleDocument(pluginId: string, trackId: number) {
+  return await invoke<GeneratedSubtitleReadResult>("mpv_embed_read_generated_subtitle", {
+    pluginId,
+    trackId,
+  });
+}
+
+async function removeGeneratedSubtitleDocument(context: PluginRuntimeCommandContext, pluginId: string, trackId: number) {
+  context.invalidatePendingSnapshots();
+  const snapshot = await invoke<MpvSnapshot>("mpv_embed_remove_generated_subtitle", { pluginId, trackId });
+  context.applyCommandSnapshot(snapshot);
+  persistGeneratedSubtitleSelection(context, snapshot);
+  return snapshot;
+}
+
+async function replaceGeneratedSubtitleDocument(
+  context: PluginRuntimeCommandContext,
+  pluginId: string,
+  trackId: number,
+  document: GeneratedSubtitleDocumentPayload,
+  record: Record<string, unknown>,
+) {
+  context.invalidatePendingSnapshots();
+  const result =
+    document.kind === "cues"
+      ? await invoke<GeneratedSubtitleLoadResult>("mpv_embed_replace_generated_subtitle_cues", {
+          pluginId,
+          trackId,
+          ...document.payload,
+        })
+      : await invoke<GeneratedSubtitleLoadResult>("mpv_embed_replace_generated_subtitle", {
+          pluginId,
+          trackId,
+          ...document.payload,
+        });
+  context.applyCommandSnapshot(result.snapshot);
+  if (shouldPersistGeneratedSubtitleSelection(record)) {
+    persistGeneratedSubtitleSelection(context, result.snapshot);
+  }
+  return result;
+}
+
+async function appendGeneratedSubtitleDocumentCues(
+  context: PluginRuntimeCommandContext,
+  pluginId: string,
+  trackId: number,
+  payload: ReturnType<typeof generatedSubtitleAppendCuesPayload>,
+  record: Record<string, unknown>,
+) {
+  context.invalidatePendingSnapshots();
+  const result = await invoke<GeneratedSubtitleLoadResult>("mpv_embed_append_generated_subtitle_cues", {
+    pluginId,
+    trackId,
+    cues: payload.cues,
+    select: payload.select,
+  });
+  context.applyCommandSnapshot(result.snapshot);
+  if (shouldPersistGeneratedSubtitleSelection(record)) {
+    persistGeneratedSubtitleSelection(context, result.snapshot);
+  }
+  return result;
+}
+
 export async function pickPluginMediaPaths(context: PluginRuntimeCommandContext, permissions: Set<string>, multiple = true) {
   if (!permissions.has("filesystem.pick")) {
     throw new Error("plugin runtime command requires filesystem.pick");
@@ -279,149 +416,104 @@ export const handlePluginFilesystemRuntimeCommand: PluginRuntimeCommandHandler =
       context.applyCommandSnapshot(snapshot);
       return snapshot;
     }
+    case "subtitle.documents.create": {
+      requireLoadedMedia(context, "subtitle.documents.create");
+      requireSubtitleWrite(permissions);
+      const document = generatedSubtitleDocumentPayload(record, "subtitle.documents.create");
+      return await createGeneratedSubtitleDocument(context, pluginId, document, record);
+    }
+    case "subtitle.documents.list": {
+      requireLoadedMedia(context, "subtitle.documents.list");
+      requireSubtitleWrite(permissions);
+      return await listGeneratedSubtitleDocuments(pluginId);
+    }
+    case "subtitle.documents.read": {
+      requireLoadedMedia(context, "subtitle.documents.read");
+      requireSubtitleWrite(permissions);
+      const trackId = generatedSubtitleTrackId(record, "subtitle.documents.read");
+      return await readGeneratedSubtitleDocument(pluginId, trackId);
+    }
+    case "subtitle.documents.remove": {
+      requireLoadedMedia(context, "subtitle.documents.remove");
+      requireSubtitleWrite(permissions);
+      const trackId = generatedSubtitleTrackId(record, "subtitle.documents.remove");
+      return await removeGeneratedSubtitleDocument(context, pluginId, trackId);
+    }
+    case "subtitle.documents.replace": {
+      requireLoadedMedia(context, "subtitle.documents.replace");
+      requireSubtitleWrite(permissions);
+      const trackId = generatedSubtitleTrackId(record, "subtitle.documents.replace");
+      const document = generatedSubtitleDocumentPayload(record, "subtitle.documents.replace");
+      return await replaceGeneratedSubtitleDocument(context, pluginId, trackId, document, record);
+    }
+    case "subtitle.documents.appendCues": {
+      requireLoadedMedia(context, "subtitle.documents.appendCues");
+      requireSubtitleWrite(permissions);
+      const trackId = generatedSubtitleTrackId(record, "subtitle.documents.appendCues");
+      const payload = generatedSubtitleAppendCuesPayload(record, "subtitle.documents.appendCues");
+      return await appendGeneratedSubtitleDocumentCues(context, pluginId, trackId, payload, record);
+    }
     case "subtitle.loadGenerated": {
-      if (!context.media) {
-        throw new Error("subtitle.loadGenerated requires loaded media");
-      }
-      if (!permissions.has("subtitle.write")) {
-        throw new Error("plugin runtime command requires subtitle.write");
-      }
-      const payload = generatedSubtitlePayload(record, "subtitle.loadGenerated");
-      context.invalidatePendingSnapshots();
-      const result = await invoke<GeneratedSubtitleLoadResult>("mpv_embed_load_generated_subtitle", {
-        pluginId,
-        ...payload,
-      });
-      context.applyCommandSnapshot(result.snapshot);
-      if (record.select !== false) {
-        const selectedSubtitle = result.snapshot.tracks.find((track) => track.kind === "sub" && track.selected);
-        context.persistMediaPlaybackSettings(context.media.path, { subtitleTrackId: selectedSubtitle?.id ?? null });
-      }
-      return result;
+      requireLoadedMedia(context, "subtitle.loadGenerated");
+      requireSubtitleWrite(permissions);
+      const document: GeneratedSubtitleDocumentPayload = {
+        kind: "content",
+        payload: generatedSubtitlePayload(record, "subtitle.loadGenerated"),
+      };
+      return await createGeneratedSubtitleDocument(context, pluginId, document, record);
     }
     case "subtitle.loadGeneratedCues": {
-      if (!context.media) {
-        throw new Error("subtitle.loadGeneratedCues requires loaded media");
-      }
-      if (!permissions.has("subtitle.write")) {
-        throw new Error("plugin runtime command requires subtitle.write");
-      }
-      const payload = generatedSubtitleCuesPayload(record, "subtitle.loadGeneratedCues");
-      context.invalidatePendingSnapshots();
-      const result = await invoke<GeneratedSubtitleLoadResult>("mpv_embed_load_generated_subtitle_cues", {
-        pluginId,
-        ...payload,
-      });
-      context.applyCommandSnapshot(result.snapshot);
-      if (record.select !== false) {
-        const selectedSubtitle = result.snapshot.tracks.find((track) => track.kind === "sub" && track.selected);
-        context.persistMediaPlaybackSettings(context.media.path, { subtitleTrackId: selectedSubtitle?.id ?? null });
-      }
-      return result;
+      requireLoadedMedia(context, "subtitle.loadGeneratedCues");
+      requireSubtitleWrite(permissions);
+      const document: GeneratedSubtitleDocumentPayload = {
+        kind: "cues",
+        payload: generatedSubtitleCuesPayload(record, "subtitle.loadGeneratedCues"),
+      };
+      return await createGeneratedSubtitleDocument(context, pluginId, document, record);
     }
     case "subtitle.listGenerated": {
-      if (!context.media) {
-        throw new Error("subtitle.listGenerated requires loaded media");
-      }
-      if (!permissions.has("subtitle.write")) {
-        throw new Error("plugin runtime command requires subtitle.write");
-      }
-      return await invoke<GeneratedSubtitleTrack[]>("mpv_embed_list_generated_subtitles", { pluginId });
+      requireLoadedMedia(context, "subtitle.listGenerated");
+      requireSubtitleWrite(permissions);
+      return await listGeneratedSubtitleDocuments(pluginId);
     }
     case "subtitle.readGenerated": {
-      if (!context.media) {
-        throw new Error("subtitle.readGenerated requires loaded media");
-      }
-      if (!permissions.has("subtitle.write")) {
-        throw new Error("plugin runtime command requires subtitle.write");
-      }
+      requireLoadedMedia(context, "subtitle.readGenerated");
+      requireSubtitleWrite(permissions);
       const trackId = generatedSubtitleTrackId(record, "subtitle.readGenerated");
-      return await invoke<GeneratedSubtitleReadResult>("mpv_embed_read_generated_subtitle", {
-        pluginId,
-        trackId,
-      });
+      return await readGeneratedSubtitleDocument(pluginId, trackId);
     }
     case "subtitle.removeGenerated": {
-      if (!context.media) {
-        throw new Error("subtitle.removeGenerated requires loaded media");
-      }
-      if (!permissions.has("subtitle.write")) {
-        throw new Error("plugin runtime command requires subtitle.write");
-      }
+      requireLoadedMedia(context, "subtitle.removeGenerated");
+      requireSubtitleWrite(permissions);
       const trackId = generatedSubtitleTrackId(record, "subtitle.removeGenerated");
-      context.invalidatePendingSnapshots();
-      const snapshot = await invoke<MpvSnapshot>("mpv_embed_remove_generated_subtitle", { pluginId, trackId });
-      context.applyCommandSnapshot(snapshot);
-      const selectedSubtitle = snapshot.tracks.find((track) => track.kind === "sub" && track.selected);
-      context.persistMediaPlaybackSettings(context.media.path, { subtitleTrackId: selectedSubtitle?.id ?? null });
-      return snapshot;
+      return await removeGeneratedSubtitleDocument(context, pluginId, trackId);
     }
     case "subtitle.replaceGenerated": {
-      if (!context.media) {
-        throw new Error("subtitle.replaceGenerated requires loaded media");
-      }
-      if (!permissions.has("subtitle.write")) {
-        throw new Error("plugin runtime command requires subtitle.write");
-      }
+      requireLoadedMedia(context, "subtitle.replaceGenerated");
+      requireSubtitleWrite(permissions);
       const trackId = generatedSubtitleTrackId(record, "subtitle.replaceGenerated");
-      const payload = generatedSubtitlePayload(record, "subtitle.replaceGenerated");
-      context.invalidatePendingSnapshots();
-      const result = await invoke<GeneratedSubtitleLoadResult>("mpv_embed_replace_generated_subtitle", {
-        pluginId,
-        trackId,
-        ...payload,
-      });
-      context.applyCommandSnapshot(result.snapshot);
-      if (record.select !== false) {
-        const selectedSubtitle = result.snapshot.tracks.find((track) => track.kind === "sub" && track.selected);
-        context.persistMediaPlaybackSettings(context.media.path, { subtitleTrackId: selectedSubtitle?.id ?? null });
-      }
-      return result;
+      const document: GeneratedSubtitleDocumentPayload = {
+        kind: "content",
+        payload: generatedSubtitlePayload(record, "subtitle.replaceGenerated"),
+      };
+      return await replaceGeneratedSubtitleDocument(context, pluginId, trackId, document, record);
     }
     case "subtitle.replaceGeneratedCues": {
-      if (!context.media) {
-        throw new Error("subtitle.replaceGeneratedCues requires loaded media");
-      }
-      if (!permissions.has("subtitle.write")) {
-        throw new Error("plugin runtime command requires subtitle.write");
-      }
+      requireLoadedMedia(context, "subtitle.replaceGeneratedCues");
+      requireSubtitleWrite(permissions);
       const trackId = generatedSubtitleTrackId(record, "subtitle.replaceGeneratedCues");
-      const payload = generatedSubtitleCuesPayload(record, "subtitle.replaceGeneratedCues");
-      context.invalidatePendingSnapshots();
-      const result = await invoke<GeneratedSubtitleLoadResult>("mpv_embed_replace_generated_subtitle_cues", {
-        pluginId,
-        trackId,
-        ...payload,
-      });
-      context.applyCommandSnapshot(result.snapshot);
-      if (record.select !== false) {
-        const selectedSubtitle = result.snapshot.tracks.find((track) => track.kind === "sub" && track.selected);
-        context.persistMediaPlaybackSettings(context.media.path, { subtitleTrackId: selectedSubtitle?.id ?? null });
-      }
-      return result;
+      const document: GeneratedSubtitleDocumentPayload = {
+        kind: "cues",
+        payload: generatedSubtitleCuesPayload(record, "subtitle.replaceGeneratedCues"),
+      };
+      return await replaceGeneratedSubtitleDocument(context, pluginId, trackId, document, record);
     }
     case "subtitle.appendGeneratedCues": {
-      if (!context.media) {
-        throw new Error("subtitle.appendGeneratedCues requires loaded media");
-      }
-      if (!permissions.has("subtitle.write")) {
-        throw new Error("plugin runtime command requires subtitle.write");
-      }
+      requireLoadedMedia(context, "subtitle.appendGeneratedCues");
+      requireSubtitleWrite(permissions);
       const trackId = generatedSubtitleTrackId(record, "subtitle.appendGeneratedCues");
       const payload = generatedSubtitleAppendCuesPayload(record, "subtitle.appendGeneratedCues");
-      context.invalidatePendingSnapshots();
-      const result = await invoke<GeneratedSubtitleLoadResult>("mpv_embed_append_generated_subtitle_cues", {
-        pluginId,
-        trackId,
-        cues: payload.cues,
-        select: payload.select,
-      });
-      context.applyCommandSnapshot(result.snapshot);
-      if (record.select !== false) {
-        const selectedSubtitle = result.snapshot.tracks.find((track) => track.kind === "sub" && track.selected);
-        context.persistMediaPlaybackSettings(context.media.path, { subtitleTrackId: selectedSubtitle?.id ?? null });
-      }
-      return result;
+      return await appendGeneratedSubtitleDocumentCues(context, pluginId, trackId, payload, record);
     }
     default:
       return PLUGIN_RUNTIME_COMMAND_NOT_HANDLED;
