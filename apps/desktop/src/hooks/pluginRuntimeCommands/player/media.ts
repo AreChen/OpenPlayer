@@ -3,10 +3,12 @@ import {
   normalizePluginLoadOptions,
   normalizePluginMediaSegment,
   normalizePluginMediaSegmentTimeline,
+  runtimeBooleanArg,
   runtimeNumberArg,
   runtimeStringArg,
 } from "../../../app/pluginRuntime";
 import type { MpvSnapshot } from "../../../app/types";
+import { focusOverlayWindow } from "../../../app/windowControls";
 import {
   PLUGIN_RUNTIME_COMMAND_NOT_HANDLED,
   type PluginRuntimeCommandHandler,
@@ -51,6 +53,27 @@ export const handlePluginPlayerMediaCommand: PluginRuntimeCommandHandler = async
           mediaDuration: context.duration,
         },
       );
+    case "media.exportSegment": {
+      if (!context.media) {
+        throw new Error("media.exportSegment requires loaded media");
+      }
+      if (!permissions.has("media.export")) {
+        throw new Error("plugin runtime command requires media.export");
+      }
+      const artifact = await invoke<{ path: string }>("mpv_embed_export_media_segment", {
+        kind: runtimeStringArg(record, "kind"),
+        format: runtimeStringArg(record, "format"),
+        start: runtimeNumberArg(record, "start"),
+        duration: runtimeNumberArg(record, "duration"),
+        fileName: runtimeStringArg(record, "fileName"),
+        directory: null,
+      });
+      if (runtimeBooleanArg(record, "openFolder") && artifact.path) {
+        await invoke("window_reveal_path", { path: artifact.path });
+        focusOverlayWindow();
+      }
+      return artifact;
+    }
     case "player.openMedia":
       context.openNativeMediaFiles();
       return null;

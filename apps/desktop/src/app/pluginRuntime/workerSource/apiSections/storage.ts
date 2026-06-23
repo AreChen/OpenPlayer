@@ -3,8 +3,8 @@ export function pluginWorkerStorageApiSource() {
       get(key) {
         return requestHost("plugin.storage.get", { key });
       },
-      list() {
-        return requestHost("plugin.storage.list");
+      list(args) {
+        return requestHost("plugin.storage.list", args);
       },
       info() {
         return requestHost("plugin.storage.info");

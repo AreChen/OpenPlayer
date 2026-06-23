@@ -1,7 +1,7 @@
-# OpenPlayer Plugin SDK 1.5 Developer Guide
+# OpenPlayer Plugin SDK 1.6 Developer Guide
 
-This guide is the current working reference for developers and AI agents that
-build OpenPlayer plugins against SDK 1.5.
+This guide is the current working reference for developers and automation agents that
+build OpenPlayer plugins against SDK 1.6.
 
 OpenPlayer plugins are package-based extensions. A plugin package contributes a
 validated `manifest.json`, optional settings/actions/views, and optionally a
@@ -38,9 +38,9 @@ public TypeScript types, official plugin examples, and docs together.
 {
   "id": "dev.example.openplayer.plugin",
   "name": "Example Plugin",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "apiVersion": "1",
-  "minHostVersion": "1.5.1",
+  "minHostVersion": "1.6.0",
   "author": "Example Author",
   "updateUrl": "https://github.com/example/openplayer-plugin/releases",
   "description": "Example runtime plugin.",
@@ -129,6 +129,9 @@ Important permissions:
 
 - `media.openStream`: open network streams and allow `media.opening` hooks to
   rewrite stream paths.
+- `media.export`: export bounded audio or video segments to a host-selected
+  user-visible export directory without granting plugins arbitrary filesystem
+  writes.
 - `mpv.loadOptions`: return safe mpv `loadfile` options from media-opening
   hooks, such as HLS demuxer hints.
 - `mpv.capture`: screenshots, native recording, and managed current-frame image
@@ -219,7 +222,7 @@ Worker runtimes and custom views use the same event API. Declare the events in
 host uses that manifest declaration as the allowlist before a view subscription
 is accepted.
 
-Supported events in SDK 1.5 include:
+Supported events in SDK 1.6 include:
 
 - `app.ready`
 - `media.opening`
@@ -233,6 +236,8 @@ Supported events in SDK 1.5 include:
 - `playback.volumeChanged`
 - `playback.speedChanged`
 - `tracks.changed`
+- `playlist.changed`
+- `recording.changed`
 - `theme.changed`
 - `window.fullscreenChanged`
 - `plugin.view.opened`
@@ -284,6 +289,14 @@ openplayer.media.openStreamDialog();
 openplayer.media.current();
 openplayer.media.currentSegment({ before: 2, duration: 8 });
 openplayer.media.segmentTimeline({ duration: 20, overlap: 1 });
+openplayer.media.exportSegment({
+  kind: "audio",
+  start: 12.5,
+  duration: 8,
+  format: "mp3",
+  fileName: "line-practice.mp3",
+  openFolder: true,
+});
 openplayer.media.snapshot();
 openplayer.playlist.current();
 openplayer.playlist.playIndex(0);
@@ -301,6 +314,16 @@ For batch transcription or analysis, `segmentTimeline()` splits the loaded media
 into bounded, optionally overlapping `MediaSegment[]` chunks. The host clamps
 all segment boundaries to the loaded media duration, so plugins do not each need
 to reimplement time-window math.
+
+`openplayer.media.exportSegment()` is for user-visible exports rather than
+plugin-private artifacts. It requires `media.export`, accepts `kind: "audio"`
+or `kind: "video"`, validates `start` and bounded `duration`, sanitizes
+`fileName`, and writes into Downloads/OpenPlayer/Exports by default. Audio
+formats are `wav`, `mp3`, `m4a`, and `flac`; video formats are `mp4` and `mkv`.
+Use this for clip-saving, language-learning, and review workflows where the
+user should keep the exported media file. Use `audio.extractClip` or
+`capture.frame` when a plugin needs temporary managed artifacts for provider
+uploads.
 
 ### Audio Clips
 
@@ -366,14 +389,14 @@ code should not guess playback state.
 ### Subtitle Generation
 
 Generated subtitles, audio clips, and frame captures are composable SDK
-primitives. Use them for AI transcription, translation, OCR subtitle extraction,
+primitives. Use them for transcription, translation, OCR subtitle extraction,
 subtitle cleanup, and other plugins that produce standard subtitle text. Request
 `audio.extract` when the plugin needs a short WAV clip from the current media,
 request `mpv.capture` when it needs a current-frame image artifact, request
 `subtitle.read` when it reads the current displayed subtitle cue, request
 `subtitle.write` when it creates a subtitle track, and request `network.request`
 only when it calls an external provider. Prefer
-`openplayer.network.requestJson` for JSON AI provider APIs; it still routes
+`openplayer.network.requestJson` for JSON provider APIs; it still routes
 through the host-mediated `network.request` validation path.
 
 ```js
@@ -393,7 +416,7 @@ const response = await openplayer.network.requestJson({
 });
 
 await openplayer.subtitle.documents.create({
-  name: "AI Transcript",
+  name: "Generated Transcript",
   format: "vtt",
   cues: response.json.segments.map((segment) => ({
     start: segment.start,
@@ -442,7 +465,7 @@ own managed subtitle directory:
 
 ```js
 await openplayer.subtitle.documents.create({
-  name: "AI Transcript",
+  name: "Generated Transcript",
   format: "vtt",
   cues: initialTranscriptSegments,
   select: true,
@@ -532,7 +555,7 @@ files returned by `openplayer.audio.extractClip` or
 `openplayer.capture.frame`. It is not raw filesystem upload access.
 
 Use `openplayer.artifacts` to inspect and clean plugin-owned managed artifacts
-after uploads, cancelled tasks, or failed AI jobs. Listing or clearing
+after uploads, cancelled tasks, or failed provider jobs. Listing or clearing
 `audioClip` artifacts requires `audio.extract`; listing or clearing
 `frameCapture` artifacts requires `mpv.capture`. When no kind is supplied, the
 host only acts on artifact kinds covered by the current plugin's permissions:
@@ -617,6 +640,7 @@ const settings = await openplayer.plugin.getSettings();
 const storageInfo = await openplayer.storage.info();
 await openplayer.storage.set("state", { enabled: true });
 const state = await openplayer.storage.get("state");
+const cache = await openplayer.storage.list({ prefix: "cache.channels.", limit: 20 });
 await openplayer.storage.update({
   set: {
     "queue.active": { id: "job-1", status: "running" },
@@ -658,7 +682,9 @@ Storage is plugin-private, redb-backed, and removed when the plugin is
 uninstalled. Persistent plugins should declare `contributes.storage` so the
 host can initialize missing defaults on install, preserve existing values on
 upgrade, and expose schema metadata through `openplayer.storage.info` for
-plugin-owned migrations:
+plugin-owned migrations. `storage.info()` also reports `totalBytes` and
+`maxValueBytes`, and `storage.list({ prefix, limit })` lets cache-heavy plugins
+scan only a bounded key family instead of loading their whole private store:
 
 ```json
 {
@@ -688,6 +714,11 @@ if (info.schemaVersion < info.manifestVersion) {
   });
   await openplayer.storage.markMigrated();
 }
+
+const cacheChunks = await openplayer.storage.list({ prefix: "transcript.cache.", limit: 12 });
+if (info.totalBytes > info.maxValueBytes * 40) {
+  await openplayer.log.warn("Transcript cache is large; prune stale chunks after this job.");
+}
 ```
 
 Use `openplayer.storage.update({ set, remove })` when a migration, cache
@@ -704,8 +735,10 @@ Custom views are best for rich plugin-owned UI. Keep these rules:
   `--op-panel`, `--op-text`, and `--op-danger`.
 - Prefer the host-injected standard UI classes before writing custom control
   CSS: `.op-view`, `.op-surface`, `.op-stack`, `.op-row`, `.op-button`,
-  `.op-button--primary`, `.op-icon-button`, `.op-input`, `.op-select`,
-  `.op-textarea`, `.op-list`, `.op-list-item`, `.op-badge`, and `.op-muted`.
+  `.op-button--primary`, `.op-button--ghost`, `.op-button--danger`,
+  `.op-icon-button`, `.op-input`, `.op-select`, `.op-textarea`, `.op-slider`,
+  `.op-switch`, `.op-switch__thumb`, `.op-list`, `.op-list-item`, `.op-badge`,
+  `.op-table`, `.op-kbd`, and `.op-muted`.
   These classes use tokens such as `--op-accent`, `--op-control`, `--op-text`,
   `--op-line`, and `--op-radius`, so theme plugins and user accent overrides
   automatically apply to plugin views.
@@ -758,7 +791,7 @@ Custom views are best for rich plugin-owned UI. Keep these rules:
 - Custom views can react to player state with `window.openplayer.onEvent()` and
   `window.openplayer.events.subscribe(event)`. The event must be supported by
   the host and declared in the plugin manifest's `runtime.events` list. This is
-  the preferred model for AI review panels, live transcription panels,
+  the preferred model for review panels, live transcription panels,
   subtitle editors, and channel browsers that need playback snapshots without
   polling.
 - HTTPS images are allowed for passive artwork such as channel logos. Direct
@@ -780,12 +813,12 @@ entry points.
 
 ## Official Plugin Improvement Checklist
 
-When updating official plugins for SDK 1.5:
+When updating official plugins for SDK 1.6:
 
 1. Keep manifest `version`, `apiVersion`, and `minHostVersion` aligned with the
    host release.
 2. Use `openplayer.api.compatibility` and `openplayer.capabilities.has(...)`
-   before invoking optional 1.5 features.
+   before invoking optional 1.6 features.
 3. Declare runtime events only when the plugin actually consumes them.
 4. Prefer high-level APIs (`media`, `player`, `playlist`, `ui`) before using
    permissioned `mpv` controls.

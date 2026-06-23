@@ -7,9 +7,9 @@ mod recording;
 
 pub(super) use artifacts::frame_capture_artifact;
 pub(super) use clipboard::copy_image_file_to_clipboard;
-#[cfg(test)]
-pub(super) use directories::normalize_capture_directory_override;
-pub(super) use directories::{capture_directory_for_app, recording_directory_for_app};
+pub(super) use directories::{
+    capture_directory_for_app, normalize_capture_directory_override, recording_directory_for_app,
+};
 pub(super) use formats::{
     normalize_capture_image_format, normalize_recording_container_format,
     recording_container_format_for_method,

@@ -184,8 +184,8 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
       get(key) {
         return requestHost("plugin.storage.get", { key });
       },
-      list() {
-        return requestHost("plugin.storage.list");
+      list(args) {
+        return requestHost("plugin.storage.list", args);
       },
       info() {
         return requestHost("plugin.storage.info");
@@ -235,6 +235,9 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
       },
       segmentTimeline(args = {}) {
         return requestHost("player.segmentTimeline", args);
+      },
+      exportSegment(args = {}) {
+        return requestHost("media.exportSegment", args);
       },
       snapshot() {
         return requestHost("player.snapshot");
@@ -515,6 +518,16 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
   background: color-mix(in srgb, var(--op-accent) 28%, var(--op-control));
 }
 
+.op-button--ghost {
+  background: transparent;
+}
+
+.op-button--danger {
+  color: var(--op-text);
+  border-color: color-mix(in srgb, var(--op-danger) 72%, var(--op-line));
+  background: color-mix(in srgb, var(--op-danger) 24%, var(--op-control));
+}
+
 .op-icon-button {
   width: 32px;
   padding: 0;
@@ -548,6 +561,51 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
 .op-input::placeholder,
 .op-textarea::placeholder {
   color: var(--op-muted);
+}
+
+.op-slider {
+  width: 100%;
+  min-width: 0;
+  accent-color: var(--op-accent);
+}
+
+.op-switch {
+  position: relative;
+  display: inline-flex;
+  width: 42px;
+  height: 24px;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 2px;
+  background: color-mix(in srgb, var(--op-control) 86%, transparent);
+  border: 1px solid var(--op-line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.op-switch[aria-checked="true"],
+.op-switch.is-active {
+  background: color-mix(in srgb, var(--op-accent) 28%, var(--op-control));
+  border-color: color-mix(in srgb, var(--op-accent) 68%, var(--op-line));
+}
+
+.op-switch:focus-visible {
+  outline: 2px solid var(--op-focus-ring);
+  outline-offset: 2px;
+}
+
+.op-switch__thumb {
+  width: 18px;
+  height: 18px;
+  transform: translateX(0);
+  background: var(--op-text);
+  border-radius: 999px;
+  transition: transform 140ms ease;
+}
+
+.op-switch[aria-checked="true"] .op-switch__thumb,
+.op-switch.is-active .op-switch__thumb {
+  transform: translateX(18px);
 }
 
 .op-field {
@@ -690,6 +748,42 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
   background: color-mix(in srgb, var(--op-control) 42%, transparent);
   border: 1px dashed var(--op-line);
   border-radius: var(--op-radius);
+}
+
+.op-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--op-text);
+  font-size: 12px;
+}
+
+.op-table th,
+.op-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--op-line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.op-table th {
+  color: var(--op-muted);
+  font-weight: 650;
+}
+
+.op-kbd {
+  display: inline-flex;
+  min-width: 20px;
+  min-height: 20px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  color: var(--op-muted);
+  background: color-mix(in srgb, var(--op-control) 82%, transparent);
+  border: 1px solid var(--op-line);
+  border-radius: 5px;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1;
 }
 </style>`;
   const injection = `${csp}\n${style}\n${bridge}`;

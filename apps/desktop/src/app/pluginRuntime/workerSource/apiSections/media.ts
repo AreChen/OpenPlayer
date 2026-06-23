@@ -20,6 +20,9 @@ export function pluginWorkerMediaApiSource() {
       segmentTimeline(args = {}) {
         return requestHost("player.segmentTimeline", args);
       },
+      exportSegment(args = {}) {
+        return requestHost("media.exportSegment", args);
+      },
       snapshot() {
         return requestHost("player.snapshot");
       },

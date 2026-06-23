@@ -109,6 +109,63 @@ fn plugin_runtime_storage_batch_update_is_atomic() {
 }
 
 #[test]
+fn plugin_runtime_storage_lists_values_by_prefix_and_limit() {
+    let (mut store, directory) = temp_store();
+    store
+        .import_theme_plugin_json(webview_runtime_plugin_json())
+        .expect("runtime plugin should import");
+    store
+        .update_plugin_runtime_storage_values(
+            "dev.openplayer.runtime.worker",
+            HashMap::from([
+                ("cache.source-a.0".to_string(), serde_json::json!("a0")),
+                ("cache.source-a.1".to_string(), serde_json::json!("a1")),
+                ("cache.source-b.0".to_string(), serde_json::json!("b0")),
+                ("settings.mode".to_string(), serde_json::json!("compact")),
+            ]),
+            Vec::new(),
+        )
+        .expect("runtime storage values should persist");
+
+    let values = store
+        .plugin_runtime_storage_values_filtered(
+            "dev.openplayer.runtime.worker",
+            Some("cache.source-a."),
+            Some(1),
+        )
+        .expect("runtime storage should support bounded prefix scans");
+    let _ = std::fs::remove_dir_all(&directory);
+
+    assert_eq!(
+        values,
+        HashMap::from([("cache.source-a.0".to_string(), serde_json::json!("a0"))])
+    );
+}
+
+#[test]
+fn plugin_runtime_storage_info_reports_size_limits_and_usage() {
+    let (mut store, directory) = temp_store();
+    store
+        .import_theme_plugin_json(webview_runtime_plugin_json())
+        .expect("runtime plugin should import");
+    store
+        .set_plugin_runtime_storage_value(
+            "dev.openplayer.runtime.worker",
+            "cache.meta",
+            serde_json::json!({ "items": 2 }),
+        )
+        .expect("runtime storage value should persist");
+
+    let info = store
+        .plugin_runtime_storage_info("dev.openplayer.runtime.worker")
+        .expect("runtime storage info should be readable");
+    let _ = std::fs::remove_dir_all(&directory);
+
+    assert_eq!(info.max_value_bytes, 64 * 1024);
+    assert!(info.total_bytes >= "{\"items\":2}".len());
+}
+
+#[test]
 fn plugin_runtime_storage_is_removed_with_plugin() {
     let (mut store, directory) = temp_store();
     store
@@ -415,6 +472,7 @@ fn accepts_phase_two_plugin_sdk_permissions() {
     assert!(is_supported_plugin_permission("network.request"));
     assert!(is_supported_plugin_permission("filesystem.pick"));
     assert!(is_supported_plugin_permission("filesystem.reveal"));
+    assert!(is_supported_plugin_permission("media.export"));
     assert!(is_supported_plugin_permission("audio.extract"));
     assert!(is_supported_plugin_permission("subtitle.read"));
     assert!(is_supported_plugin_permission("subtitle.write"));
@@ -465,7 +523,7 @@ fn imports_runtime_event_subscription_manifest() {
     let manifest = webview_runtime_plugin_json().replace(
         r#""sandbox": "openplayer-worker""#,
         r#""sandbox": "openplayer-worker",
-            "events": ["media.loaded", "playback.started", "theme.changed"]"#,
+            "events": ["media.loaded", "playback.started", "playlist.changed", "recording.changed", "theme.changed"]"#,
     );
     std::fs::write(source_directory.join("manifest.json"), manifest)
         .expect("runtime plugin manifest should be written");
@@ -485,7 +543,13 @@ fn imports_runtime_event_subscription_manifest() {
 
     assert_eq!(
         sources[0].events,
-        vec!["media.loaded", "playback.started", "theme.changed"]
+        vec![
+            "media.loaded",
+            "playback.started",
+            "playlist.changed",
+            "recording.changed",
+            "theme.changed"
+        ]
     );
 }
 

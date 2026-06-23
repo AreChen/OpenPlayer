@@ -11,6 +11,8 @@ export const supportedPluginRuntimeEvents = Object.freeze([
   "playback.volumeChanged",
   "playback.speedChanged",
   "tracks.changed",
+  "playlist.changed",
+  "recording.changed",
   "theme.changed",
   "window.fullscreenChanged",
   "plugin.view.opened",

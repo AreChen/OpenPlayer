@@ -132,6 +132,8 @@ export function usePlayerInteractionRuntime({
     togglePluginRecording: captureActions.togglePluginRecording,
   });
   const previousPluginViewRef = useRef<typeof mediaDomain.activePluginView>(null);
+  const previousPlaylistSignatureRef = useRef<string | null>(null);
+  const previousRecordingSignatureRef = useRef<string | null>(null);
   useEffect(() => {
     const previous = previousPluginViewRef.current;
     const active = mediaDomain.activePluginView;
@@ -143,6 +145,29 @@ export function usePlayerInteractionRuntime({
     }
     previousPluginViewRef.current = active;
   }, [mediaDomain.activePluginView, pluginRuntime]);
+  useEffect(() => {
+    const signature = JSON.stringify({
+      media: media?.id ?? media?.path ?? null,
+      currentIndex: state.currentIndex,
+      queue: state.queue.map((item) => item.id || item.path),
+    });
+    if (previousPlaylistSignatureRef.current !== null && previousPlaylistSignatureRef.current !== signature) {
+      pluginRuntime.broadcastPluginRuntimeEvent("playlist.changed", {
+        media,
+        queue: state.queue,
+        currentIndex: state.currentIndex,
+      });
+    }
+    previousPlaylistSignatureRef.current = signature;
+  }, [media, pluginRuntime, state.currentIndex, state.queue]);
+  useEffect(() => {
+    const recordingState = state.recordingState;
+    const signature = JSON.stringify(recordingState);
+    if (previousRecordingSignatureRef.current !== null && previousRecordingSignatureRef.current !== signature) {
+      pluginRuntime.broadcastPluginRuntimeEvent("recording.changed", recordingState);
+    }
+    previousRecordingSignatureRef.current = signature;
+  }, [pluginRuntime, state.recordingState]);
   playback.bindPlayerMpvSessionHandlers({
     applyStoredPluginMpvSettings: settings.applyStoredPluginMpvSettings,
     broadcastPluginRuntimeEvent: pluginRuntime.broadcastPluginRuntimeEvent,

@@ -63,6 +63,7 @@ pub fn run() {
             crate::mpv_embed::mpv_embed_plugin_add_audio_filter,
             crate::mpv_embed::mpv_embed_plugin_remove_audio_filter,
             crate::mpv_embed::mpv_embed_extract_audio_clip,
+            crate::mpv_embed::mpv_embed_export_media_segment,
             crate::mpv_embed::mpv_embed_capture_screenshot,
             crate::mpv_embed::mpv_embed_capture_plugin_frame,
             crate::mpv_embed::mpv_embed_recording_state,

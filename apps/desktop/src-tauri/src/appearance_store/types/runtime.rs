@@ -58,5 +58,7 @@ pub struct PluginStorageInfo {
     pub(in crate::appearance_store) plugin_id: String,
     pub(in crate::appearance_store) schema_version: u32,
     pub(in crate::appearance_store) manifest_version: u32,
+    pub(in crate::appearance_store) total_bytes: usize,
+    pub(in crate::appearance_store) max_value_bytes: usize,
     pub(in crate::appearance_store) keys: Vec<String>,
 }

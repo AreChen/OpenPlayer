@@ -158,8 +158,15 @@ pub fn appearance_plugin_kv_get(
 pub fn appearance_plugin_kv_list(
     state: State<'_, AppearanceStoreState>,
     plugin_id: String,
+    prefix: Option<String>,
+    limit: Option<usize>,
 ) -> Result<HashMap<String, Value>, String> {
-    state.with_store(|store| store.plugin_runtime_storage_values(&plugin_id))
+    state.with_store(|store| {
+        if prefix.is_none() && limit.is_none() {
+            return store.plugin_runtime_storage_values(&plugin_id);
+        }
+        store.plugin_runtime_storage_values_filtered(&plugin_id, prefix.as_deref(), limit)
+    })
 }
 
 #[tauri::command]

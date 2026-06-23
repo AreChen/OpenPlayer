@@ -124,7 +124,20 @@ pub(crate) fn setup_overlay_window(app: &mut tauri::App) -> Result<(), String> {
         sync_overlay_to_main(&app_handle);
         let _ = overlay.show();
         set_overlay_owner(&window, &overlay);
+        let app_handle_for_overlay_close = app_handle.clone();
+        overlay.on_window_event(move |event| {
+            if matches!(event, WindowEvent::CloseRequested { .. })
+                && let Ok(main) = main_window(&app_handle_for_overlay_close)
+            {
+                let _ = main.close();
+            }
+        });
         window.on_window_event(move |event| {
+            if matches!(event, WindowEvent::CloseRequested { .. })
+                && let Some(overlay) = overlay_window(&app_handle)
+            {
+                let _ = overlay.close();
+            }
             if matches!(
                 event,
                 WindowEvent::Moved(_)

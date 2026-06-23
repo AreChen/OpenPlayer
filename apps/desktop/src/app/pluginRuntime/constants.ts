@@ -1,10 +1,10 @@
 export const supportedPluginLoadOptionKeys = new Set(["demuxer", "demuxer-lavf-format"]);
-export const PLUGIN_SDK_VERSION = "1.5.1";
-export const OPENPLAYER_HOST_VERSION = "1.5.1";
+export const PLUGIN_SDK_VERSION = "1.6.0";
+export const OPENPLAYER_HOST_VERSION = "1.6.0";
 export const OPENPLAYER_API_COMPATIBILITY = Object.freeze({
   sdkVersion: PLUGIN_SDK_VERSION,
   hostVersion: OPENPLAYER_HOST_VERSION,
-  minHostVersion: "1.5.1",
+  minHostVersion: "1.6.0",
   compatibility: "1.x-additive",
 });
 export const OPENPLAYER_HOST_CAPABILITIES = Object.freeze([
@@ -25,6 +25,7 @@ export const OPENPLAYER_HOST_CAPABILITIES = Object.freeze([
   "playlist.write",
   "media.openStream",
   "media.segments",
+  "media.segmentExport",
   "audio.extractClip",
   "capture.frame",
   "mpv.loadOptions",

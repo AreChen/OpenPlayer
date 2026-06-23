@@ -20,9 +20,9 @@ model. Keep official plugin implementations in `openplayer-plugins`; keep only
 small host test fixtures in this repository when integration tests need a
 manifest.
 
-For current SDK 1.5 runtime usage, examples, permissions, events, mpv controls,
+For current SDK 1.6 runtime usage, examples, permissions, events, mpv controls,
 custom views, and verification commands, read
-[`sdk-1.5-developer-guide.md`](./sdk-1.5-developer-guide.md).
+[`sdk-1.6-developer-guide.md`](./sdk-1.6-developer-guide.md).
 
 ## Current Capabilities
 
@@ -58,6 +58,8 @@ custom views, and verification commands, read
 - Execute optional `webviewJs` runtime scripts in a Web Worker sandbox with no
   DOM, Tauri API, local filesystem access, or direct host privileges.
 - Send playback and media lifecycle events to runtime plugins.
+- Send playlist and recording lifecycle events to runtime and view plugins so
+  queue browsers and capture panels can refresh without polling.
 - Let runtime plugins participate in `media.opening` and return safe mpv
   `loadfile` options such as HLS demuxer hints before playback starts.
 - Let runtime and view plugins ask the host for normalized current playback
@@ -66,6 +68,10 @@ custom views, and verification commands, read
 - Let runtime and view plugins split loaded media into bounded overlapping
   chunks with `openplayer.media.segmentTimeline` for batch transcription,
   analysis, or summarization.
+- Let runtime and view plugins export bounded audio or video segments with
+  `openplayer.media.exportSegment`; the host validates time ranges, output
+  names, and formats, then writes into the user's Downloads/OpenPlayer/Exports
+  folder without granting plugins arbitrary filesystem write access.
 - Let runtime and view plugins capture the current video frame as a managed
   image artifact with `openplayer.capture.frame` for OCR, visual understanding,
   scene tagging, or summary workflows.
@@ -73,11 +79,15 @@ custom views, and verification commands, read
   `openplayer.network.request({ bodyFile })` without exposing arbitrary local
   filesystem reads.
 - Let plugins list, inspect, remove, and clear their own managed audio clips
-  and frame captures with `openplayer.artifacts`, so AI and analysis plugins can
-  clean up batch artifacts without raw filesystem access.
+  and frame captures with `openplayer.artifacts`, so analysis and
+  provider-backed plugins can clean up batch artifacts without raw filesystem
+  access.
 - Let runtime and view plugins call JSON provider APIs with
   `openplayer.network.requestJson`, a convenience wrapper over the same
   host-mediated `network.request` permission and validation path.
+- Let cache-heavy plugins call `openplayer.storage.list({ prefix, limit })` and
+  inspect `openplayer.storage.info().totalBytes` / `maxValueBytes`, while still
+  keeping all plugin data private to the host-managed redb store.
 - Let runtime and view plugins create subtitle documents from structured
   `SubtitleCue[]` input or standard subtitle text with
   `openplayer.subtitle.documents.create`; the host writes results into a
@@ -93,22 +103,23 @@ custom views, and verification commands, read
   `openplayer.subtitle.documents.create`, `list`, `read`, `replace`,
   `appendCues`, and `remove`; the older `loadGenerated*` and `*Generated*`
   helpers remain compatibility aliases over the same managed subtitle files.
-- Keep AI-like features plugin-composed: use media segments, audio extraction,
-  frame capture, subtitle read/write, network requests, tasks, storage, and
-  logs as reusable primitives instead of adding one-off core toggles for
-  transcription, translation, OCR, or a specific provider.
+- Keep provider-backed media workflows plugin-composed: use media segments,
+  audio extraction, frame capture, subtitle read/write, network requests, tasks,
+  storage, and logs as reusable primitives instead of adding one-off core
+  toggles for transcription, translation, OCR, or a specific provider.
 
 ## Composable SDK Model
 
 OpenPlayer host APIs should expose durable media-player primitives, not
-provider-shaped AI features. A transcription, translation, subtitle cleanup, or
+provider-shaped feature APIs. A transcription, translation, subtitle cleanup, or
 OCR plugin should be an orchestration of these blocks:
 
 - playback context: `openplayer.media.currentSegment`,
   `openplayer.media.segmentTimeline`, `openplayer.media.current`, and
   `openplayer.media.snapshot`;
 - media artifacts: `openplayer.audio.extractClip`,
-  `openplayer.capture.frame`, and `openplayer.artifacts` lifecycle helpers;
+  `openplayer.capture.frame`, `openplayer.media.exportSegment`, and
+  `openplayer.artifacts` lifecycle helpers;
 - provider I/O: `openplayer.network.request` and
   `openplayer.network.requestJson`;
 - subtitle documents: `openplayer.subtitle.currentCue`,
@@ -127,7 +138,7 @@ subtitle document operation, audio extraction option, or event bridge.
 
 Manifest capability kinds are broad UI/discovery categories such as
 `audioTool` or `subtitleTool`; they are not permission gates and should not
-become per-feature AI taxonomy.
+become per-provider taxonomy.
 
 ## Package Format
 
@@ -159,7 +170,7 @@ from the Plugins settings page.
   "name": "Subtitle Styler",
   "version": "1.0.0",
   "apiVersion": "1",
-  "minHostVersion": "1.5.1",
+  "minHostVersion": "1.6.0",
   "author": "OpenPlayer Team",
   "updateUrl": "https://github.com/AreChen/openplayer-plugins/releases",
   "description": "Subtitle typography controls for OpenPlayer.",
@@ -257,7 +268,7 @@ Theme plugins remain supported:
   "name": "Ocean Theme Pack",
   "version": "1.0.0",
   "apiVersion": "1",
-  "minHostVersion": "1.5.1",
+  "minHostVersion": "1.6.0",
   "author": "OpenPlayer Team",
   "updateUrl": "https://github.com/AreChen/openplayer-plugins/releases",
   "description": "Ocean themes for OpenPlayer.",
@@ -316,6 +327,9 @@ The current script size limit is 1 MiB.
 payloads that they declare here. Plugins can then enable or disable those
 declared subscriptions at runtime with `openplayer.events.subscribe()` and
 `openplayer.events.unsubscribe()`.
+Queue-aware views can declare `playlist.changed`; capture views can declare
+`recording.changed`. These events follow the same manifest declaration and
+runtime subscription rules as playback snapshot events.
 
 Custom views use the same event contract through `window.openplayer`. A
 view-only plugin should still declare the events it needs in `runtime.events`;
@@ -331,8 +345,8 @@ openplayer.onReady(async () => {
     console.log(`SDK compatibility: ${openplayer.api.compatibility.compatibility}`);
   }
 
-  const launchCount = (await openplayer.storage.get("launch.count")) ?? 0;
-  await openplayer.storage.set("launch.count", Number(launchCount) + 1);
+  const launchCount = (await openplayer.storage.get("runtime.launchCount")) ?? 0;
+  await openplayer.storage.set("runtime.launchCount", Number(launchCount) + 1);
   await openplayer.events.subscribe("playback.snapshot");
 });
 
@@ -359,7 +373,7 @@ openplayer.commands.register("plugin.open-network-stream", async () => {
 });
 ```
 
-SDK 1.5.1 exposes `openplayer.host`, `openplayer.api`, and
+SDK 1.6.0 exposes `openplayer.host`, `openplayer.api`, and
 `openplayer.capabilities` in both worker runtimes and custom views.
 `host.version` identifies the running OpenPlayer build.
 `api.compatibility` gives plugins a stable compatibility block for feature
@@ -419,7 +433,9 @@ upgrade, and exposes schema metadata through `openplayer.storage.info()` so
 plugins can run their own migrations and call
 `openplayer.storage.markMigrated()` without adding core feature toggles. Use
 `plugin.storage.update` for atomic `{ set, remove }` batches during migrations,
-queue updates, and cache index refreshes.
+queue updates, and cache index refreshes. `plugin.storage.list` accepts
+optional `prefix` and `limit` arguments for bounded cache scans, and
+`plugin.storage.info` reports byte usage and per-value limits.
 `player.openStreamDialog` is available to declarative actions and opens the
 host-owned network stream dialog.
 Capture requests such as `player.startRecording`, `player.stopRecording`,
@@ -470,6 +486,7 @@ Supported permission declarations:
 - `mpv.osd`
 - `mpv.scriptMessage`
 - `media.openStream`
+- `media.export`
 - `filesystem.pick`
 - `filesystem.reveal`
 - `network.request`

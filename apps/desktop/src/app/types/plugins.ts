@@ -169,6 +169,8 @@ export type PluginRuntimeEventName =
   | "playback.volumeChanged"
   | "playback.speedChanged"
   | "tracks.changed"
+  | "playlist.changed"
+  | "recording.changed"
   | "theme.changed"
   | "window.fullscreenChanged"
   | "plugin.view.opened"

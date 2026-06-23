@@ -6,7 +6,7 @@ implementation.
 
 ## Primary References
 
-- Start with `docs/plugins/sdk-1.5-developer-guide.md` for current SDK usage.
+- Start with `docs/plugins/sdk-1.6-developer-guide.md` for current SDK usage.
 - Keep `docs/plugins/README.md` as the host/plugin architecture overview.
 - Treat `docs/plugins/sdk-v1-design.md` as design history, not the current API
   contract.
@@ -63,7 +63,7 @@ the same change. Do not leave aspirational SDK behavior documented as current.
 - Keep docs concise and practical. Prefer runnable snippets and manifest
   fragments over broad product language.
 - Use ASCII unless quoting existing localized text.
-- Use stable names such as `SDK 1.5`, `webviewJs`, `openplayer-worker`, and
+- Use stable names such as `SDK 1.6`, `webviewJs`, `openplayer-worker`, and
   `.opplugin` consistently.
 - Link to existing docs instead of duplicating long sections.
 

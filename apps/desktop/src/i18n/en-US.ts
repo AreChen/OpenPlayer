@@ -139,6 +139,7 @@ export const enUS = {
           "filesystem.pick": "Can ask the user to pick local files or folders.",
           "filesystem.reveal": "Can reveal local files in the system file manager.",
           "media.openStream": "Can open network streams through OpenPlayer.",
+          "media.export": "Can export selected audio or video segments to a user-visible folder.",
           "audio.extract": "Can export short managed audio clips from the current media.",
           "subtitle.read": "Can read the currently displayed subtitle cue.",
           "subtitle.write": "Can create and load generated subtitle tracks for the current media.",

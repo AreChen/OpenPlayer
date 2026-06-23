@@ -20,7 +20,11 @@ export const handlePluginDataRuntimeCommand: PluginRuntimeCommandHandler = async
       return await invoke("appearance_plugin_kv_get", { pluginId, key });
     }
     case "plugin.storage.list":
-      return await invoke("appearance_plugin_kv_list", { pluginId });
+      return await invoke("appearance_plugin_kv_list", {
+        pluginId,
+        prefix: runtimeStringArg(record, "prefix"),
+        limit: runtimeStorageLimit(record),
+      });
     case "plugin.storage.info":
       return await invoke("appearance_plugin_kv_info", { pluginId });
     case "plugin.storage.markMigrated":
@@ -98,4 +102,15 @@ function runtimeStorageRemoveKeys(value: unknown) {
     }
     return item.trim();
   });
+}
+
+function runtimeStorageLimit(record: Record<string, unknown>) {
+  const value = runtimeNumberArg(record, "limit");
+  if (value === null) {
+    return null;
+  }
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error("plugin storage list limit must be a non-negative integer");
+  }
+  return value;
 }

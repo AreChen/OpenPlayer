@@ -46,6 +46,7 @@ mod plugin_core;
 mod plugin_properties;
 #[cfg(any(windows, test))]
 mod rtsp_telemetry;
+mod segment_export;
 #[cfg(any(windows, test))]
 mod transport_latency;
 mod types;
@@ -84,6 +85,7 @@ use plugin_core::*;
 use plugin_properties::*;
 #[cfg(any(windows, test))]
 use rtsp_telemetry::*;
+use segment_export::*;
 #[cfg(any(windows, test))]
 use transport_latency::*;
 pub(crate) use types::*;

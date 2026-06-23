@@ -94,14 +94,16 @@ impl AppearanceStore {
                 format!("failed to open plugin runtime storage metadata table: {error}")
             })?;
         let mut keys = Vec::new();
+        let mut total_bytes = 0usize;
         for item in storage
             .iter()
             .map_err(|error| format!("failed to scan plugin runtime storage: {error}"))?
         {
-            let (key, _) =
+            let (key, value) =
                 item.map_err(|error| format!("failed to read plugin runtime storage: {error}"))?;
             if let Some(item_key) = key.value().strip_prefix(&prefix) {
                 keys.push(item_key.to_string());
+                total_bytes += value.value().len();
             }
         }
         keys.sort();
@@ -122,6 +124,8 @@ impl AppearanceStore {
             plugin_id: plugin_id.to_string(),
             schema_version,
             manifest_version,
+            total_bytes,
+            max_value_bytes: MAX_PLUGIN_RUNTIME_STORAGE_VALUE_BYTES,
             keys,
         })
     }
@@ -154,8 +158,18 @@ impl AppearanceStore {
         &self,
         plugin_id: &str,
     ) -> Result<HashMap<String, Value>, String> {
+        self.plugin_runtime_storage_values_filtered(plugin_id, None, None)
+    }
+
+    pub(in crate::appearance_store) fn plugin_runtime_storage_values_filtered(
+        &self,
+        plugin_id: &str,
+        key_prefix: Option<&str>,
+        limit: Option<usize>,
+    ) -> Result<HashMap<String, Value>, String> {
         let plugin_id = plugin_id.trim();
         let prefix = plugin_runtime_storage_prefix(plugin_id);
+        let key_prefix = normalize_plugin_runtime_storage_prefix(key_prefix)?;
         let transaction = self
             .database
             .begin_read()
@@ -171,6 +185,16 @@ impl AppearanceStore {
             let (key, value) =
                 item.map_err(|error| format!("failed to read plugin runtime storage: {error}"))?;
             if let Some(item_key) = key.value().strip_prefix(&prefix) {
+                if let Some(key_prefix) = key_prefix
+                    && !item_key.starts_with(key_prefix)
+                {
+                    continue;
+                }
+                if let Some(limit) = limit
+                    && values.len() >= limit
+                {
+                    break;
+                }
                 values.insert(
                     item_key.to_string(),
                     decode_plugin_runtime_storage_value(value.value())?,
@@ -305,4 +329,22 @@ pub(in crate::appearance_store) fn parse_plugin_runtime_storage_schema_version(
     value
         .parse::<u32>()
         .map_err(|error| format!("failed to decode plugin runtime storage metadata: {error}"))
+}
+
+fn normalize_plugin_runtime_storage_prefix(prefix: Option<&str>) -> Result<Option<&str>, String> {
+    let Some(prefix) = prefix.map(str::trim).filter(|prefix| !prefix.is_empty()) else {
+        return Ok(None);
+    };
+    if prefix.len() > crate::appearance_store::MAX_PLUGIN_RUNTIME_STORAGE_KEY_BYTES
+        || prefix.starts_with('.')
+        || prefix.contains("..")
+        || !prefix
+            .chars()
+            .all(|char| char.is_ascii_alphanumeric() || matches!(char, '.' | '_' | '-'))
+    {
+        return Err(format!(
+            "plugin runtime storage key prefix is invalid: {prefix}"
+        ));
+    }
+    Ok(Some(prefix))
 }

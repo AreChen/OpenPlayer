@@ -139,6 +139,7 @@ export const zhCN = {
           "filesystem.pick": "可请求用户选择本地文件或文件夹。",
           "filesystem.reveal": "可在系统文件管理器中显示本地文件。",
           "media.openStream": "可通过 OpenPlayer 打开网络流。",
+          "media.export": "可把选定音频或视频片段导出到用户可见目录。",
           "audio.extract": "可从当前媒体导出短时宿主管理音频片段。",
           "subtitle.read": "可读取当前正在显示的字幕片段。",
           "subtitle.write": "可为当前媒体创建并加载插件生成的字幕轨道。",

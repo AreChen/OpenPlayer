@@ -1,5 +1,6 @@
 mod audio;
 mod capture;
+mod export;
 mod playback;
 mod state;
 mod video_host;
@@ -8,6 +9,7 @@ mod wall;
 
 pub(crate) use audio::*;
 pub(crate) use capture::*;
+pub(crate) use export::*;
 pub(crate) use playback::*;
 pub(crate) use state::*;
 pub(crate) use video_host::*;
