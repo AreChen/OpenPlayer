@@ -285,7 +285,20 @@ jobs:
           mkdir -p "$dmg_dir"
           dmg="$PWD/$dmg_dir/OpenPlayer_${version}_${{ matrix.arch }}.dmg"
           rm -f "$dmg" "$dmg.sha256"
-          hdiutil create -volname OpenPlayer -srcfolder "$app" -ov -format UDZO "$dmg"
+          for attempt in 1 2 3; do
+            if hdiutil create -volname OpenPlayer -srcfolder "$app" -ov -format UDZO "$dmg"; then
+              break
+            fi
+
+            status=$?
+            if [ "$attempt" -eq 3 ]; then
+              exit "$status"
+            fi
+
+            hdiutil detach /Volumes/OpenPlayer -force || true
+            rm -f "$dmg"
+            sleep $((attempt * 10))
+          done
           shasum -a 256 "$dmg" > "$dmg.sha256"
 
       - name: Upload unsigned macOS package artifact
