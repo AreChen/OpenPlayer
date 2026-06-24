@@ -43,6 +43,7 @@ const packageJson = await readJson("apps/desktop/package.json");
 const packageLock = await readJson("apps/desktop/package-lock.json");
 const tauriConfig = await readJson("apps/desktop/src-tauri/tauri.conf.json");
 const pluginRuntimeConstants = await readText("apps/desktop/src/app/pluginRuntime/constants.ts");
+const releaseWorkflow = await readText(".github/workflows/release.yml");
 
 const versions = new Map([
   ["Cargo workspace", matchVersion(workspaceToml, /\[workspace\.package\][\s\S]*?^version = "([^"]+)"$/m, "Cargo workspace")],
@@ -76,6 +77,14 @@ if (releaseTag && releaseTag !== expectedTag) {
 const releaseNotesPath = `docs/releases/${expectedTag}.md`;
 if (!existsSync(rootFile(releaseNotesPath))) {
   fail(`missing release notes: ${releaseNotesPath}`);
+}
+
+if (!/ln -s \/Applications "\$dmg_root\/Applications"/.test(releaseWorkflow)) {
+  fail("macOS DMG workflow must add an Applications symlink for drag-and-drop installation");
+}
+
+if (!/hdiutil create[\s\S]*-srcfolder "\$dmg_root"/.test(releaseWorkflow)) {
+  fail("macOS DMG workflow must build from the staged DMG folder, not directly from OpenPlayer.app");
 }
 
 console.log(`release metadata ok: ${version}`);

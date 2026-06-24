@@ -282,11 +282,16 @@ jobs:
           version="$(node -e "const fs=require('fs'); console.log(JSON.parse(fs.readFileSync('apps/desktop/package.json','utf8')).version)")"
           app="$(realpath target/release/bundle/macos/OpenPlayer.app)"
           dmg_dir="target/release/bundle/dmg"
+          dmg_root="$RUNNER_TEMP/openplayer-dmg-${{ matrix.arch }}"
           mkdir -p "$dmg_dir"
+          rm -rf "$dmg_root"
+          mkdir -p "$dmg_root"
+          cp -R "$app" "$dmg_root/OpenPlayer.app"
+          ln -s /Applications "$dmg_root/Applications"
           dmg="$PWD/$dmg_dir/OpenPlayer_${version}_${{ matrix.arch }}.dmg"
           rm -f "$dmg" "$dmg.sha256"
           for attempt in 1 2 3; do
-            if hdiutil create -volname OpenPlayer -srcfolder "$app" -ov -format UDZO "$dmg"; then
+            if hdiutil create -volname OpenPlayer -srcfolder "$dmg_root" -ov -format UDZO "$dmg"; then
               break
             fi
 
@@ -296,6 +301,10 @@ jobs:
             fi
 
             hdiutil detach /Volumes/OpenPlayer -force || true
+            rm -rf "$dmg_root"
+            mkdir -p "$dmg_root"
+            cp -R "$app" "$dmg_root/OpenPlayer.app"
+            ln -s /Applications "$dmg_root/Applications"
             rm -f "$dmg"
             sleep $((attempt * 10))
           done
