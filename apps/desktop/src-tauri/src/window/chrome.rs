@@ -1,7 +1,9 @@
+#[cfg(feature = "mpv-embed")]
+use crate::mpv_embed::stop_embedded_player_for_close;
 use tauri::{AppHandle, Position, Size, WebviewWindow};
 
 use super::{
-    WindowPlacement, WindowState, main_window,
+    WindowPlacement, WindowState, begin_window_close, main_window,
     overlay::{focus_overlay_window, schedule_overlay_sync_to_main},
     overlay_window,
 };
@@ -78,7 +80,14 @@ pub(super) fn toggle_always_on_top(
     Ok(enabled)
 }
 
-pub(super) fn close(app: AppHandle) -> Result<(), String> {
+pub(super) fn close(app: AppHandle, window_state: &WindowState) -> Result<(), String> {
+    if !begin_window_close(window_state) {
+        return Ok(());
+    }
+
+    #[cfg(feature = "mpv-embed")]
+    let _ = stop_embedded_player_for_close(&app);
+
     if let Some(overlay) = overlay_window(&app) {
         let _ = overlay.close();
     }

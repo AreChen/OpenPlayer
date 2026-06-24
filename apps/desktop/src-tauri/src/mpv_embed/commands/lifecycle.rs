@@ -82,25 +82,39 @@ pub fn open_path_for_window(
     Ok(snapshot)
 }
 
+pub(crate) fn stop_embedded_player_for_close(app: &AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        if MainThreadMarker::new().is_none() {
+            return stop_player_on_macos_main_thread(app);
+        }
+    }
+
+    let state = app.state::<MpvEmbedState>();
+    stop_player(state.inner())
+}
+
+#[cfg(target_os = "macos")]
+fn stop_player_on_macos_main_thread(app: &AppHandle) -> Result<(), String> {
+    let app_for_stop = app.clone();
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    app.run_on_main_thread(move || {
+        let state = app_for_stop.state::<MpvEmbedState>();
+        let _ = sender.send(stop_player(state.inner()));
+    })
+    .map_err(|error| format!("failed to schedule macOS mpv AppKit host teardown: {error}"))?;
+
+    receiver
+        .recv()
+        .map_err(|_| "macOS mpv AppKit host teardown did not return a result".to_string())?
+}
+
 #[tauri::command]
 pub fn mpv_embed_stop(window: Window, state: State<'_, MpvEmbedState>) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         if MainThreadMarker::new().is_none() {
-            let app = window.app_handle().clone();
-            let app_for_stop = app.clone();
-            let (sender, receiver) = std::sync::mpsc::sync_channel(1);
-            app.run_on_main_thread(move || {
-                let state = app_for_stop.state::<MpvEmbedState>();
-                let _ = sender.send(stop_player(state.inner()));
-            })
-            .map_err(|error| {
-                format!("failed to schedule macOS mpv AppKit host teardown: {error}")
-            })?;
-
-            return receiver.recv().map_err(|_| {
-                "macOS mpv AppKit host teardown did not return a result".to_string()
-            })?;
+            return stop_player_on_macos_main_thread(window.app_handle());
         }
     }
 

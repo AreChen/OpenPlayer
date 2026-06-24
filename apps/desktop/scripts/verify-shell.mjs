@@ -1069,6 +1069,10 @@ assert.match(macosGlViewSource, /NSWindowCollectionBehaviorFullScreenAuxiliary[\
 assert.match(tauriRuntimeSource, /WindowEvent::Focused\(true\)[\s\S]*focus_overlay_window\(&app_handle\)/, "clicking the video/main window must return keyboard focus to the overlay shortcut handler");
 assert.match(tauriRuntimeSource, /WindowEvent::CloseRequested[\s\S]*overlay_window\(&app_handle\)[\s\S]*overlay\.close\(\)/, "closing the main video window through OS chrome or Alt+F4 must also close the overlay controls window");
 assert.match(tauriRuntimeSource, /overlay\.on_window_event\([\s\S]*WindowEvent::CloseRequested[\s\S]*main_window\(&[a-zA-Z0-9_]+\)[\s\S]*main\.close\(\)/, "closing the focused overlay controls window through Alt+F4 must also close the main video window");
+assert.match(tauriRuntimeSource, /closing:\s*AtomicBool/, "window close coordination must use a process-wide guard to avoid recursive main/overlay close loops");
+assert.match(tauriRuntimeSource, /fn\s+begin_window_close[\s\S]*compare_exchange/, "window close coordination must atomically mark the first close request");
+assert.match(tauriRuntimeSource, /pub\(super\)\s+fn\s+close[\s\S]*stop_embedded_player_for_close[\s\S]*overlay\.close\(\)[\s\S]*main_window\(&app\)\?[\s\S]*\.close\(\)/, "window_close must tear down mpv before closing overlay and main windows");
+assert.match(tauriRuntimeSource, /WindowEvent::CloseRequested[\s\S]*begin_window_close[\s\S]*stop_embedded_player_for_close/, "OS chrome close requests must also tear down mpv before closing the companion window");
 assert.match(tauriRuntimeSource, /fn schedule_overlay_sync_to_main/, "desktop backend must schedule overlay sync after asynchronous fullscreen transitions");
 assert.match(windowToggleFullscreenSource, /schedule_overlay_sync_to_main\(&app\)/, "fullscreen toggling must defer overlay sync until the main window has applied fullscreen bounds");
 assert.doesNotMatch(windowToggleFullscreenSource, /sync_overlay_to_main\(&app\)/, "fullscreen toggling must not immediately sync the overlay using stale fullscreen transition bounds");

@@ -3,14 +3,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::{thread, time::Duration};
 
 #[cfg(feature = "mpv-embed")]
-use crate::mpv_embed::MpvEmbedState;
+use crate::mpv_embed::{MpvEmbedState, stop_embedded_player_for_close};
 use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, Position, Size};
 #[cfg(feature = "mpv-embed")]
 use tauri::{WebviewUrl, WebviewWindowBuilder, WindowEvent, utils::config::Color};
 
 use super::{
-    main_window, overlay_platform::prepare_macos_main_window_chrome,
-    overlay_platform::set_overlay_owner, overlay_window,
+    WindowState, begin_window_close, main_window,
+    overlay_platform::prepare_macos_main_window_chrome, overlay_platform::set_overlay_owner,
+    overlay_window,
 };
 
 #[cfg(feature = "mpv-embed")]
@@ -126,17 +127,28 @@ pub(crate) fn setup_overlay_window(app: &mut tauri::App) -> Result<(), String> {
         set_overlay_owner(&window, &overlay);
         let app_handle_for_overlay_close = app_handle.clone();
         overlay.on_window_event(move |event| {
-            if matches!(event, WindowEvent::CloseRequested { .. })
-                && let Ok(main) = main_window(&app_handle_for_overlay_close)
-            {
+            if matches!(event, WindowEvent::CloseRequested { .. }) {
+                let window_state = app_handle_for_overlay_close.state::<WindowState>();
+                if !begin_window_close(window_state.inner()) {
+                    return;
+                }
+
+                let _ = stop_embedded_player_for_close(&app_handle_for_overlay_close);
+                let Ok(main) = main_window(&app_handle_for_overlay_close) else {
+                    return;
+                };
                 let _ = main.close();
             }
         });
         window.on_window_event(move |event| {
-            if matches!(event, WindowEvent::CloseRequested { .. })
-                && let Some(overlay) = overlay_window(&app_handle)
-            {
-                let _ = overlay.close();
+            if matches!(event, WindowEvent::CloseRequested { .. }) {
+                let window_state = app_handle.state::<WindowState>();
+                if begin_window_close(window_state.inner()) {
+                    let _ = stop_embedded_player_for_close(&app_handle);
+                    if let Some(overlay) = overlay_window(&app_handle) {
+                        let _ = overlay.close();
+                    }
+                }
             }
             if matches!(
                 event,

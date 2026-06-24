@@ -1,6 +1,9 @@
 #[cfg(feature = "mpv-embed")]
 use crate::mpv_embed::{MpvEmbedSnapshot, MpvEmbedState, MpvLoadOptions};
-use std::sync::Mutex;
+use std::sync::{
+    Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, State, WebviewWindow};
 
 mod chrome;
@@ -31,10 +34,18 @@ struct WindowPlacement {
 pub(crate) struct WindowState {
     fullscreen_restore: Mutex<Option<WindowPlacement>>,
     always_on_top: Mutex<bool>,
+    closing: AtomicBool,
 }
 
 pub(super) const MIN_MAIN_WINDOW_WIDTH: i32 = 960;
 pub(super) const MIN_MAIN_WINDOW_HEIGHT: i32 = 540;
+
+pub(super) fn begin_window_close(window_state: &WindowState) -> bool {
+    window_state
+        .closing
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
+}
 
 #[tauri::command]
 pub(crate) fn window_minimize(app: AppHandle) -> Result<(), String> {
@@ -70,8 +81,11 @@ pub(crate) fn window_toggle_always_on_top(
 }
 
 #[tauri::command]
-pub(crate) fn window_close(app: AppHandle) -> Result<(), String> {
-    chrome::close(app)
+pub(crate) fn window_close(
+    app: AppHandle,
+    window_state: State<'_, WindowState>,
+) -> Result<(), String> {
+    chrome::close(app, window_state.inner())
 }
 
 #[tauri::command]
