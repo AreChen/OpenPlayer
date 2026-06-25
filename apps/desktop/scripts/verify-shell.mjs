@@ -1079,6 +1079,9 @@ assert.match(tauriRuntimeSource, /VK_OEM_5/, "Windows shortcut bridge must recog
 assert.match(tauriRuntimeSource, /openplayer-native-shortcut/, "native shortcut bridge must emit actions to the overlay frontend");
 assert.match(tauriRuntimeSource, /sync_overlay_to_main[\s\S]*focus_overlay_window\(app\)/, "overlay sync must return keyboard focus to the controls window");
 assert.match(tauriRuntimeSource, /openplayer_macos_prepare_overlay_window/, "macOS overlay window must be marked as a fullscreen auxiliary child of the video window");
+assert.match(tauriRuntimeSource, /WebviewWindowBuilder::new\([\s\S]*"overlay"[\s\S]*\.resizable\(cfg!\(target_os = "macos"\)\)/, "macOS overlay window must be natively resizable because it is the front window receiving edge hit-tests");
+assert.match(tauriRuntimeSource, /fn sync_main_to_overlay_after_resize[\s\S]*main\.set_position[\s\S]*main\.set_size/, "macOS native overlay resize must resize the main video window to match the front controls window");
+assert.match(tauriRuntimeSource, /overlay\.on_window_event\([\s\S]*WindowEvent::(?:Moved|Resized)[\s\S]*sync_main_to_overlay_after_resize/, "overlay native resize and move events must synchronize the main video window");
 assert.match(macosGlViewSource, /NSWindowCollectionBehaviorFullScreenAuxiliary[\s\S]*addChildWindow/, "macOS overlay must join the main video fullscreen space instead of creating a separate fullscreen space");
 assert.match(tauriRuntimeSource, /WindowEvent::Focused\(true\)[\s\S]*focus_overlay_window\(&app_handle\)/, "clicking the video/main window must return keyboard focus to the overlay shortcut handler");
 assert.match(tauriRuntimeSource, /WindowEvent::CloseRequested[\s\S]*overlay_window\(&app_handle\)[\s\S]*overlay\.close\(\)/, "closing the main video window through OS chrome or Alt+F4 must also close the overlay controls window");
