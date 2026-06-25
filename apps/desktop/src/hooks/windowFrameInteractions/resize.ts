@@ -11,6 +11,10 @@ type UseWindowResizeRegionsOptions = {
   onUserActivity: () => void;
 };
 
+function isMacosResizeRuntime(platformOs: string | null | undefined) {
+  return platformOs === "macos" || (!platformOs && typeof navigator !== "undefined" && /Mac/.test(navigator.platform));
+}
+
 export function useWindowResizeRegions({ platformOs, onUserActivity }: UseWindowResizeRegionsOptions) {
   const [resizeFeedback, setResizeFeedback] = useState<ResizeFeedback | null>(null);
   const manualResizeDragRef = useRef<ManualResizeDrag | null>(null);
@@ -111,7 +115,7 @@ export function useWindowResizeRegions({ platformOs, onUserActivity }: UseWindow
   function startMainWindowResize(event: ReactPointerEvent<HTMLDivElement>, direction: ResizeDirection) {
     setNativeResizeCursor(direction);
     setResizeBoundaryFeedback(direction, true);
-    if (platformOs === "macos") {
+    if (isMacosResizeRuntime(platformOs)) {
       event.currentTarget.setPointerCapture(event.pointerId);
       manualResizeDragRef.current = {
         pointerId: event.pointerId,
@@ -157,9 +161,12 @@ export function useWindowResizeRegions({ platformOs, onUserActivity }: UseWindow
     startMainWindowResize(event, direction);
   }
 
-  function handleResizePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+  function handleResizePointerMove(event: ReactPointerEvent<HTMLDivElement>, direction: ResizeDirection) {
     const pendingResize = manualResizeDragRef.current;
     if (!pendingResize || pendingResize.pointerId !== event.pointerId) {
+      event.stopPropagation();
+      setNativeResizeCursor(direction);
+      setResizeBoundaryFeedback(direction);
       return;
     }
 

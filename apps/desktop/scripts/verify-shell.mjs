@@ -726,7 +726,11 @@ assert.match(appSource, /setPointerCapture[\s\S]*manualResizeDragRef|manualResiz
 assert.match(appSource, /requestManualResizeFlush[\s\S]*resizeCommandInFlight/, "manual macOS resize fallback must coalesce pointer deltas and keep only one resize IPC in flight");
 assert.match(appSource, /flushManualResizeDelta[\s\S]*applyManualMainWindowResize/, "manual macOS resize fallback must flush coalesced deltas through the backend resize command");
 assert.match(appSource, /window_set_resize_cursor/, "resize handles must explicitly set native cursor icons instead of relying only on CSS over transparent macOS overlays");
+assert.match(appSource, /function\s+isMacosResizeRuntime[\s\S]*navigator\.platform[\s\S]*Mac/, "macOS resize fallback must not depend only on async platform support before choosing the manual resize path");
+assert.match(appSource, /isMacosResizeRuntime\(platformOs\)[\s\S]*manualResizeDragRef/, "macOS resize handles must use the manual resize path even before platform support finishes loading");
 assert.match(appSource, /(?:onPointerEnter=\{\(event\) => handleResizePointerEnter\(event, region\.direction\)\}|onPointerEnter:\s*handleResizePointerEnter[\s\S]*onPointerEnter=\{\(event\) => resizeRegionHandlers\.onPointerEnter\(event, region\.direction\)\}|onPointerEnter=\{\(event\) => resizeRegionHandlers\.onPointerEnter\(event, region\.direction\)\}[\s\S]*onPointerEnter:\s*handleResizePointerEnter)/, "resize handles must set the matching cursor as soon as the pointer enters the hit area");
+assert.match(appSource, /onPointerMove=\{\(event\) => resizeRegionHandlers\.onPointerMove\(event, region\.direction\)\}/, "resize handles must refresh hover feedback on pointer move, not only on pointer enter");
+assert.match(appSource, /function\s+handleResizePointerMove\([^)]*direction:\s*ResizeDirection[\s\S]*setResizeBoundaryFeedback\(direction\)/, "resize pointer move must keep the boundary hint active while the pointer remains inside a resize hit area");
 assert.match(appSource, /(?:onPointerLeave=\{handleResizePointerLeave\}|onPointerLeave:\s*handleResizePointerLeave[\s\S]*onPointerLeave=\{resizeRegionHandlers\.onPointerLeave\}|onPointerLeave=\{resizeRegionHandlers\.onPointerLeave\}[\s\S]*onPointerLeave:\s*handleResizePointerLeave)/, "resize handles must restore the default cursor when the pointer leaves the hit area");
 assert.match(appSource, /resizeFeedback/, "resize handles must maintain visible in-app resize feedback state for macOS when native cursor icons are unavailable");
 assert.match(appSource, /resize-feedback--active/, "resize dragging must strengthen the in-app resize feedback");
@@ -829,6 +833,9 @@ assert.match(styles, /\.history-item/, "styles must include playback history ite
 assert.match(styles, /\.drag-region\s*\{[\s\S]*inset:\s*0/, "drag region must cover the non-control player surface, not just the title strip");
 assert.match(styles, /\.resize-region\s*\{[\s\S]*z-index:\s*95/, "overlay must keep resize hit areas above modal backdrops");
 assert.match(styles, /\.resize-region\s*\{[\s\S]*background:\s*rgba\(\s*0,\s*0,\s*0,\s*0\.004\s*\)/, "transparent overlay resize hit areas must paint a near-invisible hit-test surface so macOS WebView does not pass through to the drag region");
+assert.match(styles, /\.resize-region\s*\{[\s\S]*touch-action:\s*none/, "resize hit areas must keep browser gesture handling from stealing edge drags");
+assert.match(styles, /\.resize-region--east,\s*[\s\S]*\.resize-region--west\s*\{[\s\S]*width:\s*16px/, "side resize hit areas must be wide enough to catch macOS transparent overlay edge drags");
+assert.match(styles, /\.resize-region--north-east,\s*[\s\S]*\.resize-region--south-west\s*\{[\s\S]*width:\s*24px[\s\S]*height:\s*24px/, "corner resize hit areas must be large enough to catch macOS transparent overlay corner drags");
 assert.match(styles, /\.resize-region--south-east/, "overlay must include corner resize hit areas");
 assert.match(styles, /\.resize-feedback\s*\{[\s\S]*pointer-events:\s*none/, "resize feedback must be visible without blocking media controls or resize hit areas");
 assert.match(styles, /\.resize-feedback\s*\{[\s\S]*z-index:\s*96/, "resize feedback must render above transparent resize hit areas so edge hints are complete");

@@ -3,13 +3,16 @@
   z-index: 95;
   background: rgba(0, 0, 0, 0.004);
   pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .resize-region--north,
 .resize-region--south {
-  right: 14px;
-  left: 14px;
-  height: 8px;
+  right: 24px;
+  left: 24px;
+  height: 12px;
   cursor: ns-resize;
 }
 
@@ -23,9 +26,9 @@
 
 .resize-region--east,
 .resize-region--west {
-  top: 14px;
-  bottom: 14px;
-  width: 8px;
+  top: 24px;
+  bottom: 24px;
+  width: 16px;
   cursor: ew-resize;
 }
 
@@ -41,8 +44,8 @@
 .resize-region--north-west,
 .resize-region--south-east,
 .resize-region--south-west {
-  width: 14px;
-  height: 14px;
+  width: 24px;
+  height: 24px;
 }
 
 .resize-region--north-east {
