@@ -828,6 +828,7 @@ assert.match(styles, /\.history-section/, "styles must include playback history 
 assert.match(styles, /\.history-item/, "styles must include playback history item styling");
 assert.match(styles, /\.drag-region\s*\{[\s\S]*inset:\s*0/, "drag region must cover the non-control player surface, not just the title strip");
 assert.match(styles, /\.resize-region\s*\{[\s\S]*z-index:\s*95/, "overlay must keep resize hit areas above modal backdrops");
+assert.match(styles, /\.resize-region\s*\{[\s\S]*background:\s*rgba\(\s*0,\s*0,\s*0,\s*0\.004\s*\)/, "transparent overlay resize hit areas must paint a near-invisible hit-test surface so macOS WebView does not pass through to the drag region");
 assert.match(styles, /\.resize-region--south-east/, "overlay must include corner resize hit areas");
 assert.match(styles, /\.resize-feedback\s*\{[\s\S]*pointer-events:\s*none/, "resize feedback must be visible without blocking media controls or resize hit areas");
 assert.match(styles, /\.resize-feedback\s*\{[\s\S]*z-index:\s*96/, "resize feedback must render above transparent resize hit areas so edge hints are complete");

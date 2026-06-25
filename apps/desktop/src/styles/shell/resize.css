@@ -1,7 +1,7 @@
 .resize-region {
   position: absolute;
   z-index: 95;
-  background: rgba(0, 0, 0, 0.001);
+  background: rgba(0, 0, 0, 0.004);
   pointer-events: auto;
 }
 
