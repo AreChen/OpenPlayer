@@ -41,7 +41,7 @@ export function usePlayerInteractionRuntime({
     isNetworkStreamDialogOpen: mediaDomain.isNetworkStreamDialogOpen,
     activePluginView: mediaDomain.activePluginView,
     quietKeyboardControls: state.playerPreferences.quietKeyboardControls,
-    clearResizeHoverFeedbackRef: state.clearResizeHoverFeedbackRef,
+    clearResizeHoverCursorRef: state.clearResizeHoverCursorRef,
     platformOs: state.platformSupport?.os,
     recordingShortcutAction: foundation.recordingShortcutAction,
     volumeLevel: state.volumeLevel,

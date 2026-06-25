@@ -8,12 +8,10 @@ import type {
   MpvRecordingState,
   MpvTrack,
   PlatformSupport,
-  ResizeFeedback,
   ThemeStyleProperties,
   VolumeFeedback,
   WindowCommand,
 } from "../../app/types";
-import { resizeDirectionClassName } from "../../app/windowControls";
 import type { AppStrings } from "../../i18n";
 
 type StageOverlaysProps = {
@@ -25,7 +23,6 @@ type StageOverlaysProps = {
   primaryAudioTrack: MpvTrack | null;
   displayTime: number;
   duration: number;
-  resizeFeedback: ResizeFeedback | null;
   isDropActive: boolean;
   playbackError: string | null;
   volumeFeedback: VolumeFeedback | null;
@@ -44,7 +41,6 @@ export function StageOverlays({
   primaryAudioTrack,
   displayTime,
   duration,
-  resizeFeedback,
   isDropActive,
   playbackError,
   volumeFeedback,
@@ -78,19 +74,6 @@ export function StageOverlays({
               </small>
             </div>
           </div>
-        </div>
-      )}
-
-      {resizeFeedback && (
-        <div aria-hidden="true" className={`resize-feedback resize-feedback--${resizeDirectionClassName(resizeFeedback.direction)} ${resizeFeedback.active ? "resize-feedback--active" : ""}`}>
-          <span className="resize-feedback-line resize-feedback-line--north" />
-          <span className="resize-feedback-line resize-feedback-line--south" />
-          <span className="resize-feedback-line resize-feedback-line--east" />
-          <span className="resize-feedback-line resize-feedback-line--west" />
-          <span className="resize-feedback-corner resize-feedback-corner--north-east" />
-          <span className="resize-feedback-corner resize-feedback-corner--north-west" />
-          <span className="resize-feedback-corner resize-feedback-corner--south-east" />
-          <span className="resize-feedback-corner resize-feedback-corner--south-west" />
         </div>
       )}
 

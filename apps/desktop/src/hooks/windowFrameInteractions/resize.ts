@@ -1,5 +1,7 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import type { ManualResizeDrag, ResizeDirection, ResizeFeedback } from "../../app/types";
+import { useRef, type PointerEvent as ReactPointerEvent } from "react";
+import { WINDOW_RESIZE_EDGE_HIT_PX } from "../../app/constants";
+import { isPointerInsideSelector } from "../../app/shortcuts";
+import type { ManualResizeDrag, ResizeDirection } from "../../app/types";
 import {
   applyManualMainWindowResize,
   applyResizeCursor,
@@ -11,8 +13,72 @@ type UseWindowResizeRegionsOptions = {
   onUserActivity: () => void;
 };
 
+function isMacosResizeRuntime(platformOs: string | null | undefined) {
+  return platformOs === "macos" || (!platformOs && typeof navigator !== "undefined" && /Mac/.test(navigator.platform));
+}
+
+function resizeDirectionFromSurfacePointer(event: ReactPointerEvent<HTMLElement>): ResizeDirection | null {
+  if (
+    !isPointerInsideSelector(event.target, ".resize-region") &&
+    isPointerInsideSelector(
+      event.target,
+      [
+        "button",
+        "input",
+        "select",
+        "textarea",
+        "[contenteditable='true']",
+        ".context-menu",
+        ".drop-overlay",
+        ".media-panel",
+        ".playback-error",
+        ".playlist-drawer",
+        ".settings-dialog",
+        ".transport",
+        ".window-controls",
+      ].join(", "),
+    )
+  ) {
+    return null;
+  }
+
+  const rect = event.currentTarget.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+  const y = event.clientY - rect.top;
+  const nearNorth = y <= WINDOW_RESIZE_EDGE_HIT_PX;
+  const nearSouth = rect.height - y <= WINDOW_RESIZE_EDGE_HIT_PX;
+  const nearWest = x <= WINDOW_RESIZE_EDGE_HIT_PX;
+  const nearEast = rect.width - x <= WINDOW_RESIZE_EDGE_HIT_PX;
+
+  if (nearNorth && nearEast) {
+    return "NorthEast";
+  }
+  if (nearNorth && nearWest) {
+    return "NorthWest";
+  }
+  if (nearSouth && nearEast) {
+    return "SouthEast";
+  }
+  if (nearSouth && nearWest) {
+    return "SouthWest";
+  }
+  if (nearNorth) {
+    return "North";
+  }
+  if (nearSouth) {
+    return "South";
+  }
+  if (nearEast) {
+    return "East";
+  }
+  if (nearWest) {
+    return "West";
+  }
+
+  return null;
+}
+
 export function useWindowResizeRegions({ platformOs, onUserActivity }: UseWindowResizeRegionsOptions) {
-  const [resizeFeedback, setResizeFeedback] = useState<ResizeFeedback | null>(null);
   const manualResizeDragRef = useRef<ManualResizeDrag | null>(null);
   const resizeCursorDirectionRef = useRef<ResizeDirection | null>(null);
 
@@ -31,20 +97,6 @@ export function useWindowResizeRegions({ platformOs, onUserActivity }: UseWindow
 
     resizeCursorDirectionRef.current = direction;
     void applyResizeCursor(direction);
-  }
-
-  function setResizeBoundaryFeedback(direction: ResizeDirection | null, active = false) {
-    setResizeFeedback((feedback) => {
-      if (!direction) {
-        return feedback === null ? feedback : null;
-      }
-
-      if (feedback?.direction === direction && feedback.active === active) {
-        return feedback;
-      }
-
-      return { direction, active };
-    });
   }
 
   function completeManualResizeIfIdle(pendingResize: ManualResizeDrag) {
@@ -108,10 +160,9 @@ export function useWindowResizeRegions({ platformOs, onUserActivity }: UseWindow
     });
   }
 
-  function startMainWindowResize(event: ReactPointerEvent<HTMLDivElement>, direction: ResizeDirection) {
+  function startMainWindowResize(event: ReactPointerEvent<HTMLElement>, direction: ResizeDirection) {
     setNativeResizeCursor(direction);
-    setResizeBoundaryFeedback(direction, true);
-    if (platformOs === "macos") {
+    if (isMacosResizeRuntime(platformOs)) {
       event.currentTarget.setPointerCapture(event.pointerId);
       manualResizeDragRef.current = {
         pointerId: event.pointerId,
@@ -133,7 +184,6 @@ export function useWindowResizeRegions({ platformOs, onUserActivity }: UseWindow
   function handleResizePointerEnter(event: ReactPointerEvent<HTMLDivElement>, direction: ResizeDirection) {
     event.stopPropagation();
     setNativeResizeCursor(direction);
-    setResizeBoundaryFeedback(direction);
   }
 
   function handleResizePointerLeave(event: ReactPointerEvent<HTMLDivElement>) {
@@ -143,7 +193,6 @@ export function useWindowResizeRegions({ platformOs, onUserActivity }: UseWindow
 
     event.stopPropagation();
     setNativeResizeCursor(null);
-    setResizeBoundaryFeedback(null);
   }
 
   function handleResizePointerDown(event: ReactPointerEvent<HTMLDivElement>, direction: ResizeDirection) {
@@ -157,9 +206,43 @@ export function useWindowResizeRegions({ platformOs, onUserActivity }: UseWindow
     startMainWindowResize(event, direction);
   }
 
-  function handleResizePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+  function handleResizeSurfacePointerDown(event: ReactPointerEvent<HTMLElement>) {
+    if (event.button !== 0) {
+      return;
+    }
+
+    const direction = resizeDirectionFromSurfacePointer(event);
+    if (!direction) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    onUserActivity();
+    startMainWindowResize(event, direction);
+  }
+
+  function handleResizeSurfacePointerMove(event: ReactPointerEvent<HTMLElement>) {
+    const pendingResize = manualResizeDragRef.current;
+    if (pendingResize) {
+      handleResizePointerMove(event, pendingResize.direction);
+      return;
+    }
+
+    const direction = resizeDirectionFromSurfacePointer(event);
+    if (!direction) {
+      setNativeResizeCursor(null);
+      return;
+    }
+
+    handleResizePointerMove(event, direction);
+  }
+
+  function handleResizePointerMove(event: ReactPointerEvent<HTMLElement>, direction: ResizeDirection) {
     const pendingResize = manualResizeDragRef.current;
     if (!pendingResize || pendingResize.pointerId !== event.pointerId) {
+      event.stopPropagation();
+      setNativeResizeCursor(direction);
       return;
     }
 
@@ -179,7 +262,7 @@ export function useWindowResizeRegions({ platformOs, onUserActivity }: UseWindow
     requestManualResizeFlush();
   }
 
-  function handleResizePointerEnd(event: ReactPointerEvent<HTMLDivElement>) {
+  function handleResizePointerEnd(event: ReactPointerEvent<HTMLElement>) {
     const pendingResize = manualResizeDragRef.current;
     if (pendingResize?.pointerId !== event.pointerId) {
       return;
@@ -194,30 +277,33 @@ export function useWindowResizeRegions({ platformOs, onUserActivity }: UseWindow
     requestManualResizeFlush();
     completeManualResizeIfIdle(pendingResize);
     setNativeResizeCursor(null);
-    setResizeBoundaryFeedback(null);
   }
 
-  function clearResizeHoverFeedback() {
+  function handleResizeSurfacePointerEnd(event: ReactPointerEvent<HTMLElement>) {
+    handleResizePointerEnd(event);
+  }
+
+  function clearResizeHoverCursor() {
     if (!manualResizeDragRef.current) {
       setNativeResizeCursor(null);
-      setResizeBoundaryFeedback(null);
     }
   }
 
   function clearWindowResizeInteraction() {
     clearManualResizeDrag();
     setNativeResizeCursor(null);
-    setResizeBoundaryFeedback(null);
   }
 
   return {
-    resizeFeedback,
     handleResizePointerEnter,
     handleResizePointerLeave,
     handleResizePointerDown,
+    handleResizeSurfacePointerDown,
+    handleResizeSurfacePointerMove,
+    handleResizeSurfacePointerEnd,
     handleResizePointerMove,
     handleResizePointerEnd,
-    clearResizeHoverFeedback,
+    clearResizeHoverCursor,
     clearWindowResizeInteraction,
   };
 }

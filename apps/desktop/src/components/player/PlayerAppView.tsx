@@ -17,8 +17,12 @@ type ShellHandlers = Pick<
   | "onDrop"
   | "onKeyDown"
   | "onPointerDown"
+  | "onPointerDownCapture"
   | "onPointerLeave"
   | "onPointerMove"
+  | "onPointerMoveCapture"
+  | "onPointerUpCapture"
+  | "onPointerCancelCapture"
   | "onWheel"
 >;
 
@@ -37,7 +41,7 @@ type ResizeRegionHandlers = {
   onPointerEnter: (event: PointerEvent<HTMLDivElement>, direction: ResizeDirection) => void;
   onPointerLeave: ComponentProps<"div">["onPointerLeave"];
   onPointerDown: (event: PointerEvent<HTMLDivElement>, direction: ResizeDirection) => void;
-  onPointerMove: ComponentProps<"div">["onPointerMove"];
+  onPointerMove: (event: PointerEvent<HTMLDivElement>, direction: ResizeDirection) => void;
   onPointerUp: ComponentProps<"div">["onPointerUp"];
   onPointerCancel: ComponentProps<"div">["onPointerCancel"];
 };
@@ -101,7 +105,7 @@ export function PlayerAppView({
               onPointerEnter={(event) => resizeRegionHandlers.onPointerEnter(event, region.direction)}
               onPointerLeave={resizeRegionHandlers.onPointerLeave}
               onPointerDown={(event) => resizeRegionHandlers.onPointerDown(event, region.direction)}
-              onPointerMove={resizeRegionHandlers.onPointerMove}
+              onPointerMove={(event) => resizeRegionHandlers.onPointerMove(event, region.direction)}
               onPointerUp={resizeRegionHandlers.onPointerUp}
               onPointerCancel={resizeRegionHandlers.onPointerCancel}
             />

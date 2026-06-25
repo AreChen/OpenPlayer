@@ -53,7 +53,7 @@ export function usePlayerOverlayState() {
   const handledEndedPathRef = useRef<string | null>(null);
   const hardwareDecodingModeRef = useRef<HardwareDecodingMode>("hardware");
   const previousAudibleVolumeRef = useRef(DEFAULT_PLAYBACK_SETTINGS.volume / 100);
-  const clearResizeHoverFeedbackRef = useRef<() => void>(() => undefined);
+  const clearResizeHoverCursorRef = useRef<() => void>(() => undefined);
 
   return {
     queue,
@@ -110,6 +110,6 @@ export function usePlayerOverlayState() {
     handledEndedPathRef,
     hardwareDecodingModeRef,
     previousAudibleVolumeRef,
-    clearResizeHoverFeedbackRef,
+    clearResizeHoverCursorRef,
   };
 }

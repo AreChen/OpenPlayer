@@ -22,13 +22,15 @@ export function useWindowFrameInteractions({
     clearPendingWindowDrag,
   } = useWindowDragRegion({ onTogglePlayback });
   const {
-    resizeFeedback,
     handleResizePointerEnter,
     handleResizePointerLeave,
     handleResizePointerDown,
+    handleResizeSurfacePointerDown,
+    handleResizeSurfacePointerMove,
+    handleResizeSurfacePointerEnd,
     handleResizePointerMove,
     handleResizePointerEnd,
-    clearResizeHoverFeedback,
+    clearResizeHoverCursor,
     clearWindowResizeInteraction,
   } = useWindowResizeRegions({ platformOs, onUserActivity });
 
@@ -46,7 +48,6 @@ export function useWindowFrameInteractions({
   );
 
   return {
-    resizeFeedback,
     handleDragRegionDoubleClick,
     handleDragRegionPointerDown,
     handleDragRegionPointerMove,
@@ -54,9 +55,12 @@ export function useWindowFrameInteractions({
     handleResizePointerEnter,
     handleResizePointerLeave,
     handleResizePointerDown,
+    handleResizeSurfacePointerDown,
+    handleResizeSurfacePointerMove,
+    handleResizeSurfacePointerEnd,
     handleResizePointerMove,
     handleResizePointerEnd,
-    clearResizeHoverFeedback,
+    clearResizeHoverCursor,
     clearWindowFrameInteraction,
   };
 }

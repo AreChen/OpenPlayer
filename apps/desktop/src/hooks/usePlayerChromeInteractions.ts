@@ -21,7 +21,7 @@ type UsePlayerChromeInteractionsOptions = {
   isNetworkStreamDialogOpen: boolean;
   activePluginView: ActivePluginView | null;
   quietKeyboardControls: boolean;
-  clearResizeHoverFeedbackRef: MutableRefObject<() => void>;
+  clearResizeHoverCursorRef: MutableRefObject<() => void>;
   platformOs: string | null | undefined;
   recordingShortcutAction: ShortcutAction | null;
   volumeLevel: number;
@@ -44,7 +44,7 @@ export function usePlayerChromeInteractions({
   isNetworkStreamDialogOpen,
   activePluginView,
   quietKeyboardControls,
-  clearResizeHoverFeedbackRef,
+  clearResizeHoverCursorRef,
   platformOs,
   recordingShortcutAction,
   volumeLevel,
@@ -70,10 +70,9 @@ export function usePlayerChromeInteractions({
     mediaId: media?.id,
     isChromePinned,
     quietKeyboardControls,
-    onPointerExit: () => clearResizeHoverFeedbackRef.current(),
+    onPointerExit: () => clearResizeHoverCursorRef.current(),
   });
   const {
-    resizeFeedback,
     handleDragRegionDoubleClick,
     handleDragRegionPointerDown,
     handleDragRegionPointerMove,
@@ -81,17 +80,20 @@ export function usePlayerChromeInteractions({
     handleResizePointerEnter,
     handleResizePointerLeave,
     handleResizePointerDown,
+    handleResizeSurfacePointerDown,
+    handleResizeSurfacePointerMove,
+    handleResizeSurfacePointerEnd,
     handleResizePointerMove,
     handleResizePointerEnd,
-    clearResizeHoverFeedback,
+    clearResizeHoverCursor,
     clearWindowFrameInteraction,
   } = useWindowFrameInteractions({
     platformOs,
     onTogglePlayback: togglePlayback,
     onUserActivity: recordUserActivity,
   });
-  clearResizeHoverFeedbackRef.current = clearResizeHoverFeedback;
-  const shellHandlers = useAppShellHandlers({
+  clearResizeHoverCursorRef.current = clearResizeHoverCursor;
+  const baseShellHandlers = useAppShellHandlers({
     contextMenu,
     activePluginView,
     isSettingsOpen,
@@ -106,13 +108,19 @@ export function usePlayerChromeInteractions({
     handleShellPointerLeave,
     setVolume,
   });
+  const shellHandlers = {
+    ...baseShellHandlers,
+    onPointerDownCapture: handleResizeSurfacePointerDown,
+    onPointerMoveCapture: handleResizeSurfacePointerMove,
+    onPointerUpCapture: handleResizeSurfacePointerEnd,
+    onPointerCancelCapture: handleResizeSurfacePointerEnd,
+  };
 
   return {
     isChromePinned,
     isChromeVisible,
     recordUserActivity,
     recordShortcutActivity,
-    resizeFeedback,
     handleDragRegionDoubleClick,
     handleDragRegionPointerDown,
     handleDragRegionPointerMove,
@@ -120,6 +128,9 @@ export function usePlayerChromeInteractions({
     handleResizePointerEnter,
     handleResizePointerLeave,
     handleResizePointerDown,
+    handleResizeSurfacePointerDown,
+    handleResizeSurfacePointerMove,
+    handleResizeSurfacePointerEnd,
     handleResizePointerMove,
     handleResizePointerEnd,
     clearWindowFrameInteraction,
