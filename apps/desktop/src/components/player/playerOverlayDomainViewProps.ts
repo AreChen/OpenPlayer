@@ -39,7 +39,6 @@ export function buildPlayerOverlayViewPropsFromDomains({
     isPlaying: state.isPlaying,
     displayTime: playback.displayTime,
     duration: state.duration,
-    resizeFeedback: chrome.resizeFeedback,
     isDropActive: lifecycle.isDropActive,
     playbackError: foundation.playbackError,
     volumeFeedback: foundation.volumeFeedback,

@@ -1,7 +1,7 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useRef, type PointerEvent as ReactPointerEvent } from "react";
 import { WINDOW_RESIZE_EDGE_HIT_PX } from "../../app/constants";
 import { isPointerInsideSelector } from "../../app/shortcuts";
-import type { ManualResizeDrag, ResizeDirection, ResizeFeedback } from "../../app/types";
+import type { ManualResizeDrag, ResizeDirection } from "../../app/types";
 import {
   applyManualMainWindowResize,
   applyResizeCursor,
@@ -79,7 +79,6 @@ function resizeDirectionFromSurfacePointer(event: ReactPointerEvent<HTMLElement>
 }
 
 export function useWindowResizeRegions({ platformOs, onUserActivity }: UseWindowResizeRegionsOptions) {
-  const [resizeFeedback, setResizeFeedback] = useState<ResizeFeedback | null>(null);
   const manualResizeDragRef = useRef<ManualResizeDrag | null>(null);
   const resizeCursorDirectionRef = useRef<ResizeDirection | null>(null);
 
@@ -98,20 +97,6 @@ export function useWindowResizeRegions({ platformOs, onUserActivity }: UseWindow
 
     resizeCursorDirectionRef.current = direction;
     void applyResizeCursor(direction);
-  }
-
-  function setResizeBoundaryFeedback(direction: ResizeDirection | null, active = false) {
-    setResizeFeedback((feedback) => {
-      if (!direction) {
-        return feedback === null ? feedback : null;
-      }
-
-      if (feedback?.direction === direction && feedback.active === active) {
-        return feedback;
-      }
-
-      return { direction, active };
-    });
   }
 
   function completeManualResizeIfIdle(pendingResize: ManualResizeDrag) {
@@ -177,7 +162,6 @@ export function useWindowResizeRegions({ platformOs, onUserActivity }: UseWindow
 
   function startMainWindowResize(event: ReactPointerEvent<HTMLElement>, direction: ResizeDirection) {
     setNativeResizeCursor(direction);
-    setResizeBoundaryFeedback(direction, true);
     if (isMacosResizeRuntime(platformOs)) {
       event.currentTarget.setPointerCapture(event.pointerId);
       manualResizeDragRef.current = {
@@ -200,7 +184,6 @@ export function useWindowResizeRegions({ platformOs, onUserActivity }: UseWindow
   function handleResizePointerEnter(event: ReactPointerEvent<HTMLDivElement>, direction: ResizeDirection) {
     event.stopPropagation();
     setNativeResizeCursor(direction);
-    setResizeBoundaryFeedback(direction);
   }
 
   function handleResizePointerLeave(event: ReactPointerEvent<HTMLDivElement>) {
@@ -210,7 +193,6 @@ export function useWindowResizeRegions({ platformOs, onUserActivity }: UseWindow
 
     event.stopPropagation();
     setNativeResizeCursor(null);
-    setResizeBoundaryFeedback(null);
   }
 
   function handleResizePointerDown(event: ReactPointerEvent<HTMLDivElement>, direction: ResizeDirection) {
@@ -250,7 +232,6 @@ export function useWindowResizeRegions({ platformOs, onUserActivity }: UseWindow
     const direction = resizeDirectionFromSurfacePointer(event);
     if (!direction) {
       setNativeResizeCursor(null);
-      setResizeBoundaryFeedback(null);
       return;
     }
 
@@ -262,7 +243,6 @@ export function useWindowResizeRegions({ platformOs, onUserActivity }: UseWindow
     if (!pendingResize || pendingResize.pointerId !== event.pointerId) {
       event.stopPropagation();
       setNativeResizeCursor(direction);
-      setResizeBoundaryFeedback(direction);
       return;
     }
 
@@ -297,28 +277,24 @@ export function useWindowResizeRegions({ platformOs, onUserActivity }: UseWindow
     requestManualResizeFlush();
     completeManualResizeIfIdle(pendingResize);
     setNativeResizeCursor(null);
-    setResizeBoundaryFeedback(null);
   }
 
   function handleResizeSurfacePointerEnd(event: ReactPointerEvent<HTMLElement>) {
     handleResizePointerEnd(event);
   }
 
-  function clearResizeHoverFeedback() {
+  function clearResizeHoverCursor() {
     if (!manualResizeDragRef.current) {
       setNativeResizeCursor(null);
-      setResizeBoundaryFeedback(null);
     }
   }
 
   function clearWindowResizeInteraction() {
     clearManualResizeDrag();
     setNativeResizeCursor(null);
-    setResizeBoundaryFeedback(null);
   }
 
   return {
-    resizeFeedback,
     handleResizePointerEnter,
     handleResizePointerLeave,
     handleResizePointerDown,
@@ -327,7 +303,7 @@ export function useWindowResizeRegions({ platformOs, onUserActivity }: UseWindow
     handleResizeSurfacePointerEnd,
     handleResizePointerMove,
     handleResizePointerEnd,
-    clearResizeHoverFeedback,
+    clearResizeHoverCursor,
     clearWindowResizeInteraction,
   };
 }

@@ -42,7 +42,3 @@ export function applyResizeCursor(direction: ResizeDirection | null) {
     console.warn("Resize cursor update failed", error);
   });
 }
-
-export function resizeDirectionClassName(direction: ResizeDirection) {
-  return direction.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
-}

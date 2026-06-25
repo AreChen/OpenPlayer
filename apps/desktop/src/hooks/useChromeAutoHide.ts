@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AUTO_HIDE_CONTROLS_MS, WINDOW_RESIZE_EDGE_HIT_PX } from "../app/constants";
+import { AUTO_HIDE_CONTROLS_MS } from "../app/constants";
 import type { ShortcutAction } from "../app/types";
 
 type UseChromeAutoHideOptions = {
@@ -8,19 +8,6 @@ type UseChromeAutoHideOptions = {
   quietKeyboardControls: boolean;
   onPointerExit?: () => void;
 };
-
-function isPointerNearViewportResizeEdge(event: MouseEvent | PointerEvent) {
-  return (
-    event.clientX >= 0 &&
-    event.clientY >= 0 &&
-    event.clientX <= window.innerWidth &&
-    event.clientY <= window.innerHeight &&
-    (event.clientX <= WINDOW_RESIZE_EDGE_HIT_PX ||
-      event.clientY <= WINDOW_RESIZE_EDGE_HIT_PX ||
-      window.innerWidth - event.clientX <= WINDOW_RESIZE_EDGE_HIT_PX ||
-      window.innerHeight - event.clientY <= WINDOW_RESIZE_EDGE_HIT_PX)
-  );
-}
 
 export function useChromeAutoHide({ mediaId, isChromePinned, quietKeyboardControls, onPointerExit }: UseChromeAutoHideOptions) {
   const [isChromeVisible, setIsChromeVisible] = useState(true);
@@ -80,9 +67,6 @@ export function useChromeAutoHide({ mediaId, isChromePinned, quietKeyboardContro
     const handleWindowPointerExit = (event: MouseEvent | PointerEvent) => {
       const relatedTarget = event.relatedTarget;
       if (relatedTarget instanceof Node && document.documentElement.contains(relatedTarget)) {
-        return;
-      }
-      if (isPointerNearViewportResizeEdge(event)) {
         return;
       }
       hideChromeForPointerExit();

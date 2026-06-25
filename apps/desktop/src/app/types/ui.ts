@@ -21,11 +21,6 @@ export type ManualResizeDrag = {
   finishing: boolean;
 };
 
-export type ResizeFeedback = {
-  direction: ResizeDirection;
-  active: boolean;
-};
-
 export type ShortcutAction =
   | "openMedia"
   | "togglePlayback"

@@ -27,7 +27,6 @@ export type PlayerAppViewPropsContext = {
   primaryAudioTrack: StageProps["primaryAudioTrack"];
   displayTime: StageProps["displayTime"];
   duration: StageProps["duration"];
-  resizeFeedback: StageProps["resizeFeedback"];
   isDropActive: StageProps["isDropActive"];
   playbackError: StageProps["playbackError"];
   volumeFeedback: StageProps["volumeFeedback"];

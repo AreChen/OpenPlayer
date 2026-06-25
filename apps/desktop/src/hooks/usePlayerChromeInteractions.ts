@@ -21,7 +21,7 @@ type UsePlayerChromeInteractionsOptions = {
   isNetworkStreamDialogOpen: boolean;
   activePluginView: ActivePluginView | null;
   quietKeyboardControls: boolean;
-  clearResizeHoverFeedbackRef: MutableRefObject<() => void>;
+  clearResizeHoverCursorRef: MutableRefObject<() => void>;
   platformOs: string | null | undefined;
   recordingShortcutAction: ShortcutAction | null;
   volumeLevel: number;
@@ -44,7 +44,7 @@ export function usePlayerChromeInteractions({
   isNetworkStreamDialogOpen,
   activePluginView,
   quietKeyboardControls,
-  clearResizeHoverFeedbackRef,
+  clearResizeHoverCursorRef,
   platformOs,
   recordingShortcutAction,
   volumeLevel,
@@ -70,10 +70,9 @@ export function usePlayerChromeInteractions({
     mediaId: media?.id,
     isChromePinned,
     quietKeyboardControls,
-    onPointerExit: () => clearResizeHoverFeedbackRef.current(),
+    onPointerExit: () => clearResizeHoverCursorRef.current(),
   });
   const {
-    resizeFeedback,
     handleDragRegionDoubleClick,
     handleDragRegionPointerDown,
     handleDragRegionPointerMove,
@@ -86,14 +85,14 @@ export function usePlayerChromeInteractions({
     handleResizeSurfacePointerEnd,
     handleResizePointerMove,
     handleResizePointerEnd,
-    clearResizeHoverFeedback,
+    clearResizeHoverCursor,
     clearWindowFrameInteraction,
   } = useWindowFrameInteractions({
     platformOs,
     onTogglePlayback: togglePlayback,
     onUserActivity: recordUserActivity,
   });
-  clearResizeHoverFeedbackRef.current = clearResizeHoverFeedback;
+  clearResizeHoverCursorRef.current = clearResizeHoverCursor;
   const baseShellHandlers = useAppShellHandlers({
     contextMenu,
     activePluginView,
@@ -122,7 +121,6 @@ export function usePlayerChromeInteractions({
     isChromeVisible,
     recordUserActivity,
     recordShortcutActivity,
-    resizeFeedback,
     handleDragRegionDoubleClick,
     handleDragRegionPointerDown,
     handleDragRegionPointerMove,
