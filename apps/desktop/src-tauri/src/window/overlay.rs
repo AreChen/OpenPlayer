@@ -25,6 +25,10 @@ fn sync_overlay_to_main_without_focus(app: &AppHandle) {
     sync_overlay_to_main_with_focus(app, false);
 }
 
+pub(super) fn sync_overlay_to_main_after_resize(app: &AppHandle) {
+    sync_overlay_to_main_without_focus(app);
+}
+
 fn sync_overlay_to_main_with_focus(app: &AppHandle, focus_overlay: bool) {
     let Ok(main) = main_window(app) else {
         return;

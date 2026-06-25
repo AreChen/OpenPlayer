@@ -1,7 +1,7 @@
 use tauri::{AppHandle, CursorIcon, PhysicalPosition, PhysicalSize, Position, Size};
 use tauri_runtime::ResizeDirection;
 
-use super::{MIN_MAIN_WINDOW_HEIGHT, MIN_MAIN_WINDOW_WIDTH, main_window, overlay_window};
+use super::{MIN_MAIN_WINDOW_HEIGHT, MIN_MAIN_WINDOW_WIDTH, main_window, overlay, overlay_window};
 
 pub(crate) fn window_start_resize(app: AppHandle, direction: String) -> Result<(), String> {
     let direction = resize_direction_from_str(&direction)?;
@@ -120,6 +120,7 @@ pub(crate) fn window_apply_resize_delta(
         height: height as u32,
     }))
     .map_err(|error| error.to_string())?;
+    overlay::sync_overlay_to_main_after_resize(&app);
     Ok(())
 }
 

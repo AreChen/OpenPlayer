@@ -1096,7 +1096,8 @@ assert.match(mpvEmbedRuntimeSource, /mpv_embed_recording_state[\s\S]*mpv_embed_s
 assert.match(tauriRuntimeSource, /window_start_resize[\s\S]*start_resize_dragging/, "desktop backend must start resizing the main video window from overlay hit areas");
 assert.match(tauriRuntimeSource, /fn window_set_resize_cursor[\s\S]*CursorIcon::NeResize[\s\S]*CursorIcon::Default/, "desktop backend must expose native resize cursor icons for overlay hit areas");
 assert.match(windowApplyResizeDeltaSource, /set_position[\s\S]*set_size/, "macOS manual resize fallback must resize the main video window");
-assert.doesNotMatch(windowApplyResizeDeltaSource, /sync_overlay_to_main|sync_mpv_video_host/, "macOS manual resize deltas must not run immediate duplicate overlay/mpv sync on every pointermove");
+assert.match(windowApplyResizeDeltaSource, /sync_overlay_to_main_after_resize/, "macOS manual resize fallback must resize the front overlay window after resizing the main video window");
+assert.doesNotMatch(windowApplyResizeDeltaSource, /sync_mpv_video_host|schedule_mpv_video_host_sync/, "macOS manual resize deltas must not run immediate duplicate mpv host sync on every pointermove");
 assert.match(tauriRuntimeSource, /window_close/, "desktop backend must keep close command");
 assert.match(windowStartDragSource, /main_window\(&app\)\?[\s\S]*start_dragging/, "backend must drag the main video window when overlay drag strip is used");
 assert.match(tauriRuntimeSource, /fn app_version/, "desktop backend must expose app version metadata for the about page");
