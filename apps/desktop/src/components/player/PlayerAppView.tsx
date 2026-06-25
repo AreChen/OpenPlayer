@@ -17,8 +17,12 @@ type ShellHandlers = Pick<
   | "onDrop"
   | "onKeyDown"
   | "onPointerDown"
+  | "onPointerDownCapture"
   | "onPointerLeave"
   | "onPointerMove"
+  | "onPointerMoveCapture"
+  | "onPointerUpCapture"
+  | "onPointerCancelCapture"
   | "onWheel"
 >;
 

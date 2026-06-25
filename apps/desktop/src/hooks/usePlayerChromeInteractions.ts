@@ -81,6 +81,9 @@ export function usePlayerChromeInteractions({
     handleResizePointerEnter,
     handleResizePointerLeave,
     handleResizePointerDown,
+    handleResizeSurfacePointerDown,
+    handleResizeSurfacePointerMove,
+    handleResizeSurfacePointerEnd,
     handleResizePointerMove,
     handleResizePointerEnd,
     clearResizeHoverFeedback,
@@ -91,7 +94,7 @@ export function usePlayerChromeInteractions({
     onUserActivity: recordUserActivity,
   });
   clearResizeHoverFeedbackRef.current = clearResizeHoverFeedback;
-  const shellHandlers = useAppShellHandlers({
+  const baseShellHandlers = useAppShellHandlers({
     contextMenu,
     activePluginView,
     isSettingsOpen,
@@ -106,6 +109,13 @@ export function usePlayerChromeInteractions({
     handleShellPointerLeave,
     setVolume,
   });
+  const shellHandlers = {
+    ...baseShellHandlers,
+    onPointerDownCapture: handleResizeSurfacePointerDown,
+    onPointerMoveCapture: handleResizeSurfacePointerMove,
+    onPointerUpCapture: handleResizeSurfacePointerEnd,
+    onPointerCancelCapture: handleResizeSurfacePointerEnd,
+  };
 
   return {
     isChromePinned,
@@ -120,6 +130,9 @@ export function usePlayerChromeInteractions({
     handleResizePointerEnter,
     handleResizePointerLeave,
     handleResizePointerDown,
+    handleResizeSurfacePointerDown,
+    handleResizeSurfacePointerMove,
+    handleResizeSurfacePointerEnd,
     handleResizePointerMove,
     handleResizePointerEnd,
     clearWindowFrameInteraction,
