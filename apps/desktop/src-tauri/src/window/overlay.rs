@@ -29,6 +29,7 @@ pub(super) fn sync_overlay_to_main_after_resize(app: &AppHandle) {
     sync_overlay_to_main_without_focus(app);
 }
 
+#[cfg(target_os = "macos")]
 fn sync_main_to_overlay_after_resize(app: &AppHandle) {
     let Ok(main) = main_window(app) else {
         return;
@@ -172,6 +173,7 @@ pub(crate) fn setup_overlay_window(app: &mut tauri::App) -> Result<(), String> {
                 };
                 let _ = main.close();
             }
+            #[cfg(target_os = "macos")]
             if matches!(event, WindowEvent::Moved(_) | WindowEvent::Resized(_)) {
                 sync_main_to_overlay_after_resize(&app_handle_for_overlay);
             }

@@ -382,6 +382,7 @@ assert.doesNotMatch(mpvEmbedRuntimeSource, /\.always_on_top\(true\)/, "overlay c
 assert.doesNotMatch(mpvEmbedRuntimeSource, /\.position\(position\.x as f64, position\.y as f64\)|\.inner_size\(size\.width as f64, size\.height as f64\)/, "overlay startup must not pass physical main window pixels to logical builder sizing APIs");
 assert.match(mpvEmbedRuntimeSource, /\.visible\(false\)[\s\S]*sync_overlay_to_main\(&app_handle\)[\s\S]*overlay\.show\(\)/, "overlay startup must stay hidden until physical-position sync prevents DPI-scale misalignment");
 assert.match(mpvEmbedRuntimeSource, /WindowEvent::Resized[\s\S]*schedule_mpv_video_host_sync/, "main-window resize events must schedule delayed mpv host resyncs after WebView relayout");
+assert.match(mpvEmbedRuntimeSource, /#\[cfg\(target_os = "macos"\)\]\s*fn\s+sync_main_to_overlay_after_resize/, "overlay resize events must only drive the main video window on macOS where the overlay itself is user-resizable");
 assert.match(tauriRuntimeSource, /#\[cfg\(all\(feature = "mpv-embed", windows\)\)\][\s\S]*SetWindowLongPtrW/, "overlay HWND ownership must be isolated to Windows mpv-embed builds");
 assert.match(tauriRuntimeSource, /#\[cfg\(all\(feature = "mpv-embed", not\(windows\), not\(target_os = "macos"\)\)\)\][\s\S]*fn set_overlay_owner/, "non-Windows non-macOS mpv-embed builds must not call Windows overlay ownership APIs");
 assert.doesNotMatch(mpvEmbedRuntimeSource, /OPENPLAYER_MPV_EMBED_FILE/, "normal embed overlay runtime must not auto-play the old Abbott embed smoke file");

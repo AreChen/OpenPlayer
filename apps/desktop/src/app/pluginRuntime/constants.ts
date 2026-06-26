@@ -1,6 +1,6 @@
 export const supportedPluginLoadOptionKeys = new Set(["demuxer", "demuxer-lavf-format"]);
-export const PLUGIN_SDK_VERSION = "1.6.2";
-export const OPENPLAYER_HOST_VERSION = "1.6.2";
+export const PLUGIN_SDK_VERSION = "1.6.3";
+export const OPENPLAYER_HOST_VERSION = "1.6.3";
 export const OPENPLAYER_API_COMPATIBILITY = Object.freeze({
   sdkVersion: PLUGIN_SDK_VERSION,
   hostVersion: OPENPLAYER_HOST_VERSION,
