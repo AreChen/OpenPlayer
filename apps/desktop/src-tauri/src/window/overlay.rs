@@ -134,24 +134,28 @@ fn schedule_mpv_video_host_sync(app: &AppHandle) {
 
 #[cfg(feature = "mpv-embed")]
 pub(crate) fn setup_overlay_window(app: &mut tauri::App) -> Result<(), String> {
+    setup_overlay_window_with_url(app, WebviewUrl::App("index.html?surface=overlay".into()))
+}
+
+#[cfg(feature = "mpv-embed")]
+pub(super) fn setup_overlay_window_with_url(
+    app: &mut tauri::App,
+    url: WebviewUrl,
+) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
         prepare_macos_main_window_chrome(&window);
-        let overlay = WebviewWindowBuilder::new(
-            app,
-            "overlay",
-            WebviewUrl::App("index.html?surface=overlay".into()),
-        )
-        .title("OpenPlayer Controls")
-        .decorations(false)
-        .transparent(true)
-        .shadow(false)
-        .resizable(cfg!(target_os = "macos"))
-        .min_inner_size(MIN_MAIN_WINDOW_WIDTH as f64, MIN_MAIN_WINDOW_HEIGHT as f64)
-        .skip_taskbar(true)
-        .background_color(Color(0, 0, 0, 0))
-        .visible(false)
-        .build()
-        .map_err(|error| format!("failed to create overlay controls window: {error}"))?;
+        let overlay = WebviewWindowBuilder::new(app, "overlay", url)
+            .title("OpenPlayer Controls")
+            .decorations(false)
+            .transparent(true)
+            .shadow(false)
+            .resizable(cfg!(target_os = "macos"))
+            .min_inner_size(MIN_MAIN_WINDOW_WIDTH as f64, MIN_MAIN_WINDOW_HEIGHT as f64)
+            .skip_taskbar(true)
+            .background_color(Color(0, 0, 0, 0))
+            .visible(false)
+            .build()
+            .map_err(|error| format!("failed to create overlay controls window: {error}"))?;
         let _ = overlay.set_background_color(Some(Color(0, 0, 0, 0)));
         set_overlay_owner(&window, &overlay);
 

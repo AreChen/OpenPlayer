@@ -9,6 +9,7 @@ type UseMpvSnapshotPollingOptions = {
 
 export function useMpvSnapshotPolling({ mediaId, applySnapshot }: UseMpvSnapshotPollingOptions) {
   const snapshotRequestIdRef = useRef(0);
+  const requestInFlightRef = useRef(false);
   const applySnapshotRef = useRef(applySnapshot);
   applySnapshotRef.current = applySnapshot;
 
@@ -22,14 +23,21 @@ export function useMpvSnapshotPolling({ mediaId, applySnapshot }: UseMpvSnapshot
     }
 
     const timer = window.setInterval(() => {
-      const requestId = ++snapshotRequestIdRef.current;
+      if (requestInFlightRef.current) {
+        return;
+      }
+      requestInFlightRef.current = true;
+      const requestId = snapshotRequestIdRef.current;
       invoke<MpvSnapshot | null>("mpv_embed_snapshot")
         .then((snapshot) => {
           if (snapshot && requestId === snapshotRequestIdRef.current) {
             applySnapshotRef.current(snapshot);
           }
         })
-        .catch(() => undefined);
+        .catch(() => undefined)
+        .finally(() => {
+          requestInFlightRef.current = false;
+        });
     }, 500);
 
     return () => {

@@ -1,4 +1,5 @@
 import { Icon } from "../../app/Icon";
+import { usePlaybackPosition } from "./PlaybackClockContext";
 import { audioVisualizerBarLevels, openPlayerLogoUrl } from "../../app/constants";
 import { formatTimecode, platformUnsupportedPlaybackMessage } from "../../app/playback";
 import type {
@@ -70,7 +71,7 @@ export function StageOverlays({
             <div className="audio-visualizer-copy">
               <span>{media.name}</span>
               <small>
-                {(primaryAudioTrack?.codec ?? "audio").toUpperCase()} · {formatTimecode(displayTime, duration)}
+                {(primaryAudioTrack?.codec ?? "audio").toUpperCase()} · <AudioPlaybackTime position={displayTime} duration={duration} />
               </small>
             </div>
           </div>
@@ -127,4 +128,8 @@ export function StageOverlays({
       )}
     </>
   );
+}
+
+function AudioPlaybackTime({ position, duration }: { position: number; duration: number }) {
+  return <>{formatTimecode(usePlaybackPosition(position), duration)}</>;
 }

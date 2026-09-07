@@ -12,6 +12,20 @@ pub fn appearance_state(state: State<'_, AppearanceStoreState>) -> Result<Appear
 }
 
 #[tauri::command]
+pub async fn appearance_sync_state(app: AppHandle) -> Result<AppearanceSyncState, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<AppearanceStoreState>().with_store(|store| {
+            Ok(AppearanceSyncState {
+                appearance: store.state()?,
+                preferences: store.preferences()?,
+            })
+        })
+    })
+    .await
+    .map_err(|error| format!("appearance sync task failed: {error}"))?
+}
+
+#[tauri::command]
 pub fn appearance_set_theme(
     state: State<'_, AppearanceStoreState>,
     theme_id: String,

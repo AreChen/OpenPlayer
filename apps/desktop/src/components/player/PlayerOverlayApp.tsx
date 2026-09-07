@@ -5,6 +5,7 @@ import { usePlayerOverlayState } from "../../hooks/usePlayerOverlayState";
 import { usePlayerPlaybackCoordinator } from "../../hooks/usePlayerPlaybackCoordinator";
 import { usePlayerWorkspaceDomains } from "../../hooks/usePlayerWorkspaceDomains";
 import { PlayerAppView } from "./PlayerAppView";
+import { PlaybackClockContext } from "./PlaybackClockContext";
 import { buildPlayerOverlayViewPropsFromDomains } from "./playerOverlayDomainViewProps";
 
 export function PlayerOverlayApp() {
@@ -51,5 +52,14 @@ export function PlayerOverlayApp() {
     onWindowCommand: runWindowCommand,
   });
 
-  return <PlayerAppView {...viewProps} />;
+  return (
+    <PlaybackClockContext.Provider value={{
+      clock: playback.clock,
+      timelineVisible: interactionRuntime.chrome.isChromeVisible || interactionRuntime.chrome.isChromePinned,
+      framesPerSecond: playerState.framesPerSecond,
+      locale: foundation.locale,
+    }}>
+      <PlayerAppView {...viewProps} />
+    </PlaybackClockContext.Provider>
+  );
 }

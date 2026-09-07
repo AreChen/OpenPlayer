@@ -60,34 +60,18 @@ impl PlaybackStore {
     }
 
     pub(super) fn initialize(&self) -> Result<(), String> {
-        let transaction = self
-            .database
-            .begin_write()
-            .map_err(|error| format!("failed to initialize playback history: {error}"))?;
-        {
-            transaction
-                .open_table(HISTORY_BY_PATH)
-                .map_err(|error| format!("failed to open playback history table: {error}"))?;
-            transaction
-                .open_table(HISTORY_BY_UPDATED)
-                .map_err(|error| format!("failed to open playback history index: {error}"))?;
-            transaction
-                .open_table(PLAYBACK_SETTINGS)
-                .map_err(|error| format!("failed to open playback settings table: {error}"))?;
-            transaction
-                .open_table(MEDIA_SETTINGS_BY_PATH)
-                .map_err(|error| {
-                    format!("failed to open media playback settings table: {error}")
-                })?;
-            transaction
-                .open_table(NETWORK_STREAMS_BY_URL)
-                .map_err(|error| format!("failed to open network stream history table: {error}"))?;
-            transaction
-                .open_table(NETWORK_STREAMS_BY_UPDATED)
-                .map_err(|error| format!("failed to open network stream history index: {error}"))?;
-        }
-        transaction
-            .commit()
-            .map_err(|error| format!("failed to commit playback history initialization: {error}"))
+        crate::store_schema::ensure_string_tables(
+            &self.database,
+            &[
+                HISTORY_BY_PATH,
+                HISTORY_BY_UPDATED,
+                PLAYBACK_SETTINGS,
+                MEDIA_SETTINGS_BY_PATH,
+                NETWORK_STREAMS_BY_URL,
+                NETWORK_STREAMS_BY_UPDATED,
+            ],
+        )
+        .map(|_| ())
+        .map_err(|error| format!("failed to initialize store schema: {error}"))
     }
 }

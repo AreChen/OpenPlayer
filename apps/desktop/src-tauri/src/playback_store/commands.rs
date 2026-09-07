@@ -1,6 +1,16 @@
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 
 use super::*;
+#[tauri::command]
+pub async fn playback_sync_state(app: AppHandle) -> Result<sync::PlaybackSyncState, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<PlaybackStoreState>()
+            .with_store(|store| store.sync_state())
+    })
+    .await
+    .map_err(|error| format!("playback sync task failed: {error}"))?
+}
+
 #[tauri::command]
 pub fn history_list(
     state: State<'_, PlaybackStoreState>,

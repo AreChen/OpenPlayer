@@ -127,7 +127,8 @@ fn set_window_always_on_top(app: &AppHandle, enabled: bool) -> Result<(), String
 fn capture_window_placement(window: &WebviewWindow) -> Result<WindowPlacement, String> {
     Ok(WindowPlacement {
         position: window.outer_position().map_err(|error| error.to_string())?,
-        size: window.outer_size().map_err(|error| error.to_string())?,
+        // set_size restores client dimensions; outer_size includes native resize borders on Windows.
+        size: window.inner_size().map_err(|error| error.to_string())?,
         maximized: window.is_maximized().map_err(|error| error.to_string())?,
     })
 }

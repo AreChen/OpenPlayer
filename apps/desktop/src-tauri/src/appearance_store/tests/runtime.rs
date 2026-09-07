@@ -166,6 +166,55 @@ fn plugin_runtime_storage_info_reports_size_limits_and_usage() {
 }
 
 #[test]
+fn plugin_runtime_storage_range_scans_stop_at_namespace_boundaries() {
+    let (mut store, directory) = temp_store();
+    let id = "dev.openplayer.runtime.worker";
+    store
+        .import_theme_plugin_json(webview_runtime_plugin_json())
+        .unwrap();
+    let neighbor_id = "dev.openplayer.runtime.worker2";
+    let mut neighbor: serde_json::Value =
+        serde_json::from_str(webview_runtime_plugin_json()).unwrap();
+    neighbor["id"] = serde_json::json!(neighbor_id);
+    store
+        .import_theme_plugin_json(&neighbor.to_string())
+        .unwrap();
+    store
+        .set_plugin_runtime_storage_value(id, "cache.a", serde_json::json!(1))
+        .unwrap();
+    store
+        .set_plugin_runtime_storage_value(id, "settings.mode", serde_json::json!(2))
+        .unwrap();
+    store
+        .set_plugin_runtime_storage_value(neighbor_id, "cache.a", serde_json::json!(3))
+        .unwrap();
+    assert!(
+        store
+            .plugin_runtime_storage_values_filtered(id, Some("cache.missing"), None)
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        store
+            .plugin_runtime_storage_values_filtered(id, Some("cache."), Some(0))
+            .unwrap()
+            .is_empty()
+    );
+    let values = store
+        .plugin_runtime_storage_values_filtered(id, Some("cache."), Some(10))
+        .unwrap();
+    assert_eq!(
+        values,
+        HashMap::from([("cache.a".into(), serde_json::json!(1))])
+    );
+    let info = store.plugin_runtime_storage_info(id).unwrap();
+    assert_eq!(info.keys, vec!["cache.a", "settings.mode"]);
+    assert_eq!(info.total_bytes, 2);
+    drop(store);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn plugin_runtime_storage_is_removed_with_plugin() {
     let (mut store, directory) = temp_store();
     store

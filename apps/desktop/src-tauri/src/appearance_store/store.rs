@@ -81,40 +81,20 @@ impl AppearanceStore {
     }
 
     pub(super) fn initialize(&self) -> Result<(), String> {
-        let transaction = self
-            .database
-            .begin_write()
-            .map_err(|error| format!("failed to initialize appearance settings: {error}"))?;
-        {
-            transaction
-                .open_table(SETTINGS_KV)
-                .map_err(|error| format!("failed to open appearance settings table: {error}"))?;
-            transaction
-                .open_table(THEME_MANIFESTS)
-                .map_err(|error| format!("failed to open theme manifest table: {error}"))?;
-            transaction
-                .open_table(PLUGIN_MANIFESTS)
-                .map_err(|error| format!("failed to open plugin manifest table: {error}"))?;
-            transaction
-                .open_table(PLUGIN_ENABLEMENT)
-                .map_err(|error| format!("failed to open plugin enablement table: {error}"))?;
-            transaction
-                .open_table(PLUGIN_SETTINGS)
-                .map_err(|error| format!("failed to open plugin settings table: {error}"))?;
-            transaction
-                .open_table(PLUGIN_RUNTIME_STORAGE)
-                .map_err(|error| format!("failed to open plugin runtime storage table: {error}"))?;
-            transaction
-                .open_table(PLUGIN_RUNTIME_STORAGE_META)
-                .map_err(|error| {
-                    format!("failed to open plugin runtime storage metadata table: {error}")
-                })?;
-            transaction
-                .open_table(PLUGIN_INSTALLS)
-                .map_err(|error| format!("failed to open plugin installs table: {error}"))?;
-        }
-        transaction.commit().map_err(|error| {
-            format!("failed to commit appearance settings initialization: {error}")
-        })
+        crate::store_schema::ensure_string_tables(
+            &self.database,
+            &[
+                SETTINGS_KV,
+                THEME_MANIFESTS,
+                PLUGIN_MANIFESTS,
+                PLUGIN_ENABLEMENT,
+                PLUGIN_SETTINGS,
+                PLUGIN_RUNTIME_STORAGE,
+                PLUGIN_RUNTIME_STORAGE_META,
+                PLUGIN_INSTALLS,
+            ],
+        )
+        .map(|_| ())
+        .map_err(|error| format!("failed to initialize store schema: {error}"))
     }
 }

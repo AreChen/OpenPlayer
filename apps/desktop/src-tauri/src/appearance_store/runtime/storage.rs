@@ -96,7 +96,7 @@ impl AppearanceStore {
         let mut keys = Vec::new();
         let mut total_bytes = 0usize;
         for item in storage
-            .iter()
+            .range(prefix.as_str()..)
             .map_err(|error| format!("failed to scan plugin runtime storage: {error}"))?
         {
             let (key, value) =
@@ -104,6 +104,8 @@ impl AppearanceStore {
             if let Some(item_key) = key.value().strip_prefix(&prefix) {
                 keys.push(item_key.to_string());
                 total_bytes += value.value().len();
+            } else {
+                break;
             }
         }
         keys.sort();
@@ -178,18 +180,17 @@ impl AppearanceStore {
             .open_table(PLUGIN_RUNTIME_STORAGE)
             .map_err(|error| format!("failed to open plugin runtime storage table: {error}"))?;
         let mut values = HashMap::new();
+        let scan_prefix = format!("{prefix}{}", key_prefix.unwrap_or(""));
         for item in storage
-            .iter()
+            .range(scan_prefix.as_str()..)
             .map_err(|error| format!("failed to scan plugin runtime storage: {error}"))?
         {
             let (key, value) =
                 item.map_err(|error| format!("failed to read plugin runtime storage: {error}"))?;
+            if !key.value().starts_with(&scan_prefix) {
+                break;
+            }
             if let Some(item_key) = key.value().strip_prefix(&prefix) {
-                if let Some(key_prefix) = key_prefix
-                    && !item_key.starts_with(key_prefix)
-                {
-                    continue;
-                }
                 if let Some(limit) = limit
                     && values.len() >= limit
                 {

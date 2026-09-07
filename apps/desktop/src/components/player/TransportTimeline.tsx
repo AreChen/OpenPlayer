@@ -1,4 +1,6 @@
-import type { CSSProperties } from "react";
+import { useContext, type CSSProperties } from "react";
+import { PlaybackClockContext, usePlaybackPosition } from "./PlaybackClockContext";
+import { formatFrameCount, formatTimecode } from "../../app/playback";
 import { Icon } from "../../app/Icon";
 import type { TransportControlsProps } from "./TransportControls.types";
 
@@ -29,12 +31,10 @@ export function TransportTimeline({
   t,
   mediaLoaded,
   duration,
-  displayTime,
-  progress,
-  progressRatio,
+  displayTime: fallbackPosition,
   effectiveTimeDisplayMode,
   canShowFrames,
-  currentTransportLabel,
+  currentTransportLabel: fallbackLabel,
   durationTransportLabel,
   currentTimeToggleLabel,
   durationTimeToggleLabel,
@@ -46,6 +46,15 @@ export function TransportTimeline({
   onCommitSeekTo,
   onPlayNextQueueItem,
 }: TransportTimelineProps) {
+  const clockContext = useContext(PlaybackClockContext);
+  const displayTime = usePlaybackPosition(fallbackPosition, clockContext?.timelineVisible ?? true);
+  const progressRatio = duration > 0 ? Math.min(1, Math.max(0, displayTime / duration)) : 0;
+  const progress = progressRatio * 100;
+  const currentTransportLabel = clockContext
+    ? effectiveTimeDisplayMode === "frames"
+      ? formatFrameCount(Math.max(0, Math.floor(displayTime * clockContext.framesPerSecond)), clockContext.locale)
+      : formatTimecode(displayTime, duration)
+    : fallbackLabel;
   return (
     <div className="transport-row">
       <button

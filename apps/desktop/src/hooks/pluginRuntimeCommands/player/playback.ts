@@ -20,7 +20,7 @@ export const handlePluginPlayerPlaybackCommand: PluginRuntimeCommandHandler = as
       requireLoadedMedia(context, command);
       const absolutePosition = runtimeNumberArg(record, "position");
       const delta = runtimeNumberArg(record, "delta");
-      const target = context.seekTarget(absolutePosition ?? context.displayTime + (delta ?? 0));
+      const target = context.seekTarget(absolutePosition ?? context.getDisplayTime() + (delta ?? 0));
       context.seekTo(target);
       context.invalidatePendingSnapshots();
       const snapshot = await invoke<MpvSnapshot>("mpv_embed_seek", { position: target });

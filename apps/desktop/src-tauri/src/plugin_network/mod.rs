@@ -1,4 +1,6 @@
 mod execution;
+#[cfg(test)]
+mod tests;
 mod types;
 mod validation;
 

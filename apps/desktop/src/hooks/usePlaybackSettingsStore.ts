@@ -38,7 +38,7 @@ export function usePlaybackSettingsStore({
   function applyPlaybackSettingsFromStore(settings: Partial<PlaybackSettings> | null | undefined) {
     const normalized = normalizePlaybackSettings(settings);
     playbackSettingsRef.current = normalized;
-    setPlaybackSettings(normalized);
+    setPlaybackSettings((previous) => JSON.stringify(previous) === JSON.stringify(normalized) ? previous : normalized);
     setVolumeLevel(normalized.volume / 100);
     if (normalized.volume > 0) {
       previousAudibleVolumeRef.current = normalized.volume / 100;

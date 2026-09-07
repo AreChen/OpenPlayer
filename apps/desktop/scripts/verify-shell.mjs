@@ -403,6 +403,8 @@ assert.match(appSource, /type TimeDisplayMode\s*=\s*"timecode"\s*\|\s*"frames"/,
 assert.match(appSource, /type PlaybackClockAnchor/, "frontend must keep a display-clock anchor for smooth progress interpolation");
 assert.match(appSource, /requestAnimationFrame/, "frontend must animate displayed progress with requestAnimationFrame");
 assert.match(appSource, /anchorDisplayClock/, "frontend must reset the smooth display clock when mpv state changes");
+assert.match(appSource, /useSyncExternalStore/, "only clock subscribers should render interpolated playback progress");
+assert.match(tauriRuntimeSource, /fn capture_window_placement[\s\S]*window\.inner_size\(\)/, "fullscreen restore must save client size because set_size does not accept outer window dimensions");
 assert.match(appSource, /formatTimecode/, "frontend must use adaptive timecode formatting");
 assert.match(appSource, /formatFrameCount/, "frontend must format frame counts for frame mode");
 assert.match(appSource, /toggleTimeDisplayMode/, "transport time labels must toggle timecode and frame display modes");
@@ -418,7 +420,7 @@ assert.match(appSource, /displayServer:\s*string/, "frontend platform support me
 assert.match(appSource, /platformUnsupportedPlaybackMessage/, "frontend must render a friendly unsupported-platform playback message");
 assert.match(appSource, /platformSupport[\s\S]*mpvEmbedVideo[\s\S]*openNativeMediaFiles/, "file opening must be gated when native mpv embedding is not supported on this platform");
 assert.match(appSource, /type AppearanceState/, "frontend must define typed appearance state returned by redb-backed settings");
-assert.match(appSource, /appearance_state/, "frontend must load appearance settings through the backend");
+assert.match(appSource, /appearance_sync_state/, "frontend must load appearance and preferences through a batched backend read");
 assert.match(appSource, /appearance_set_theme/, "frontend must select themes through the backend");
 assert.match(appSource, /appearance_set_accent_override/, "frontend must persist accent overrides through the backend");
 assert.match(appSource, /appearance_import_plugin_manifest/, "frontend must import plugin manifests through the backend");
@@ -633,7 +635,7 @@ assert.match(appSource, /pluginContextMenuActions/, "frontend must render plugin
 assert.match(appSource, /pluginPlaylistActions/, "frontend must render plugin actions in the playlist action area");
 assert.match(appSource, /themeStyleVariables/, "frontend must apply theme tokens through CSS variables");
 assert.match(appSource, /type PlayerPreferences/, "frontend must type persisted player preferences returned from redb-backed settings");
-assert.match(appSource, /preferences_state/, "frontend must load player preferences through the backend");
+assert.match(appSource, /apply\("onPlayerPreferences", state\.preferences\)/, "batched appearance sync must apply backend player preferences");
 assert.match(appSource, /preferences_set_incognito_mode/, "frontend must persist incognito mode through the backend");
 assert.match(appSource, /preferences_set_quiet_keyboard_controls/, "frontend must persist quiet keyboard-control behavior through the backend");
 assert.match(appSource, /resolveLocale\(playerPreferences\.languageMode,\s*browserLanguages\(\)\)/, "frontend must resolve display language from persisted language mode and browser/system languages");
@@ -664,7 +666,7 @@ assert.match(appSource, /OPENPLAYER_SHORTCUTS_STORAGE_KEY/, "shortcut settings m
 assert.match(appSource, /openplayer\.shortcuts\.v3/, "shortcut storage version must reset stale D/F and fullscreen bindings");
 assert.doesNotMatch(appSource, /openplayer\.shortcuts\.v2/, "shortcut storage must not keep the stale v2 bindings");
 assert.match(appSource, /type PlaybackHistoryEntry/, "player shell must define typed playback history entries");
-assert.match(appSource, /history_list/, "player shell must read persisted playback history through a backend command");
+assert.match(appSource, /playback_sync_state/, "player shell must batch playback history and settings reads");
 assert.match(appSource, /history_remember/, "player shell must write playback history through a backend command");
 assert.match(appSource, /history_resume_position/, "player shell must resolve resume positions through a backend command");
 assert.match(appSource, /history_clear/, "player shell must clear persisted playback history through a backend command");

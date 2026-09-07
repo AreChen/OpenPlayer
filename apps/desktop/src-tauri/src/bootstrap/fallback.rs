@@ -40,6 +40,8 @@ pub fn run() {
             crate::media_paths::commands::startup_media_paths,
             crate::platform_support::platform_support,
             crate::appearance_store::commands::appearance_state,
+            crate::appearance_store::commands::appearance_sync_state,
+            crate::playback_store::commands::playback_sync_state,
             crate::appearance_store::commands::appearance_set_theme,
             crate::appearance_store::commands::appearance_set_accent_override,
             crate::appearance_store::commands::appearance_import_plugin_manifest,

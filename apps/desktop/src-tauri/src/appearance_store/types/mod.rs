@@ -3,6 +3,7 @@ mod manifest;
 mod preferences;
 mod runtime;
 mod summaries;
+mod sync;
 mod theme;
 
 pub(super) use defaults::{default_plugin_action_args, default_plugin_api_version};
@@ -18,6 +19,7 @@ pub(super) use summaries::{
     PluginActionSummary, PluginCapabilitySummary, PluginSettingSummary, PluginViewSummary,
     ThemePluginSummary,
 };
+pub(super) use sync::AppearanceSyncState;
 pub(super) use theme::{
     AppearanceState, StoredThemeManifest, ThemeCatalogItem, ThemeManifest, ThemeTokens,
 };

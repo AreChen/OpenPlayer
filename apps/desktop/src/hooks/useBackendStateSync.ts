@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { STORE_SYNC_INTERVAL_MS } from "../app/constants";
+import { usePersistentStateSync } from "./usePersistentStateSync";
 import { defaultShellPreviewExtensions } from "../app/media";
 import type {
   AppVersionInfo,
@@ -27,12 +27,6 @@ type UseBackendStateSyncOptions = {
   onStartupMediaPaths: (paths: string[]) => void;
 };
 
-function applyArrayResult<T>(value: T[], callback: (items: T[]) => void) {
-  if (Array.isArray(value)) {
-    callback(value);
-  }
-}
-
 export function useBackendStateSync({
   onPlatformSupport,
   onPlaybackHistory,
@@ -56,56 +50,6 @@ export function useBackendStateSync({
       })
       .catch((error: unknown) => {
         console.warn("Failed to load platform support metadata", error);
-      });
-
-    invoke<PlaybackHistoryEntry[]>("history_list")
-      .then((entries) => {
-        if (!disposed) {
-          applyArrayResult(entries, onPlaybackHistory);
-        }
-      })
-      .catch((error: unknown) => {
-        console.warn("Failed to load playback history", error);
-      });
-
-    invoke<NetworkStreamHistoryEntry[]>("network_stream_history_list")
-      .then((entries) => {
-        if (!disposed) {
-          applyArrayResult(entries, onNetworkStreamHistory);
-        }
-      })
-      .catch((error: unknown) => {
-        console.warn("Failed to load network stream history", error);
-      });
-
-    invoke<AppearanceState>("appearance_state")
-      .then((state) => {
-        if (!disposed) {
-          onAppearanceState(state);
-        }
-      })
-      .catch((error: unknown) => {
-        console.warn("Failed to load appearance settings", error);
-      });
-
-    invoke<PlayerPreferences>("preferences_state")
-      .then((preferences) => {
-        if (!disposed) {
-          onPlayerPreferences(preferences);
-        }
-      })
-      .catch((error: unknown) => {
-        console.warn("Failed to load player preferences", error);
-      });
-
-    invoke<PlaybackSettings>("playback_settings_state")
-      .then((settings) => {
-        if (!disposed) {
-          onPlaybackSettings(settings);
-        }
-      })
-      .catch((error: unknown) => {
-        console.warn("Failed to load playback settings", error);
       });
 
     invoke<AppVersionInfo>("app_version")
@@ -163,25 +107,11 @@ export function useBackendStateSync({
     };
   }, []);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      invoke<AppearanceState>("appearance_state")
-        .then(onAppearanceState)
-        .catch((error: unknown) => console.warn("Failed to sync appearance settings", error));
-      invoke<PlayerPreferences>("preferences_state")
-        .then(onPlayerPreferences)
-        .catch((error: unknown) => console.warn("Failed to sync player preferences", error));
-      invoke<PlaybackSettings>("playback_settings_state")
-        .then(onPlaybackSettings)
-        .catch((error: unknown) => console.warn("Failed to sync playback settings", error));
-      invoke<PlaybackHistoryEntry[]>("history_list")
-        .then((entries) => applyArrayResult(entries, onPlaybackHistory))
-        .catch((error: unknown) => console.warn("Failed to sync playback history", error));
-      invoke<NetworkStreamHistoryEntry[]>("network_stream_history_list")
-        .then((entries) => applyArrayResult(entries, onNetworkStreamHistory))
-        .catch((error: unknown) => console.warn("Failed to sync network stream history", error));
-    }, STORE_SYNC_INTERVAL_MS);
-
-    return () => window.clearInterval(timer);
-  }, []);
+  usePersistentStateSync({
+    onAppearanceState,
+    onPlayerPreferences,
+    onPlaybackSettings,
+    onPlaybackHistory,
+    onNetworkStreamHistory,
+  });
 }

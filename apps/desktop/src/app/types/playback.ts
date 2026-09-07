@@ -1,3 +1,5 @@
+import type { NetworkStreamHistoryEntry, PlaybackHistoryEntry } from "./media";
+
 export type LoopMode = "off" | "one" | "all";
 export type HardwareDecodingMode = "hardware" | "software";
 export type TimeDisplayMode = "timecode" | "frames";
@@ -13,6 +15,12 @@ export type PlaybackSettings = {
 };
 
 export type PlaybackSettingsUpdate = Partial<PlaybackSettings>;
+
+export type PlaybackSyncState = {
+  settings: PlaybackSettings;
+  history: PlaybackHistoryEntry[];
+  networkStreams: NetworkStreamHistoryEntry[];
+};
 
 export type MediaPlaybackSettings = {
   path: string;

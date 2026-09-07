@@ -18,7 +18,7 @@ type VolumeOptions = {
 type UsePlaybackControlActionsOptions = {
   media: MediaItem | null;
   duration: number;
-  displayTime: number;
+  getDisplayTime: () => number;
   framesPerSecond: number;
   isPlaying: boolean;
   volumeLevel: number;
@@ -44,7 +44,7 @@ type UsePlaybackControlActionsOptions = {
 export function usePlaybackControlActions({
   media,
   duration,
-  displayTime,
+  getDisplayTime,
   framesPerSecond,
   isPlaying,
   volumeLevel,
@@ -119,7 +119,7 @@ export function usePlaybackControlActions({
       return;
     }
 
-    anchorDisplayClock(displayTime, isPlaying, duration, nextSpeed);
+    anchorDisplayClock(getDisplayTime(), isPlaying, duration, nextSpeed);
     invalidatePendingSnapshots();
     invoke<MpvSnapshot>("mpv_embed_set_speed", { speed: nextSpeed })
       .then(applyCommandSnapshot)

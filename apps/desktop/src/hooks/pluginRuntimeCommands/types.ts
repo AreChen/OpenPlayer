@@ -30,7 +30,7 @@ export type PluginRuntimeCommandContext = {
   media: MediaItem | null;
   queue: MediaItem[];
   currentIndex: number | null;
-  displayTime: number;
+  getDisplayTime: () => number;
   duration: number;
   isPickerOpen: boolean;
   setIsPickerOpen: (isPickerOpen: boolean) => void;

@@ -56,7 +56,7 @@ export function usePlayerPlaybackCoordinator({
   const controls = usePlaybackControlActions({
     media,
     duration: state.duration,
-    displayTime,
+    getDisplayTime: session.getDisplayTime,
     framesPerSecond: state.framesPerSecond,
     isPlaying: state.isPlaying,
     volumeLevel: state.volumeLevel,

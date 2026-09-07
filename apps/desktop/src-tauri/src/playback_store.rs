@@ -9,6 +9,7 @@ mod history;
 mod network_streams;
 mod settings;
 mod store;
+mod sync;
 #[cfg(test)]
 mod tests;
 

@@ -1,5 +1,6 @@
 [package]
 name = "openplayer-desktop"
+default-run = "openplayer-desktop"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,6 +12,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
 default = ["mpv-embed"]
+window-smoke = ["mpv-embed"]
 mpv-smoke = ["dep:libmpv2"]
 mpv-embed = [
   "dep:libmpv2",
@@ -50,6 +52,11 @@ windows-sys = { version = "0.61", features = [
 [build-dependencies]
 cc = "1"
 tauri-build = { version = "2", features = [] }
+
+[[bin]]
+name = "window-smoke"
+path = "src/bin/window-smoke.rs"
+required-features = ["window-smoke"]
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = { version = "0.6.4", optional = true }

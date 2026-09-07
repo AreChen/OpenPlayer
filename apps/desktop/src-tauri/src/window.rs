@@ -13,6 +13,8 @@ mod mpv_overlay;
 mod overlay;
 mod overlay_platform;
 mod resize;
+#[cfg(feature = "window-smoke")]
+pub(crate) mod smoke;
 
 pub(super) fn main_window(app: &AppHandle) -> Result<WebviewWindow, String> {
     app.get_webview_window("main")

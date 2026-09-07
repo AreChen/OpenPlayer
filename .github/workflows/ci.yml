@@ -67,8 +67,50 @@ jobs:
       - name: Verify shell architecture
         run: npm run verify:shell
 
+      - name: Run frontend behavior tests
+        run: npm test
+
       - name: Verify release metadata
         run: npm run verify:release
 
       - name: Build frontend
         run: npm run build
+
+  native-windows:
+    name: Native shell (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Windows mpv
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./apps/desktop/scripts/restore-windows-mpv.ps1
+          (Resolve-Path vendor/native/mpv/windows-x64).Path | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+      - name: Install macOS mpv
+        if: runner.os == 'macOS'
+        run: |
+          brew install mpv pkg-config
+          echo "PKG_CONFIG_PATH=$(brew --prefix mpv)/lib/pkgconfig" >> "$GITHUB_ENV"
+      - name: Build frontend assets
+        working-directory: apps/desktop
+        run: |
+          npm ci
+          npm run build
+      - name: Run platform Rust tests
+        run: cargo test -p openplayer-desktop --locked
+      - name: Build native smoke executable
+        run: cargo build -p openplayer-desktop --locked --features window-smoke --bin window-smoke
+      - name: Exercise native windows and mpv teardown
+        run: node apps/desktop/scripts/run-window-smoke.mjs

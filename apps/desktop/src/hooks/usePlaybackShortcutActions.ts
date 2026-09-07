@@ -6,7 +6,7 @@ type UsePlaybackShortcutActionsOptions = {
   media: MediaItem | null;
   queueLength: number;
   duration: number;
-  displayTime: number;
+  getDisplayTime: () => number;
   volumeLevel: number;
   openNativeMediaFiles: () => void;
   togglePlayback: () => void;
@@ -27,7 +27,7 @@ export function usePlaybackShortcutActions({
   media,
   queueLength,
   duration,
-  displayTime,
+  getDisplayTime,
   volumeLevel,
   openNativeMediaFiles,
   togglePlayback,
@@ -48,7 +48,7 @@ export function usePlaybackShortcutActions({
       return;
     }
 
-    commitSeekTo(displayTime + deltaSeconds);
+    commitSeekTo(getDisplayTime() + deltaSeconds);
   }
 
   function stepFrame(command: "mpv_embed_frame_step" | "mpv_embed_frame_back_step") {

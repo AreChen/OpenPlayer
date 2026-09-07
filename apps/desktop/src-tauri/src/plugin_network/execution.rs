@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf, time::Duration};
+use std::{collections::HashMap, path::PathBuf, sync::OnceLock, time::Duration};
 
 use super::{
     types::{PluginNetworkRequestArgs, PluginNetworkResponse},
@@ -14,6 +14,21 @@ const MAX_PLUGIN_NETWORK_BODY_BYTES: usize = 256 * 1024;
 const MAX_PLUGIN_NETWORK_TIMEOUT_MS: u64 = 30_000;
 const PLUGIN_NETWORK_RESPONSE_TYPE_BASE64: &str = "base64";
 const PLUGIN_NETWORK_RESPONSE_TYPE_TEXT: &str = "text";
+
+fn network_client() -> Result<&'static reqwest::Client, String> {
+    static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .no_proxy()
+                .pool_max_idle_per_host(4)
+                .pool_idle_timeout(Duration::from_secs(30))
+                .build()
+                .map_err(|error| format!("network.request client setup failed: {error}"))
+        })
+        .as_ref()
+        .map_err(Clone::clone)
+}
 
 pub(super) async fn execute_plugin_network_request(
     app_data_dir: PathBuf,
@@ -38,12 +53,9 @@ pub(super) async fn execute_plugin_network_request(
         ));
     }
     let headers = plugin_network_headers(args.headers)?;
-    let mut request = reqwest::Client::builder()
-        .no_proxy()
-        .timeout(Duration::from_millis(timeout_ms))
-        .build()
-        .map_err(|error| format!("network.request client setup failed: {error}"))?
+    let mut request = network_client()?
         .request(method.clone(), url)
+        .timeout(Duration::from_millis(timeout_ms))
         .headers(headers);
     if method != reqwest::Method::GET && method != reqwest::Method::HEAD {
         match (args.body, args.body_file) {
@@ -74,7 +86,7 @@ pub(super) async fn execute_plugin_network_request(
         return Err("network.request body requires a non-GET method".to_string());
     }
 
-    let response = request
+    let mut response = request
         .send()
         .await
         .map_err(|error| format!("network.request failed: {error}"))?;
@@ -91,16 +103,20 @@ pub(super) async fn execute_plugin_network_request(
         })
         .collect::<HashMap<_, _>>();
     if let Some(length) = response.content_length()
-        && length as usize > MAX_PLUGIN_NETWORK_RESPONSE_BYTES
+        && length > MAX_PLUGIN_NETWORK_RESPONSE_BYTES as u64
     {
         return Err("network.request response is too large".to_string());
     }
-    let bytes = response
-        .bytes()
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
         .await
-        .map_err(|error| format!("network.request response read failed: {error}"))?;
-    if bytes.len() > MAX_PLUGIN_NETWORK_RESPONSE_BYTES {
-        return Err("network.request response is too large".to_string());
+        .map_err(|error| format!("network.request response read failed: {error}"))?
+    {
+        if chunk.len() > MAX_PLUGIN_NETWORK_RESPONSE_BYTES - bytes.len() {
+            return Err("network.request response is too large".to_string());
+        }
+        bytes.extend_from_slice(&chunk);
     }
     let body_base64 = if response_type == PLUGIN_NETWORK_RESPONSE_TYPE_BASE64 {
         Some(BASE64_STANDARD.encode(&bytes))

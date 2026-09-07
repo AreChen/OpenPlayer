@@ -119,7 +119,7 @@ export function usePlayerMpvSession({
     mediaId: media?.id,
     applySnapshot,
   });
-  const { displayPosition, anchorDisplayClock } = usePlaybackClock({
+  const { clock, getDisplayTime, displayPosition, anchorDisplayClock } = usePlaybackClock({
     mediaId: media?.id,
     isPlaying,
     duration,
@@ -283,6 +283,8 @@ export function usePlayerMpvSession({
   }
 
   return {
+    clock,
+    getDisplayTime,
     displayPosition,
     anchorDisplayClock,
     invalidatePendingSnapshots,

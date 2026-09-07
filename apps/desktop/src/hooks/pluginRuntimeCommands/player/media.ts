@@ -34,7 +34,7 @@ export const handlePluginPlayerMediaCommand: PluginRuntimeCommandHandler = async
         },
         {
           media: context.media,
-          position: context.displayTime,
+          position: context.getDisplayTime(),
           mediaDuration: context.duration,
         },
       );
@@ -49,7 +49,7 @@ export const handlePluginPlayerMediaCommand: PluginRuntimeCommandHandler = async
         },
         {
           media: context.media,
-          position: context.displayTime,
+          position: context.getDisplayTime(),
           mediaDuration: context.duration,
         },
       );

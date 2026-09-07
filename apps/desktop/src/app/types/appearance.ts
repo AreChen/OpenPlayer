@@ -40,4 +40,9 @@ export type PlayerPreferences = {
   languageMode: LanguageMode;
 };
 
+export type AppearanceSyncState = {
+  appearance: AppearanceState;
+  preferences: PlayerPreferences;
+};
+
 export type ThemeStyleProperties = CSSProperties & Record<`--${string}`, string>;

@@ -56,7 +56,8 @@ export function startPluginTask(pluginId: string, input: Record<string, unknown>
 }
 
 export function updatePluginTask(pluginId: string, taskId: string, patch: Record<string, unknown>) {
-  const task = runningPluginTask(pluginId, taskId, "tasks.update");
+  const current = runningPluginTask(pluginId, taskId, "tasks.update");
+  const task = { ...current };
   if (patch.title !== undefined) {
     task.title = normalizedTaskText(patch.title, "tasks.update title must be a non-empty string", 120);
   }
@@ -73,14 +74,16 @@ export function updatePluginTask(pluginId: string, taskId: string, patch: Record
     task.metadata = normalizedOptionalTaskJson(patch.metadata, "tasks.update metadata must be JSON-compatible");
   }
   task.updatedAtMs = Date.now();
+  Object.assign(current, task);
   return cloneTaskSnapshot(task);
 }
 
 export function completePluginTask(pluginId: string, taskId: string, result: unknown) {
   const task = runningPluginTask(pluginId, taskId, "tasks.complete");
+  const validatedResult = normalizedOptionalTaskJson(result ?? null, "tasks.complete result must be JSON-compatible");
   task.status = "completed";
   task.progress = 1;
-  task.result = normalizedOptionalTaskJson(result ?? null, "tasks.complete result must be JSON-compatible");
+  task.result = validatedResult;
   task.error = null;
   task.updatedAtMs = Date.now();
   return cloneTaskSnapshot(task);
@@ -88,8 +91,9 @@ export function completePluginTask(pluginId: string, taskId: string, result: unk
 
 export function failPluginTask(pluginId: string, taskId: string, error: unknown) {
   const task = runningPluginTask(pluginId, taskId, "tasks.fail");
+  const validatedError = normalizedTaskText(error, "tasks.fail requires an error message", 512);
   task.status = "failed";
-  task.error = normalizedTaskText(error, "tasks.fail requires an error message", 512);
+  task.error = validatedError;
   task.updatedAtMs = Date.now();
   return cloneTaskSnapshot(task);
 }
