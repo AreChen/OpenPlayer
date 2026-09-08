@@ -16,6 +16,33 @@ pub(crate) async fn command(app: AppHandle, name: &str, args: Vec<String>) -> Re
 }
 
 pub(crate) async fn attach(app: AppHandle, script: String) -> Result<(), String> {
+    #[cfg(windows)]
+    if let Some(source) = std::env::var_os("OPENPLAYER_SMOKE_RUNTIME_BUNDLE") {
+        let cache = std::env::var_os("OPENPLAYER_SMOKE_RUNTIME_CACHE")
+            .ok_or("portable smoke requires an explicit test cache directory")?;
+        let path = tauri::async_runtime::spawn_blocking(move || {
+            crate::native_runtime::pin_vsscript(&PathBuf::from(source), &PathBuf::from(cache))
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        println!("PASS: host-owned runtime {}", path.display());
+        if let Some(conflict) = std::env::var_os("OPENPLAYER_SMOKE_RUNTIME_CONFLICT") {
+            let cache = std::env::var_os("OPENPLAYER_SMOKE_RUNTIME_CACHE")
+                .ok_or("portable smoke cache missing")?;
+            let result = tauri::async_runtime::spawn_blocking(move || {
+                crate::native_runtime::pin_vsscript(&PathBuf::from(conflict), &PathBuf::from(cache))
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+            if result
+                .err()
+                .is_none_or(|error| !error.contains("different video runtime"))
+            {
+                return Err("resident runtime conflict was not rejected".into());
+            }
+            println!("PASS: conflicting resident runtime rejected");
+        }
+    }
     let path = PathBuf::from(&script);
     if !path.is_absolute() || !path.is_file() || path.extension().is_none_or(|ext| ext != "vpy") {
         return Err("native filter smoke requires an absolute local .vpy fixture".into());

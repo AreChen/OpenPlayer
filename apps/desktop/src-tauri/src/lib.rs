@@ -9,6 +9,8 @@ mod appearance_store;
 mod bootstrap;
 mod external_open;
 mod media_paths;
+#[cfg(all(windows, any(test, feature = "window-smoke")))]
+mod native_runtime;
 mod native_shortcuts;
 mod platform_support;
 mod playback_store;

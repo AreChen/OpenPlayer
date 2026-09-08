@@ -237,6 +237,13 @@ ownership, public attachment and GUI consent testing remain separate gates;
 loading a plugin's DLL into the player would keep that file resident beyond
 native worker cleanup, which this retry intentionally does not conceal.
 
+The next developer step adds [host-owned runtime copies](native-runtime-ownership.md):
+verified bounded copies, process leases, identical-inventory reuse, conflict
+rejection and stale-copy cleanup are now exercised by two sequential actual
+window harnesses. It remains test/`window-smoke` gated and adds no public native
+attachment API. Production authorization and attachment coordination still have
+to connect these tested components.
+
 The prototype's opt-in planar transfer plus sampled diagnostics also reduced
 warm callback mean/p95 to 19.92/22.13 ms at 720p and 34.45/39.26 ms at 1080p.
 Both window runs passed with no frame fallback. This includes reduced diagnostic
