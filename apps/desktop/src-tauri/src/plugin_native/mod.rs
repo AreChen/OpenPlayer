@@ -3,7 +3,7 @@ mod consent;
 mod process_tree;
 mod session;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 mod types;
 mod validation;
 mod video_plan;

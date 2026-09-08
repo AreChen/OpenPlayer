@@ -213,9 +213,25 @@ filter instances. Its opt-in persistent owner reused one worker across three
 to about 1-11 ms rather than repeating engine initialization. This is not a full
 seek-latency measurement. The owner's two buffers and worker are released on
 owner close; failed workers are not silently restarted on same-format reconnect.
-The host SDK registry still does not own this service. See the sibling prototype's
+That playback harness still supplies its own owner. See the sibling prototype's
 `docs/persistent-frame-owner.md`; no additional host command or permission was
 introduced for this test.
+
+A further developer integration implements native-v1 `frames.open/status/close`
+in the prototype's `frame_module.py`. An opt-in host test now registers its real
+native session, processes a real 720p frame through NGX, verifies the worker's
+Job Object membership, and exercises the actual store's disable/upgrade/uninstall
+paths. All three remove the session and leave zero active job processes. This
+uses an isolated store and a non-executed package integrity fixture; Python is
+launched explicitly by the test, not through a packaged runtime or GUI consent.
+See `openplayer-dlssnr/docs/native-frame-module.md` for reproduction and limits.
+No production host command, permission or filter allowlist changed.
+
+The prototype's opt-in planar transfer plus sampled diagnostics also reduced
+warm callback mean/p95 to 19.92/22.13 ms at 720p and 34.45/39.26 ms at 1080p.
+Both window runs passed with no frame fallback. This includes reduced diagnostic
+work and excludes decode, surrounding YUV conversion and presentation; it does
+not establish sustained A/V playback or pure inference speed gains.
 
 ## Verification snapshot (2026-09-08)
 

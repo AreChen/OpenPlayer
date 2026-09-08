@@ -1,6 +1,11 @@
 use super::*;
 use serde_json::{Value, json};
 
+#[cfg(windows)]
+mod frame_owner;
+#[cfg(windows)]
+pub(crate) use frame_owner::exercise_frame_owner_lifecycle;
+
 fn module() -> NativeModule {
     serde_json::from_value(json!({ "id": "enhance", "protocol": "openplayer-native-v1",
         "methods": ["echo", "delay", "fail", "crash", "oversize", "child", "exitSoon", "earlyChild"],
