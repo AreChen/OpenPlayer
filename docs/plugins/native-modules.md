@@ -207,6 +207,16 @@ configuration and worker containment are provided by the developer launcher.
 Production lifecycle/consent, packaging, A/V sync and color handling remain gates.
 These tests do not establish interpolation or super-resolution engine support.
 
+A subsequent prototype-only step separates engine ownership from short-lived
+filter instances. Its opt-in persistent owner reused one worker across three
+720p window-test leases (117 processed frames, no fallback), reducing reconnect
+to about 1-11 ms rather than repeating engine initialization. This is not a full
+seek-latency measurement. The owner's two buffers and worker are released on
+owner close; failed workers are not silently restarted on same-format reconnect.
+The host SDK registry still does not own this service. See the sibling prototype's
+`docs/persistent-frame-owner.md`; no additional host command or permission was
+introduced for this test.
+
 ## Verification snapshot (2026-09-08)
 
 Windows x86_64 development checkout verification:
