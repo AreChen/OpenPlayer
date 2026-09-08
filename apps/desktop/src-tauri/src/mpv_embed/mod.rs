@@ -36,6 +36,8 @@ mod constants;
 #[cfg(target_os = "macos")]
 mod macos_ffi;
 mod media;
+#[cfg(feature = "window-smoke")]
+pub(crate) mod native_filter_smoke;
 mod player;
 mod player_events;
 mod player_normalization;

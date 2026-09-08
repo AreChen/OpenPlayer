@@ -9,7 +9,7 @@ network, and environment access. They are NOT sandboxed.** The JavaScript worker
 remains sandboxed; `native.process` is a separate, high-risk permission with an
 explicit host-owned confirmation for each new process launch.
 
-**There is no live video processing attachment yet.**
+**There is no public live video processing attachment yet.**
 `native.video.validatePlan()` checks a proposed format/rate chain and always
 returns `executable: false`. It does not enable DLSSNR, interpolation, upscaling,
 or rendering. The existing mpv host and transparent control window are unchanged.
@@ -190,9 +190,22 @@ backpressure, A/V synchronization, EOS draining, and original-frame fallback.
 Do not move frame pixels through this JSON control channel. No `attach`,
 `processFrame`, timestamp transport, or history-reset API is currently exposed.
 
-The separate `openplayer-dlssnr` prototype tests an actual DLSSNR engine outside
-the player. Its frame benchmarks do not establish live OpenPlayer throughput or
-the availability of interpolation/super-resolution engines.
+The separate `openplayer-dlssnr` prototype now also exercises real decoded frames
+inside this repository's `window-smoke` harness. Its opt-in `.vpy` fixture is
+compiled behind the `window-smoke` feature, never registered as an IPC command,
+and does not change the safe plugin filter allowlist. The two native windows are
+retained with inert WebViews; real React/plugin UI interaction was not tested.
+
+The 720p path passed pause/seek, detach/reattach, resize, maximized fullscreen and
+single Alt+F4 close with processed nonblack output and clean worker exits. It uses
+CPU RGB copies and an isolated NGX process, not shared GPU textures. Tested 1080p
+callbacks averaged about 69 ms after warm-up, too slow for 24 FPS. See the sibling
+repository's `docs/native-playback-probe.md` for reproducible evidence and limits.
+
+This test adapter is not owned by the native-module registry: private runtime
+configuration and worker containment are provided by the developer launcher.
+Production lifecycle/consent, packaging, A/V sync and color handling remain gates.
+These tests do not establish interpolation or super-resolution engine support.
 
 ## Verification snapshot (2026-09-08)
 
@@ -212,6 +225,7 @@ Windows x86_64 development checkout verification:
   it was not installed into the user's player.
 
 The process integration test exercises internal sessions, not GUI consent.
-Interactive authorization, non-Windows execution, and live GPU playback were
-not tested. No installer, version bump, commit, or release was produced for this
-development batch.
+Interactive authorization and non-Windows execution were not tested. The framework
+was committed locally as host `ee157b0` and official SDK `ffbe061`, without a push,
+installer, version bump or release. The follow-up window smoke above does not
+constitute a shipped live-filter SDK capability.

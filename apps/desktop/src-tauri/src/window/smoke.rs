@@ -16,12 +16,20 @@ use tauri::{AppHandle, Manager, PhysicalSize, RunEvent, WebviewUrl};
 
 pub fn run() {
     let close_target = std::env::args().nth(1).unwrap_or_else(|| "overlay".into());
-    assert!(matches!(close_target.as_str(), "main" | "overlay"));
+    assert!(matches!(
+        close_target.as_str(),
+        "main" | "overlay" | "overlay-alt-f4"
+    ));
     let directory =
         std::env::temp_dir().join(format!("openplayer-window-smoke-{}", std::process::id()));
     fs::create_dir_all(&directory).unwrap();
-    let video = directory.join("fixture.y4m");
-    write_video(&video);
+    let video = if let Some(path) = std::env::var_os("OPENPLAYER_SMOKE_MEDIA") {
+        std::path::PathBuf::from(path)
+    } else {
+        let path = directory.join("fixture.y4m");
+        write_video(&path);
+        path
+    };
     let close_started = Arc::new(AtomicBool::new(false));
     let finished = Arc::new(AtomicBool::new(false));
     let watchdog = finished.clone();
@@ -270,6 +278,63 @@ fn exercise_capture_mode(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+fn exercise_native_filter(app: &AppHandle) -> Result<(), String> {
+    let Ok(script) = std::env::var("OPENPLAYER_SMOKE_NATIVE_FILTER") else {
+        return Ok(());
+    };
+    use crate::mpv_embed::{mpv_embed_plugin_set_property, native_filter_smoke};
+    let command = |name: &str, args: Vec<String>| {
+        tauri::async_runtime::block_on(native_filter_smoke::command(app.clone(), name, args))
+    };
+    tauri::async_runtime::block_on(native_filter_smoke::attach(app.clone(), script.clone()))?;
+    thread::sleep(Duration::from_millis(2500));
+    let paused = tauri::async_runtime::block_on(mpv_embed_plugin_set_property(
+        app.clone(),
+        "pause".into(),
+        true.into(),
+    ))?;
+    thread::sleep(Duration::from_millis(250));
+    let still = tauri::async_runtime::block_on(mpv_embed_snapshot(app.clone()))?
+        .ok_or("player disappeared")?;
+    if !still.paused || (still.position - paused.position).abs() > 0.05 {
+        return Err("native filter ignored pause".into());
+    }
+    if let Some(path) = std::env::var_os("OPENPLAYER_SMOKE_SCREENSHOT") {
+        command(
+            "screenshot-to-file",
+            vec![path.to_string_lossy().into_owned(), "video".into()],
+        )?;
+    }
+    command("seek", vec!["0.2".into(), "absolute+exact".into()])?;
+    thread::sleep(Duration::from_millis(1800));
+    let seeked = tauri::async_runtime::block_on(mpv_embed_snapshot(app.clone()))?
+        .ok_or("player disappeared")?;
+    if (seeked.position - 0.2).abs() > 0.15 {
+        return Err("native filter ignored seek".into());
+    }
+    command("vf", vec!["remove".into(), "@native-smoke".into()])?;
+    tauri::async_runtime::block_on(mpv_embed_plugin_set_property(
+        app.clone(),
+        "pause".into(),
+        false.into(),
+    ))?;
+    thread::sleep(Duration::from_millis(300));
+    tauri::async_runtime::block_on(native_filter_smoke::attach(app.clone(), script))?;
+    thread::sleep(Duration::from_millis(1800));
+    on_main(app, |app| {
+        if !overlay_window(app)
+            .ok_or("overlay missing")?
+            .is_visible()
+            .map_err(|e| e.to_string())?
+        {
+            return Err("native filter hid the overlay".into());
+        }
+        Ok(())
+    })?;
+    println!("PASS: native filter pause, seek, detach/reattach, overlay stays visible");
+    Ok(())
+}
+
 fn exercise_windows(
     app: &AppHandle,
     video: std::path::PathBuf,
@@ -299,6 +364,7 @@ fn exercise_windows(
         }
         thread::sleep(Duration::from_millis(50));
     }
+    exercise_native_filter(app)?;
     for index in 0..40 {
         on_main(app, move |app| {
             let window = if cfg!(target_os = "macos") {
@@ -355,15 +421,27 @@ fn exercise_windows(
     #[cfg(windows)]
     exercise_maximized_fullscreen(app)?;
     #[cfg(windows)]
-    exercise_capture_mode(app)?;
+    if std::env::var_os("OPENPLAYER_SMOKE_NATIVE_FILTER").is_none() {
+        exercise_capture_mode(app)?;
+    } else {
+        println!("PASS: maximized fullscreen client/video bounds with native filter");
+    }
     #[cfg(windows)]
     if target == "main" {
         tauri::async_runtime::block_on(super::window_set_capture_mode(app.clone(), true))?;
     }
+    if target == "overlay-alt-f4" {
+        on_main(app, |app| chrome::focus_overlay(app.clone()))?;
+    }
     close_started.store(true, Ordering::SeqCst);
     on_main(app, move |app| {
+        let label = if target == "overlay-alt-f4" {
+            "overlay"
+        } else {
+            &target
+        };
         let window = app
-            .get_webview_window(&target)
+            .get_webview_window(label)
             .ok_or("close target missing")?;
         #[cfg(windows)]
         {
@@ -371,7 +449,7 @@ fn exercise_windows(
                 GetForegroundWindow, PostMessageW, WM_CLOSE,
             };
             let handle = window.hwnd().map_err(|error| error.to_string())?;
-            if target == "main" {
+            if target == "main" || target == "overlay-alt-f4" {
                 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
                     INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput, VK_F4,
                     VK_MENU,

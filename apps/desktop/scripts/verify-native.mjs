@@ -8,7 +8,14 @@ for (const runtime of ["embedded", "fallback"]) {
     assert(bootstrap.includes(`crate::plugin_native::plugin_native_${command}`), `${runtime} must register native ${command}`);
   }
   assert.match(bootstrap, /RunEvent::Exit[\s\S]*plugin_native::shutdown/, `${runtime} must clean up native modules on exit`);
+  assert(!bootstrap.includes("native_filter_smoke"), "the developer frame probe must not be exposed through IPC");
 }
+
+const mpvModules = await source("src-tauri/src/mpv_embed/mod.rs");
+assert.match(mpvModules, /#\[cfg\(feature = "window-smoke"\)\]\s*pub\(crate\) mod native_filter_smoke;/,
+  "the experimental frame adapter must stay behind the window-smoke feature");
+const smokeAdapter = await source("src-tauri/src/mpv_embed/native_filter_smoke.rs");
+assert(!smokeAdapter.includes("#[tauri::command]"), "smoke helpers are not plugin APIs");
 
 const worker = await source("src/app/pluginRuntime/workerSource/apiSections.ts");
 const view = await source("src/app/pluginRuntime/viewDocument.ts");
