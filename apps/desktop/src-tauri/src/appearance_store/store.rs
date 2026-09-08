@@ -19,6 +19,14 @@ pub(super) struct AppearanceStore {
 }
 
 impl AppearanceStoreState {
+    #[cfg(all(test, windows))]
+    pub(super) fn for_test(path: PathBuf) -> Self {
+        Self {
+            path,
+            access: Mutex::new(()),
+        }
+    }
+
     pub fn open(app: &AppHandle) -> Self {
         let path = match Self::store_path(app) {
             Ok(path) => path,

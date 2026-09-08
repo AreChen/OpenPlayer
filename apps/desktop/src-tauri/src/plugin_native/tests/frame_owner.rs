@@ -3,7 +3,15 @@ use super::*;
 use std::{path::PathBuf, process::Stdio};
 use tokio::io::AsyncWriteExt;
 
-pub(crate) fn exercise_frame_owner_lifecycle(mut lifecycle: impl FnMut(&str)) {
+pub(crate) fn exercise_frame_owner_lifecycle(lifecycle: impl FnMut(&str)) {
+    exercise_frame_owner(lifecycle, None);
+}
+
+pub(crate) fn exercise_portable_frame_owner(launch: ModuleLaunch, lifecycle: impl FnMut(&str)) {
+    exercise_frame_owner(lifecycle, Some(launch));
+}
+
+fn exercise_frame_owner(mut lifecycle: impl FnMut(&str), packaged: Option<ModuleLaunch>) {
     let python = PathBuf::from(
         std::env::var_os("OPENPLAYER_NATIVE_FRAME_PYTHON").expect("provide Python runtime"),
     );
@@ -51,14 +59,36 @@ pub(crate) fn exercise_frame_owner_lifecycle(mut lifecycle: impl FnMut(&str)) {
                 ],
                 module: definition,
             };
+            let launch = packaged.as_ref().unwrap_or(&launch).clone();
             let session = Session::spawn(launch.clone()).unwrap();
             session.initialize().await.unwrap();
+            if packaged.is_some() {
+                use sha2::{Digest, Sha256};
+                let library = root.join(".local/runtime/nvngx_dlssnr.dll");
+                let digest = format!("{:x}", Sha256::digest(std::fs::read(&library).unwrap()));
+                let configured = session
+                    .request(
+                        "runtime.configure",
+                        json!({
+                            "path": library, "sha256": digest,
+                        }),
+                        5000,
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(configured["configured"], true);
+            }
             let opened = session
                 .request("frames.open", Value::Null, 5000)
                 .await
                 .unwrap();
             assert_eq!(opened["protocol"], "openplayer-frame-experimental-v1");
-            let mut client = tokio::process::Command::new(&python)
+            let client_python = if packaged.is_some() {
+                &launch.executable
+            } else {
+                &python
+            };
+            let mut client = tokio::process::Command::new(client_python)
                 .arg(root.join("scripts/sdk_frame_client_probe.py"))
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())

@@ -166,6 +166,27 @@ pub(super) fn remove_installed_plugin_directory(
     if !target.starts_with(root) {
         return Err("plugin install path is outside the managed plugin directory".to_string());
     }
+    // Native job termination can be followed by transient image-file deletion
+    // denial on Windows. Retry that bounded cleanup, never a permanent lock.
+    #[cfg(windows)]
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    #[cfg(windows)]
+    loop {
+        match fs::remove_dir_all(&target) {
+            Ok(()) => return Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound && !target.exists() => {
+                return Ok(());
+            }
+            Err(error)
+                if matches!(error.raw_os_error(), Some(5 | 32 | 33))
+                    && std::time::Instant::now() < deadline =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+            Err(error) => return Err(format!("failed to remove installed plugin files: {error}")),
+        }
+    }
+    #[cfg(not(windows))]
     fs::remove_dir_all(target)
         .map_err(|error| format!("failed to remove installed plugin files: {error}"))
 }
