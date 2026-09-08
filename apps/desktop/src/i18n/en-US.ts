@@ -80,6 +80,7 @@ export const enUS = {
       disableAlwaysOnTop: "Disable Always on Top",
       settings: "Settings",
       closeWindow: "Close Window",
+      externalCapture: "External Capture",
     },
     settings: {
       title: "Settings",

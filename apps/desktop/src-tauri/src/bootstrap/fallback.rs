@@ -29,6 +29,7 @@ pub fn run() {
             crate::window::window_always_on_top_state,
             crate::window::window_toggle_always_on_top,
             crate::window::window_focus_overlay,
+            crate::window::window_set_capture_mode,
             crate::window::window_start_resize,
             crate::window::window_set_resize_cursor,
             crate::window::window_apply_resize_delta,

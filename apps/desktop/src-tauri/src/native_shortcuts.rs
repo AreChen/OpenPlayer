@@ -3,6 +3,19 @@ use std::collections::HashMap;
 #[cfg(windows)]
 mod windows;
 
+#[cfg(all(windows, feature = "window-smoke"))]
+pub(crate) use windows::recover_capture_on_escape;
+
+#[cfg(windows)]
+pub(crate) fn capture_recovery_available() -> bool {
+    windows::capture_recovery_available()
+}
+
+#[cfg(windows)]
+pub(crate) fn register_shell_windows(main: isize, overlay: isize) {
+    windows::register_shell_windows(main, overlay);
+}
+
 #[tauri::command]
 pub(crate) fn window_update_shortcuts(
     bindings: HashMap<String, Option<String>>,

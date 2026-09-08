@@ -22,6 +22,7 @@ type ContextMenuItemsOptions = {
   onRestartPlayback: () => void;
   onOpenCurrentFileLocation: () => void;
   onToggleFullscreen: () => void;
+  onEnterCaptureMode?: () => void;
   onToggleAlwaysOnTop: () => void;
   onOpenSettingsDialog: () => void;
   onCloseWindow: () => void;
@@ -46,6 +47,7 @@ export function buildContextMenuItems({
   onRestartPlayback,
   onOpenCurrentFileLocation,
   onToggleFullscreen,
+  onEnterCaptureMode,
   onToggleAlwaysOnTop,
   onOpenSettingsDialog,
   onCloseWindow,
@@ -77,6 +79,7 @@ export function buildContextMenuItems({
       onSelect: () => onExecutePluginAction(instance),
     })),
     { type: "item", id: "fullscreen", label: t.contextMenu.fullscreen, icon: "fullscreen", shortcut: shortcutBindings.toggleFullscreen, onSelect: onToggleFullscreen },
+    ...(onEnterCaptureMode ? [{ type: "item" as const, id: "external-capture", label: t.contextMenu.externalCapture, icon: "tv" as const, disabled: !isMediaLoaded, onSelect: onEnterCaptureMode }] : []),
     { type: "item", id: "always-on-top", label: isAlwaysOnTop ? t.contextMenu.disableAlwaysOnTop : t.contextMenu.alwaysOnTop, icon: "pin", shortcut: shortcutBindings.toggleAlwaysOnTop, onSelect: onToggleAlwaysOnTop },
     { type: "item", id: "settings", label: t.contextMenu.settings, icon: "settings", shortcut: shortcutBindings.openSettings, onSelect: onOpenSettingsDialog },
     { type: "separator", id: "window-separator" },

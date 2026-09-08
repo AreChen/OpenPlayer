@@ -47,7 +47,18 @@ pub(super) fn toggle_fullscreen(app: AppHandle, window_state: &WindowState) -> R
         }
     } else {
         let placement = capture_window_placement(&main)?;
-        set_main_window_fullscreen(&main, true)?;
+        // Tao's Windows maximized client calculation uses the work area, even in fullscreen.
+        #[cfg(windows)]
+        if placement.maximized {
+            main.unmaximize().map_err(|error| error.to_string())?;
+        }
+        if let Err(error) = set_main_window_fullscreen(&main, true) {
+            #[cfg(windows)]
+            if placement.maximized {
+                let _ = main.maximize();
+            }
+            return Err(error);
+        }
         *fullscreen_restore = Some(placement);
         drop(fullscreen_restore);
     }
@@ -97,6 +108,9 @@ pub(super) fn close(app: AppHandle, window_state: &WindowState) -> Result<(), St
 }
 
 pub(super) fn focus_overlay(app: AppHandle) -> Result<(), String> {
+    if super::capture_mode_active(&app) {
+        return Ok(());
+    }
     if let Some(overlay) = overlay_window(&app) {
         overlay.set_focus().map_err(|error| error.to_string())
     } else {

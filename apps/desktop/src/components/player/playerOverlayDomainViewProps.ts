@@ -174,6 +174,7 @@ export function buildPlayerOverlayViewPropsFromDomains({
     pluginContextMenuActions: pluginRuntime.pluginContextMenuActions,
     restartPlayback: playback.restartPlayback,
     toggleFullscreen: windowActions.toggleFullscreen,
+    enterCaptureMode: windowActions.enterCaptureMode,
     toggleAlwaysOnTop: windowActions.toggleAlwaysOnTop,
     openSettingsDialog: settings.openSettingsDialog,
     openCurrentFileLocation: windowActions.openCurrentFileLocation,

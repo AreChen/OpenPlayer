@@ -80,6 +80,7 @@ export const zhCN = {
       disableAlwaysOnTop: "取消窗口置顶",
       settings: "设置",
       closeWindow: "关闭窗口",
+      externalCapture: "外部增强模式",
     },
     settings: {
       title: "设置",

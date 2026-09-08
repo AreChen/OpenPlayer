@@ -85,6 +85,9 @@ fn sync_overlay_to_main_with_focus(app: &AppHandle, focus_overlay: bool) {
 }
 
 pub(super) fn focus_overlay_window(app: &AppHandle) {
+    if super::capture_mode_active(app) {
+        return;
+    }
     if let Some(overlay) = overlay_window(app) {
         let _ = overlay.set_focus();
     }

@@ -3,6 +3,9 @@
   z-index: 60;
   display: grid;
   width: 236px;
+  max-height: min(420px, calc(100vh - 16px));
+  overflow-y: auto;
+  grid-auto-rows: max-content;
   border: 1px solid var(--accent-border);
   border-radius: 12px;
   background:

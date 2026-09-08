@@ -10,15 +10,19 @@ use std::{
 mod foreground;
 mod keyboard;
 
-use foreground::is_openplayer_foreground;
+pub(super) use foreground::register_shell_windows;
+use foreground::{is_openplayer_foreground, is_shell_foreground};
 use keyboard::native_shortcut_chord;
 use tauri::{AppHandle, Emitter};
 use windows_sys::Win32::{
     Foundation::{LPARAM, LRESULT, WPARAM},
     System::LibraryLoader::GetModuleHandleW,
+    UI::Input::KeyboardAndMouse::{
+        GetAsyncKeyState, VK_CONTROL, VK_ESCAPE, VK_F4, VK_LWIN, VK_RWIN, VK_SHIFT,
+    },
     UI::WindowsAndMessaging::{
-        CallNextHookEx, GetMessageW, KBDLLHOOKSTRUCT, MSG, SetWindowsHookExW, WH_KEYBOARD_LL,
-        WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+        CallNextHookEx, GetMessageW, KBDLLHOOKSTRUCT, LLKHF_ALTDOWN, MSG, SetWindowsHookExW,
+        WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
     },
 };
 
@@ -88,6 +92,22 @@ pub(super) fn set_native_shortcuts_enabled(enabled: bool) {
     }
 }
 
+pub(super) fn capture_recovery_available() -> bool {
+    NATIVE_SHORTCUT_STATE
+        .get()
+        .and_then(|state| state.hook.lock().ok())
+        .is_some_and(|hook| hook.is_some())
+}
+
+pub(crate) fn recover_capture_on_escape(app: &AppHandle, vk_code: u32, foreground: bool) -> bool {
+    if foreground && vk_code == u32::from(VK_ESCAPE) && crate::window::capture_mode_active(app) {
+        crate::window::restore_capture_controls(app);
+        true
+    } else {
+        false
+    }
+}
+
 unsafe extern "system" fn native_shortcut_keyboard_proc(
     ncode: i32,
     wparam: WPARAM,
@@ -112,7 +132,31 @@ unsafe extern "system" fn native_shortcut_keyboard_proc(
         pressed_keys.remove(&key.vkCode);
     }
 
-    if !state.enabled.load(Ordering::SeqCst) || !is_openplayer_foreground() {
+    let foreground = is_openplayer_foreground();
+    // File pickers and other native dialogs keep their normal Escape/Alt+F4 behavior.
+    let shell_foreground = foreground && is_shell_foreground();
+    // Native video/WebView focus can consume the default system-close route after transitions.
+    // Keep Alt+F4 on the same coordinated close path as our titlebar, including capture mode.
+    if is_key_down
+        && shell_foreground
+        && key.vkCode == u32::from(VK_F4)
+        && key.flags & LLKHF_ALTDOWN != 0
+        && [VK_CONTROL, VK_SHIFT, VK_LWIN, VK_RWIN]
+            .iter()
+            .all(|key| unsafe { GetAsyncKeyState(i32::from(*key)) } >= 0)
+    {
+        crate::window::request_native_close(&state.app);
+        return 1;
+    }
+    // Recovery is native and must work even when a hidden WebView disabled ordinary shortcuts.
+    if is_key_down
+        && key.vkCode == u32::from(VK_ESCAPE)
+        && native_shortcut_chord(key.vkCode).as_deref() == Some("Escape")
+        && recover_capture_on_escape(&state.app, key.vkCode, shell_foreground)
+    {
+        return 1;
+    }
+    if !state.enabled.load(Ordering::SeqCst) || !foreground {
         return unsafe { CallNextHookEx(std::ptr::null_mut(), ncode, wparam, lparam) };
     }
 

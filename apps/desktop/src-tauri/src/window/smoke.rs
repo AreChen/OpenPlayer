@@ -43,6 +43,7 @@ pub fn run() {
         .manage(MpvEmbedState::default())
         .manage(MpvWallState::default())
         .setup(move |app| {
+            crate::native_shortcuts::install_native_shortcut_hook(app.handle().clone());
             // Real native windows with inert WebViews: no user stores or plugins are loaded.
             overlay::setup_overlay_window_with_url(
                 app,
@@ -116,6 +117,157 @@ fn aligned(app: &AppHandle) -> Result<bool, String> {
         == overlay.outer_size().map_err(|e| e.to_string())?
         && main.outer_position().map_err(|e| e.to_string())?
             == overlay.outer_position().map_err(|e| e.to_string())?)
+}
+
+#[cfg(windows)]
+fn fullscreen_covers_monitor(app: &AppHandle) -> Result<bool, String> {
+    use windows_sys::Win32::{
+        Foundation::RECT,
+        UI::WindowsAndMessaging::{FindWindowExW, GetWindowRect},
+    };
+    let main = main_window(app)?;
+    let monitor = main
+        .current_monitor()
+        .map_err(|e| e.to_string())?
+        .ok_or("monitor missing")?;
+    let position = *monitor.position();
+    let size = *monitor.size();
+    let hwnd = main.hwnd().map_err(|e| e.to_string())?;
+    let title: Vec<u16> = "OpenPlayer MPV Video Host"
+        .encode_utf16()
+        .chain(Some(0))
+        .collect();
+    let host = unsafe {
+        FindWindowExW(
+            hwnd.0 as _,
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            title.as_ptr(),
+        )
+    };
+    let mut rect = RECT::default();
+    if host.is_null() || unsafe { GetWindowRect(host, &mut rect) } == 0 {
+        return Err("mpv video host bounds unavailable".into());
+    }
+    Ok(main.is_fullscreen().map_err(|e| e.to_string())?
+        && main.inner_position().map_err(|e| e.to_string())? == position
+        && main.inner_size().map_err(|e| e.to_string())? == size
+        && rect.left == position.x
+        && rect.top == position.y
+        && rect.right - rect.left == size.width as i32
+        && rect.bottom - rect.top == size.height as i32
+        && aligned(app)?)
+}
+
+#[cfg(windows)]
+fn exercise_maximized_fullscreen(app: &AppHandle) -> Result<(), String> {
+    let original = on_main(app, |app| {
+        let main = main_window(app)?;
+        Ok((
+            main.outer_position().map_err(|e| e.to_string())?,
+            main.outer_size().map_err(|e| e.to_string())?,
+        ))
+    })?;
+    on_main(app, |app| chrome::toggle_maximize(app.clone()))?;
+    wait_until(app, "maximize", |app| {
+        Ok(main_window(app)?
+            .is_maximized()
+            .map_err(|e| e.to_string())?
+            && aligned(app)?)
+    })?;
+    for _ in 0..2 {
+        on_main(app, |app| {
+            chrome::toggle_fullscreen(app.clone(), &app.state::<WindowState>())
+        })?;
+        if let Err(error) = wait_until(
+            app,
+            "maximized fullscreen covers entire monitor",
+            fullscreen_covers_monitor,
+        ) {
+            let bounds = on_main(app, |app| {
+                let main = main_window(app)?;
+                Ok(format!(
+                    "outer={:?}, client={:?}, maximized={:?}, monitor={:?}",
+                    main.outer_size(),
+                    main.inner_size(),
+                    main.is_maximized(),
+                    main.current_monitor().map(|m| m.map(|m| *m.size()))
+                ))
+            })?;
+            return Err(format!("{error}; {bounds}"));
+        }
+        on_main(app, |app| {
+            chrome::toggle_fullscreen(app.clone(), &app.state::<WindowState>())
+        })?;
+        wait_until(app, "restore maximized state", |app| {
+            let main = main_window(app)?;
+            Ok(!main.is_fullscreen().map_err(|e| e.to_string())?
+                && main.is_maximized().map_err(|e| e.to_string())?
+                && aligned(app)?)
+        })?;
+    }
+    on_main(app, |app| chrome::toggle_maximize(app.clone()))?;
+    wait_until(app, "unmaximize after fullscreen", move |app| {
+        let main = main_window(app)?;
+        Ok(!main.is_maximized().map_err(|e| e.to_string())?
+            && main.outer_position().map_err(|e| e.to_string())? == original.0
+            && main.outer_size().map_err(|e| e.to_string())? == original.1
+            && aligned(app)?)
+    })
+}
+
+#[cfg(windows)]
+fn exercise_capture_mode(app: &AppHandle) -> Result<(), String> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+    wait_until(app, "native capture recovery hook", |_| {
+        Ok(crate::native_shortcuts::capture_recovery_available())
+    })?;
+    tauri::async_runtime::block_on(super::window_set_capture_mode(app.clone(), true))?;
+    wait_until(app, "capture source focus", |app| {
+        let main = main_window(app)?;
+        let overlay = overlay_window(app).ok_or("overlay missing")?;
+        Ok(super::capture_mode_active(app)
+            && !overlay.is_visible().map_err(|e| e.to_string())?
+            && std::ptr::eq(
+                unsafe { GetForegroundWindow() },
+                main.hwnd().map_err(|e| e.to_string())?.0,
+            ))
+    })?;
+    on_main(app, |app| {
+        chrome::focus_overlay(app.clone())?;
+        overlay::sync_overlay_to_main(app);
+        if crate::native_shortcuts::recover_capture_on_escape(app, 0x1B, false)
+            || crate::native_shortcuts::recover_capture_on_escape(app, 0x20, true)
+        {
+            return Err("capture recovery intercepted unrelated input".into());
+        }
+        let main = main_window(app)?;
+        if !std::ptr::eq(
+            unsafe { GetForegroundWindow() },
+            main.hwnd().map_err(|e| e.to_string())?.0,
+        ) {
+            return Err("hidden overlay stole capture source focus".into());
+        }
+        Ok(())
+    })?;
+    crate::native_shortcuts::window_set_shortcuts_enabled(false)?;
+    if !crate::native_shortcuts::recover_capture_on_escape(app, 0x1B, true) {
+        return Err("native Escape did not restore capture controls".into());
+    }
+    wait_until(app, "capture controls restored", |app| {
+        let overlay = overlay_window(app).ok_or("overlay missing")?;
+        Ok(!super::capture_mode_active(app)
+            && overlay.is_visible().map_err(|e| e.to_string())?
+            && std::ptr::eq(
+                unsafe { GetForegroundWindow() },
+                overlay.hwnd().map_err(|e| e.to_string())?.0,
+            ))
+    })?;
+    crate::native_shortcuts::window_set_shortcuts_enabled(true)?;
+    println!(
+        "PASS: maximized fullscreen client/video bounds, capture source focus, native recovery"
+    );
+    Ok(())
 }
 
 fn exercise_windows(
@@ -200,6 +352,14 @@ fn exercise_windows(
         })?;
         return Err(format!("{error}; expected={placement:?}; {actual}"));
     }
+    #[cfg(windows)]
+    exercise_maximized_fullscreen(app)?;
+    #[cfg(windows)]
+    exercise_capture_mode(app)?;
+    #[cfg(windows)]
+    if target == "main" {
+        tauri::async_runtime::block_on(super::window_set_capture_mode(app.clone(), true))?;
+    }
     close_started.store(true, Ordering::SeqCst);
     on_main(app, move |app| {
         let window = app
@@ -208,11 +368,44 @@ fn exercise_windows(
         #[cfg(windows)]
         {
             use windows_sys::Win32::UI::WindowsAndMessaging::{
-                PostMessageW, SC_CLOSE, WM_SYSCOMMAND,
+                GetForegroundWindow, PostMessageW, WM_CLOSE,
             };
             let handle = window.hwnd().map_err(|error| error.to_string())?;
-            // SC_CLOSE is the native system close route used by Alt+F4, without global key injection.
-            if unsafe { PostMessageW(handle.0 as _, WM_SYSCOMMAND, SC_CLOSE as usize, 0) } == 0 {
+            if target == "main" {
+                use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+                    INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput, VK_F4,
+                    VK_MENU,
+                };
+                if !std::ptr::eq(unsafe { GetForegroundWindow() }, handle.0) {
+                    return Err("refusing to inject Alt+F4 outside the smoke window".into());
+                }
+                let inputs = [
+                    (VK_MENU, 0),
+                    (VK_F4, 0),
+                    (VK_F4, KEYEVENTF_KEYUP),
+                    (VK_MENU, KEYEVENTF_KEYUP),
+                ]
+                .map(|(key, flags)| INPUT {
+                    r#type: INPUT_KEYBOARD,
+                    Anonymous: INPUT_0 {
+                        ki: KEYBDINPUT {
+                            wVk: key,
+                            dwFlags: flags,
+                            ..Default::default()
+                        },
+                    },
+                });
+                if unsafe {
+                    SendInput(
+                        inputs.len() as u32,
+                        inputs.as_ptr(),
+                        std::mem::size_of::<INPUT>() as i32,
+                    )
+                } != inputs.len() as u32
+                {
+                    return Err("failed to send native Alt+F4".into());
+                }
+            } else if unsafe { PostMessageW(handle.0 as _, WM_CLOSE, 0, 0) } == 0 {
                 return Err("failed to send native close request".into());
             }
             Ok(())

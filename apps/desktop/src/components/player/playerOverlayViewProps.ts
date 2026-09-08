@@ -43,6 +43,7 @@ type PlayerOverlayViewPropsInput = Omit<PlayerAppViewPropsContext, DerivedViewPr
   pluginContextMenuActions: PluginActionInstance[];
   restartPlayback: () => void;
   toggleFullscreen: () => void;
+  enterCaptureMode: () => void;
   toggleAlwaysOnTop: () => void;
   openSettingsDialog: () => void;
   openCurrentFileLocation: () => void;
@@ -62,6 +63,7 @@ export function buildPlayerOverlayViewProps({
   pluginContextMenuActions,
   restartPlayback,
   toggleFullscreen,
+  enterCaptureMode,
   toggleAlwaysOnTop,
   openSettingsDialog,
   openCurrentFileLocation,
@@ -106,6 +108,8 @@ export function buildPlayerOverlayViewProps({
     onRestartPlayback: restartPlayback,
     onOpenCurrentFileLocation: openCurrentFileLocation,
     onToggleFullscreen: toggleFullscreen,
+    onEnterCaptureMode: viewContext.platformSupport?.os === "windows" && viewContext.platformSupport.mpvEmbedVideo
+      ? enterCaptureMode : undefined,
     onToggleAlwaysOnTop: toggleAlwaysOnTop,
     onOpenSettingsDialog: openSettingsDialog,
     onCloseWindow: () => viewContext.onWindowCommand("window_close"),

@@ -33,6 +33,7 @@ pub(super) fn set_overlay_owner(main: &WebviewWindow, overlay: &WebviewWindow) {
     let Ok(overlay_hwnd) = window_hwnd(overlay) else {
         return;
     };
+    crate::native_shortcuts::register_shell_windows(main_hwnd, overlay_hwnd);
     unsafe {
         SetWindowLongPtrW(overlay_hwnd as _, GWLP_HWNDPARENT, main_hwnd);
     }

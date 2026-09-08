@@ -1088,6 +1088,9 @@ assert.match(tauriRuntimeSource, /pub\(super\)\s+fn\s+close[\s\S]*stop_embedded_
 assert.match(tauriRuntimeSource, /WindowEvent::CloseRequested[\s\S]*begin_window_close[\s\S]*stop_embedded_player_for_close/, "OS chrome close requests must also tear down mpv before closing the companion window");
 assert.match(tauriRuntimeSource, /fn schedule_overlay_sync_to_main/, "desktop backend must schedule overlay sync after asynchronous fullscreen transitions");
 assert.match(windowToggleFullscreenSource, /schedule_overlay_sync_to_main\(&app\)/, "fullscreen toggling must defer overlay sync until the main window has applied fullscreen bounds");
+assert.match(windowToggleFullscreenSource, /#\[cfg\(windows\)\][\s\S]*placement\.maximized[\s\S]*main\.unmaximize\(\)[\s\S]*set_main_window_fullscreen\(&main, true\)/, "Windows fullscreen must clear maximization before calculating fullscreen client bounds");
+assert.match(tauriRuntimeSource, /fn focus_overlay_window[\s\S]*capture_mode_active\(app\)[\s\S]*return;/, "capture mode must prevent hidden controls from taking main-window focus");
+assert.match(tauriRuntimeSource, /recover_capture_on_escape\(&state\.app[\s\S]*!state\.enabled/, "native capture recovery must run before ordinary shortcut enablement checks");
 assert.doesNotMatch(windowToggleFullscreenSource, /sync_overlay_to_main\(&app\)/, "fullscreen toggling must not immediately sync the overlay using stale fullscreen transition bounds");
 assert.match(mpvEmbedRuntimeSource, /mpv_embed_frame_step[\s\S]*mpv_embed_frame_back_step[\s\S]*mpv_embed_set_speed[\s\S]*mpv_embed_set_video_fill[\s\S]*mpv_embed_set_subtitle_delay[\s\S]*mpv_embed_select_track[\s\S]*mpv_embed_add_subtitle/, "desktop runtime must register frame, speed, video layout, subtitle delay, track, and subtitle mpv commands");
 assert.match(mpvEmbedRuntimeSource, /mpv_embed_capture_screenshot/, "desktop runtime must register screenshot capability commands");

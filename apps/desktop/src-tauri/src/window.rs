@@ -6,6 +6,7 @@ use std::sync::{
 };
 use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, State, WebviewWindow};
 
+mod capture_mode;
 mod chrome;
 mod file_manager;
 #[cfg(feature = "mpv-embed")]
@@ -37,6 +38,48 @@ pub(crate) struct WindowState {
     fullscreen_restore: Mutex<Option<WindowPlacement>>,
     always_on_top: Mutex<bool>,
     closing: AtomicBool,
+    capture_mode: AtomicBool,
+}
+
+pub(crate) fn capture_mode_active(app: &AppHandle) -> bool {
+    app.state::<WindowState>()
+        .capture_mode
+        .load(Ordering::SeqCst)
+}
+
+#[tauri::command]
+pub(crate) async fn window_set_capture_mode(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let (sender, receiver) = tauri::async_runtime::channel(1);
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        let _ = sender.try_send(capture_mode::set_enabled(&handle, enabled));
+    })
+    .map_err(|error| error.to_string())?;
+    let mut receiver = receiver;
+    receiver
+        .recv()
+        .await
+        .ok_or_else(|| "capture mode operation was interrupted".to_string())?
+}
+
+#[cfg(windows)]
+pub(crate) fn restore_capture_controls(app: &AppHandle) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Err(error) = capture_mode::set_enabled(&handle, false) {
+            eprintln!("Failed to restore capture controls: {error}");
+        }
+    });
+}
+
+#[cfg(windows)]
+pub(crate) fn request_native_close(app: &AppHandle) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Err(error) = chrome::close(handle.clone(), &handle.state::<WindowState>()) {
+            eprintln!("Failed to close native player windows: {error}");
+        }
+    });
 }
 
 pub(super) const MIN_MAIN_WINDOW_WIDTH: i32 = 960;

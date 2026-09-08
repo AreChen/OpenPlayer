@@ -28,6 +28,10 @@ export function useWindowActions({ media, setIsAlwaysOnTop, showAlwaysOnTopFeedb
     runWindowCommand("window_toggle_fullscreen");
   }
 
+  function enterCaptureMode() {
+    invoke("window_set_capture_mode", { enabled: true }).catch(onError);
+  }
+
   function toggleAlwaysOnTop() {
     invoke<boolean>("window_toggle_always_on_top")
       .then((enabled) => {
@@ -49,6 +53,7 @@ export function useWindowActions({ media, setIsAlwaysOnTop, showAlwaysOnTopFeedb
   }
 
   return {
+    enterCaptureMode,
     openExternalUrl,
     toggleFullscreen,
     toggleAlwaysOnTop,
