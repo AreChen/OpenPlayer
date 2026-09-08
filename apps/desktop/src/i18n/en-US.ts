@@ -133,6 +133,7 @@ export const enUS = {
         permissionDescriptions: {
           "mpv.core": "Can change core playback properties and run allowlisted mpv commands.",
           "mpv.filters": "Can add or remove scoped audio and video filters.",
+          "native.process": "Runs trusted native software outside the JavaScript sandbox, with your account's file and network access. Requires separate confirmation.",
           "mpv.osd": "Can show temporary text over the video.",
           "mpv.scriptMessage": "Can send allowlisted messages to mpv scripts.",
           "mpv.wall": "Can control the multi-stream wall.",
@@ -165,6 +166,7 @@ export const enUS = {
           audioTool: "Audio Tool",
           subtitleTool: "Subtitle Tool",
           mpvControl: "mpv Control",
+          nativeTool: "Native Tool",
         },
         placements: {
           pluginSettings: "Plugin Settings",

@@ -24,6 +24,11 @@ For current SDK 1.6 runtime usage, examples, permissions, events, mpv controls,
 custom views, and verification commands, read
 [`sdk-1.6-developer-guide.md`](./sdk-1.6-developer-guide.md).
 
+Development native extensions are documented in
+[Native modules](./native-modules.md). They run as separately confirmed, trusted
+processes, not inside the JavaScript sandbox. The generic control protocol is
+implemented; live video-frame processing is not.
+
 ## Current Capabilities
 
 - Install `.opplugin` packages from the Plugins settings page.

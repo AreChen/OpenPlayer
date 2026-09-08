@@ -23,6 +23,7 @@ impl AppearanceStore {
     ) -> Result<AppearanceState, String> {
         let plugin_id = plugin_id.trim();
         validate_dotted_identifier("plugin id", plugin_id, true)?;
+        crate::plugin_native::invalidate_plugin(plugin_id)?;
         let active_theme_id = self.state()?.active_theme_id;
         let install_path = self
             .plugin_install_record(plugin_id)?

@@ -66,6 +66,11 @@ pub fn run() {
             crate::plugin_artifacts::plugin_artifacts_remove,
             crate::plugin_artifacts::plugin_artifacts_clear,
             crate::plugin_network::plugin_network_request,
+            crate::plugin_native::plugin_native_list,
+            crate::plugin_native::plugin_native_start,
+            crate::plugin_native::plugin_native_call,
+            crate::plugin_native::plugin_native_stop,
+            crate::plugin_native::plugin_native_validate_video_plan,
             crate::appearance_store::commands::appearance_reset,
             crate::appearance_store::commands::preferences_state,
             crate::appearance_store::commands::preferences_set_incognito_mode,
@@ -86,6 +91,11 @@ pub fn run() {
             crate::playback_store::commands::playback_media_settings,
             crate::playback_store::commands::playback_media_settings_update
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to run OpenPlayer desktop app");
+        .build(tauri::generate_context!())
+        .expect("failed to build OpenPlayer desktop app")
+        .run(|_, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                crate::plugin_native::shutdown();
+            }
+        });
 }

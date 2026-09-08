@@ -5,6 +5,7 @@ use super::*;
 use std::path::PathBuf;
 
 mod fixtures;
+mod native;
 mod packages;
 mod plugin_actions;
 mod plugin_settings;

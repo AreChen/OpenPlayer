@@ -73,38 +73,53 @@ pub fn preferences_set_language_mode(
 }
 
 #[tauri::command]
-pub fn appearance_import_plugin_manifest(
-    state: State<'_, AppearanceStoreState>,
+pub async fn appearance_import_plugin_manifest(
+    app: AppHandle,
     path: String,
 ) -> Result<AppearanceState, String> {
     let path = PathBuf::from(path.trim());
-    state.with_store(|store| store.import_plugin_manifest_path(&path))
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<AppearanceStoreState>()
+            .with_store(|store| store.import_plugin_manifest_path(&path))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn appearance_import_plugin_package(
-    state: State<'_, AppearanceStoreState>,
+pub async fn appearance_import_plugin_package(
+    app: AppHandle,
     path: String,
 ) -> Result<AppearanceState, String> {
     let path = PathBuf::from(path.trim());
-    state.with_store(|store| store.import_plugin_package_path(&path))
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<AppearanceStoreState>()
+            .with_store(|store| store.import_plugin_package_path(&path))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn appearance_import_plugin_directory(
-    state: State<'_, AppearanceStoreState>,
+pub async fn appearance_import_plugin_directory(
+    app: AppHandle,
     path: String,
 ) -> Result<AppearanceState, String> {
     let path = PathBuf::from(path.trim());
-    state.with_store(|store| store.import_plugin_directory_path(&path))
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<AppearanceStoreState>()
+            .with_store(|store| store.import_plugin_directory_path(&path))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn appearance_import_theme_plugin(
-    state: State<'_, AppearanceStoreState>,
+pub async fn appearance_import_theme_plugin(
+    app: AppHandle,
     path: String,
 ) -> Result<AppearanceState, String> {
-    appearance_import_plugin_manifest(state, path)
+    appearance_import_plugin_manifest(app, path).await
 }
 
 #[tauri::command]
@@ -124,29 +139,39 @@ pub fn appearance_plugin_view_html(
 }
 
 #[tauri::command]
-pub fn appearance_uninstall_plugin(
+pub async fn appearance_uninstall_plugin(
     app: AppHandle,
-    state: State<'_, AppearanceStoreState>,
     plugin_id: String,
 ) -> Result<AppearanceState, String> {
-    let state = state.with_store(|store| store.uninstall_plugin(&plugin_id))?;
-    if let Ok(app_data_dir) = app.path().app_data_dir() {
-        let _ = crate::plugin_artifacts::clear_plugin_artifacts_for_plugin(
-            &app_data_dir,
-            &plugin_id,
-            None,
-        );
-    }
-    Ok(state)
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app
+            .state::<AppearanceStoreState>()
+            .with_store(|store| store.uninstall_plugin(&plugin_id))?;
+        if let Ok(app_data_dir) = app.path().app_data_dir() {
+            let _ = crate::plugin_artifacts::clear_plugin_artifacts_for_plugin(
+                &app_data_dir,
+                &plugin_id,
+                None,
+            );
+        }
+        Ok(state)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn appearance_set_plugin_enabled(
-    state: State<'_, AppearanceStoreState>,
+pub async fn appearance_set_plugin_enabled(
+    app: AppHandle,
     plugin_id: String,
     enabled: bool,
 ) -> Result<AppearanceState, String> {
-    state.with_store(|store| store.set_plugin_enabled(&plugin_id, enabled))
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<AppearanceStoreState>()
+            .with_store(|store| store.set_plugin_enabled(&plugin_id, enabled))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

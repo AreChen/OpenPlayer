@@ -1113,3 +1113,5 @@ assert.ok(capability.permissions.includes("dialog:allow-open"), "capability must
 
 assert.match(workspaceToml, /members = \[\s*"apps\/desktop\/src-tauri",\s*\]/, "workspace should only build the desktop shell crate");
 assert.doesNotMatch(workspaceToml, /crates\//, "minimal workspace must not include old backend crates");
+
+await import("./verify-native.mjs");

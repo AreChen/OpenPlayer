@@ -34,6 +34,8 @@ pub(in crate::appearance_store) struct PluginManifest {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(in crate::appearance_store) struct PluginContributions {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(in crate::appearance_store) native_modules: Vec<crate::plugin_native::NativeModule>,
     #[serde(default)]
     pub(in crate::appearance_store) themes: Vec<ThemeManifest>,
     #[serde(default)]

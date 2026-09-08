@@ -9,7 +9,7 @@ use crate::appearance_store::{
     manifest::parse_theme_plugin_manifest_json,
     package::{
         copy_directory_contents, extract_plugin_package, read_manifest_from_plugin_package,
-        replace_directory_with_writer,
+        replace_directory_with_writer, validate_native_package,
     },
     records::{
         current_time_ms, plugin_runtime_storage_key, plugin_runtime_storage_prefix,
@@ -29,6 +29,7 @@ impl AppearanceStore {
         json: &str,
     ) -> Result<AppearanceState, String> {
         let manifest = parse_theme_plugin_manifest_json(json)?;
+        crate::plugin_native::invalidate_plugin(&manifest.id)?;
         self.store_plugin_manifest(manifest, None)
     }
 
@@ -39,6 +40,10 @@ impl AppearanceStore {
         let json = fs::read_to_string(path)
             .map_err(|error| format!("failed to read plugin manifest: {error}"))?;
         let manifest = parse_theme_plugin_manifest_json(&json)?;
+        if !manifest.contributes.native_modules.is_empty() {
+            return Err("native modules require a plugin directory or .opplugin package".into());
+        }
+        crate::plugin_native::invalidate_plugin(&manifest.id)?;
         let install_directory = self.plugin_install_directory(&manifest.id);
         let staging_directory = self.plugin_staging_directory(&manifest.id);
         replace_directory_with_writer(&install_directory, &staging_directory, |directory| {
@@ -64,10 +69,12 @@ impl AppearanceStore {
         let json = fs::read_to_string(&manifest_path)
             .map_err(|error| format!("failed to read plugin directory manifest: {error}"))?;
         let manifest = parse_theme_plugin_manifest_json(&json)?;
+        crate::plugin_native::invalidate_plugin(&manifest.id)?;
         let install_directory = self.plugin_install_directory(&manifest.id);
         let staging_directory = self.plugin_staging_directory(&manifest.id);
         replace_directory_with_writer(&install_directory, &staging_directory, |directory| {
-            copy_directory_contents(path, directory)
+            copy_directory_contents(path, directory)?;
+            validate_native_package(directory, &manifest)
         })?;
         let record = StoredPluginInstall {
             package_kind: "directory".to_string(),
@@ -91,10 +98,12 @@ impl AppearanceStore {
         }
         let json = read_manifest_from_plugin_package(path)?;
         let manifest = parse_theme_plugin_manifest_json(&json)?;
+        crate::plugin_native::invalidate_plugin(&manifest.id)?;
         let install_directory = self.plugin_install_directory(&manifest.id);
         let staging_directory = self.plugin_staging_directory(&manifest.id);
         replace_directory_with_writer(&install_directory, &staging_directory, |directory| {
-            extract_plugin_package(path, directory)
+            extract_plugin_package(path, directory)?;
+            validate_native_package(directory, &manifest)
         })?;
         let record = StoredPluginInstall {
             package_kind: "opplugin".to_string(),

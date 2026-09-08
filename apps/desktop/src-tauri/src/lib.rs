@@ -13,6 +13,7 @@ mod native_shortcuts;
 mod platform_support;
 mod playback_store;
 mod plugin_artifacts;
+mod plugin_native;
 mod plugin_network;
 mod shell_preview;
 mod store_schema;

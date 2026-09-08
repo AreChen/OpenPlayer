@@ -21,7 +21,6 @@ mpv-embed = [
   "dep:objc2-app-kit",
   "dep:objc2-foundation",
   "dep:raw-window-handle",
-  "dep:windows-sys",
 ]
 
 [dependencies]
@@ -36,18 +35,25 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 redb = "4.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["process", "io-util", "time", "sync"] }
 reqwest = "0.13.3"
 base64 = "0.22"
 tauri-plugin-dialog = "2"
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
+  "Win32_Globalization",
   "Win32_System_LibraryLoader",
   "Win32_System_Registry",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_Security",
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
-], optional = true }
+] }
 
 [build-dependencies]
 cc = "1"

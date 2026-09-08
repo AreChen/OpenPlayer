@@ -133,6 +133,7 @@ export const zhCN = {
         permissionDescriptions: {
           "mpv.core": "可修改核心播放属性并执行允许列表内的 mpv 命令。",
           "mpv.filters": "可添加或移除插件作用域内的音视频滤镜。",
+          "native.process": "在 JavaScript 沙箱之外运行可信原生程序，可使用当前用户的文件和网络权限。启动需要单独确认。",
           "mpv.osd": "可在视频上临时显示文字。",
           "mpv.scriptMessage": "可向 mpv 脚本发送允许列表内的消息。",
           "mpv.wall": "可控制多路流媒体墙。",
@@ -165,6 +166,7 @@ export const zhCN = {
           audioTool: "音频工具",
           subtitleTool: "字幕工具",
           mpvControl: "mpv 控制",
+          nativeTool: "原生工具",
         },
         placements: {
           pluginSettings: "插件设置",

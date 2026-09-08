@@ -92,6 +92,10 @@ pub(super) fn validate_plugin_manifest(manifest: &PluginManifest) -> Result<(), 
         validate_non_empty("plugin description", description)?;
     }
     validate_plugin_runtime(&manifest.runtime)?;
+    crate::plugin_native::validate_modules(
+        &manifest.contributes.native_modules,
+        &plugin_permissions(manifest),
+    )?;
     if manifest.contributes.themes.is_empty()
         && manifest.contributes.capabilities.is_empty()
         && manifest.contributes.settings.is_empty()

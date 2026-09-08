@@ -18,6 +18,8 @@ export const OPENPLAYER_HOST_CAPABILITIES = Object.freeze([
   "plugin.storage",
   "plugin.tasks",
   "plugin.views",
+  "native.process",
+  "native.videoPlan",
   "player.playback",
   "player.tracks",
   "player.snapshot",

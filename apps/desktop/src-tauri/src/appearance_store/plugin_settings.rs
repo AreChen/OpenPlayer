@@ -17,6 +17,9 @@ impl AppearanceStore {
         enabled: bool,
     ) -> Result<AppearanceState, String> {
         let plugin_id = plugin_id.trim();
+        if !enabled {
+            crate::plugin_native::invalidate_plugin(plugin_id)?;
+        }
         let active_theme_id = self.state()?.active_theme_id;
         let transaction = self
             .database

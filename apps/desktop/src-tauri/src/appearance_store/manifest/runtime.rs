@@ -112,7 +112,13 @@ pub(super) fn validate_plugin_view(view: &PluginViewManifest) -> Result<(), Stri
 fn is_supported_capability_kind(kind: &str) -> bool {
     matches!(
         kind,
-        "subtitleStyle" | "capture" | "streamSource" | "audioTool" | "subtitleTool" | "mpvControl"
+        "subtitleStyle"
+            | "capture"
+            | "streamSource"
+            | "audioTool"
+            | "subtitleTool"
+            | "mpvControl"
+            | "nativeTool"
     )
 }
 
@@ -120,6 +126,7 @@ pub(super) fn is_supported_plugin_permission(permission: &str) -> bool {
     matches!(
         permission,
         "mpv.subtitleStyle"
+            | "native.process"
             | "mpv.loadOptions"
             | "mpv.capture"
             | "mpv.wall"

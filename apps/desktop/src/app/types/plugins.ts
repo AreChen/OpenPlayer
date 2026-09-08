@@ -38,6 +38,7 @@ export type PluginCapabilitySummary = {
 };
 
 export type PluginCapabilityKind =
+  | "nativeTool"
   | "subtitleStyle"
   | "capture"
   | "streamSource"

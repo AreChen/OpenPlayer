@@ -8,6 +8,13 @@ validated `manifest.json`, optional settings/actions/views, and optionally a
 `webviewJs` runtime script that runs in an isolated worker. The host owns mpv,
 native dialogs, persistent storage, security validation, and UI placement.
 
+Development builds also expose permissioned out-of-process native modules.
+See [Native modules](./native-modules.md) for the separate trust boundary,
+`openplayer.native` API, executable packaging, and verification instructions.
+This extension is not in published 1.6.3 binaries. Its video-plan validator does
+not attach effects to playback; live DLSSNR, interpolation, and upscaling remain
+separate integration work.
+
 ## Where The SDK Lives
 
 - Host bridge constants:

@@ -64,6 +64,26 @@ pub(super) fn copy_directory_contents(source: &Path, target: &Path) -> Result<()
     Ok(())
 }
 
+pub(super) fn validate_native_package(
+    root: &Path,
+    manifest: &super::types::PluginManifest,
+) -> Result<(), String> {
+    for module in &manifest.contributes.native_modules {
+        for target in module.targets.values() {
+            let file = resolve_plugin_package_file_path(&root.to_string_lossy(), &target.entry)?;
+            crate::plugin_native::verify_executable(&file, &target.sha256)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                // ZIP metadata is not trusted to grant executable or special bits.
+                fs::set_permissions(&file, fs::Permissions::from_mode(0o700))
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn read_manifest_from_plugin_package(path: &Path) -> Result<String, String> {
     let file =
         File::open(path).map_err(|error| format!("failed to open plugin package: {error}"))?;

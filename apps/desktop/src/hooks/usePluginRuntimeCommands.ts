@@ -4,6 +4,7 @@ import { handlePluginAudioRuntimeCommand } from "./pluginRuntimeCommands/audio";
 import { handlePluginDataRuntimeCommand } from "./pluginRuntimeCommands/data";
 import { handlePluginFilesystemRuntimeCommand } from "./pluginRuntimeCommands/filesystem";
 import { handlePluginMpvRuntimeCommand } from "./pluginRuntimeCommands/mpv";
+import { handlePluginNativeRuntimeCommand } from "./pluginRuntimeCommands/native";
 import { handlePluginPlayerRuntimeCommand } from "./pluginRuntimeCommands/player";
 import { handlePluginPlaylistRuntimeCommand } from "./pluginRuntimeCommands/playlist";
 import {
@@ -16,6 +17,7 @@ import { handlePluginUiRuntimeCommand } from "./pluginRuntimeCommands/ui";
 import { handlePluginWallRuntimeCommand } from "./pluginRuntimeCommands/wall";
 
 const pluginRuntimeCommandHandlers: PluginRuntimeCommandHandler[] = [
+  handlePluginNativeRuntimeCommand,
   handlePluginDataRuntimeCommand,
   handlePluginTasksRuntimeCommand,
   handlePluginArtifactsRuntimeCommand,

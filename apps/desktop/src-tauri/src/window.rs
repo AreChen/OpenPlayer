@@ -138,7 +138,6 @@ pub(crate) fn window_focus_overlay(app: AppHandle) -> Result<(), String> {
     chrome::focus_overlay(app)
 }
 
-#[cfg(feature = "mpv-embed")]
 #[tauri::command]
 pub(crate) fn window_reveal_path(path: String) -> Result<(), String> {
     file_manager::window_reveal_path(path)
