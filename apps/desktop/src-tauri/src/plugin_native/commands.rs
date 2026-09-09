@@ -2,7 +2,6 @@ use super::{NativeModuleInfo, REGISTRY, Session, current_target};
 use crate::appearance_store::AppearanceStoreState;
 use serde_json::Value;
 use tauri::{AppHandle, Manager};
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 #[tauri::command]
 pub(crate) async fn plugin_native_validate_video_plan(
@@ -54,10 +53,11 @@ pub(crate) async fn plugin_native_start(
     plugin_id: String,
     module_id: String,
 ) -> Result<(), String> {
-    static CONSENT: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-    let _consent = CONSENT
+    // Installation grants declared permissions; serialize launches, not dialogs.
+    static LAUNCH: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _launch = LAUNCH
         .try_lock()
-        .map_err(|_| "another native launch is awaiting confirmation")?;
+        .map_err(|_| "another native launch is in progress")?;
     let generation = REGISTRY
         .lock()
         .map_err(|_| "native registry unavailable")?
@@ -88,20 +88,6 @@ pub(crate) async fn plugin_native_start(
     if exists {
         return Ok(());
     }
-    let (title, message) = super::consent::message(&launch);
-    let allowed = tauri::async_runtime::spawn_blocking(move || {
-        app.dialog()
-            .message(message)
-            .title(title)
-            .kind(MessageDialogKind::Warning)
-            .buttons(MessageDialogButtons::OkCancel)
-            .blocking_show()
-    })
-    .await
-    .map_err(|e| e.to_string())?;
-    if !allowed {
-        return Err("native launch was declined".into());
-    }
     let session_key = key.clone();
     let session = tauri::async_runtime::spawn_blocking(move || {
         let target = launch
@@ -112,7 +98,7 @@ pub(crate) async fn plugin_native_start(
         super::verify_executable(&launch.executable, &target.sha256)?;
         let mut registry = REGISTRY.lock().map_err(|_| "native registry unavailable")?;
         if registry.generation != generation {
-            return Err("plugins changed while awaiting confirmation; retry launch".into());
+            return Err("plugins changed during startup; retry launch".into());
         }
         let session = Session::spawn(launch)?;
         registry.sessions.insert(session_key, session.clone());

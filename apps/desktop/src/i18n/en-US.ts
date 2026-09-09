@@ -133,7 +133,7 @@ export const enUS = {
         permissionDescriptions: {
           "mpv.core": "Can change core playback properties and run allowlisted mpv commands.",
           "mpv.filters": "Can add or remove scoped audio and video filters.",
-          "native.process": "Runs trusted native software outside the JavaScript sandbox, with your account's file and network access. Requires separate confirmation.",
+          "native.process": "Runs trusted native software outside the JavaScript sandbox, with your account's file and network access. Installing the plugin grants its declared permissions.",
           "native.video": "Loads a declared trusted video runtime into the player and processes playback frames. A failure can crash the player; the runtime remains loaded until exit.",
           "mpv.osd": "Can show temporary text over the video.",
           "mpv.scriptMessage": "Can send allowlisted messages to mpv scripts.",

@@ -34,9 +34,6 @@ pub(crate) struct NativeModuleInfo {
 #[derive(Clone)]
 pub(crate) struct ModuleLaunch {
     pub plugin_id: String,
-    pub plugin_name: String,
-    pub plugin_version: String,
-    pub language_mode: String,
     pub executable: PathBuf,
     #[cfg_attr(not(all(windows, feature = "mpv-embed")), allow(dead_code))]
     pub package_root: PathBuf,

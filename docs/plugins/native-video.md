@@ -14,16 +14,17 @@ contain the schema-2 inventory and private runtime layout described in
 [runtime ownership](native-runtime-ownership.md).
 
 This permission allows trusted package code to run inside the player through
-VapourSynth/CPython. A runtime failure can crash the player. Native launch
-confirmation explicitly discloses this, in addition to the native process's
-file/network access. A hash is not a signature. Only load trusted packages.
+VapourSynth/CPython. A runtime failure can crash the player. Installing the plugin
+grants its declared permissions, including native file/network access; starting
+it does not prompt again. Permission descriptions remain visible in plugin
+settings. A hash is not a signature. Only install trusted packages.
 
 ## Compose the APIs
 
 ```js
 if (openplayer.capabilities.has("native.video") &&
     openplayer.capabilities.hasPermission("native.video")) {
-  await openplayer.native.start("enhance"); // Host-owned launch confirmation.
+  await openplayer.native.start("enhance"); // Uses installed declared permissions.
   // Configure the module using its declared, plugin-specific control methods.
   const result = await openplayer.native.video.attach("enhance", { settings: {} });
   await openplayer.log.info(JSON.stringify(result));
@@ -78,6 +79,7 @@ requires restarting the player, not merely toggling the plugin.
   picker, enable/stop, failure cleanup and narrow layouts, using simulated replies.
 
 These window tests exercise production commands but register an internal test
-session instead of clicking launch consent. Full GUI consent plus enhancement
-remains a manual acceptance step. Long-duration A/V synchronization, color
+session. On 2026-09-10 the user confirmed GUI installation and enhancement work.
+Launch confirmations were subsequently removed at the user's request.
+Long-duration A/V synchronization, color
 fidelity, mid-stream format changes and sustained performance remain unverified.

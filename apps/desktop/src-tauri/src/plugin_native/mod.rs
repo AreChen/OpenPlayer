@@ -2,7 +2,6 @@ mod attachment;
 #[cfg(all(windows, feature = "window-smoke"))]
 pub(crate) mod attachment_smoke;
 mod commands;
-mod consent;
 mod process_tree;
 mod session;
 #[cfg(test)]

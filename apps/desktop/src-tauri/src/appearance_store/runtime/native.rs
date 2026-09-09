@@ -36,14 +36,13 @@ impl AppearanceStoreState {
         module_id: &str,
     ) -> Result<ModuleLaunch, String> {
         // Commands sample the runtime generation before this snapshot and verify it
-        // on registration, so disable/update cannot race a pending consent dialog.
+        // on registration, so disable/update cannot race a pending launch.
         let modules = self.native_modules(plugin_id)?;
         let module = modules
             .into_iter()
             .find(|m| m.id == module_id)
             .ok_or("unknown native module")?;
         self.with_store(|store| {
-            let manifest = store.plugin_manifest(plugin_id)?;
             let install = store
                 .plugin_install_record(plugin_id)?
                 .ok_or("plugin is not installed")?;
@@ -56,11 +55,8 @@ impl AppearanceStoreState {
             crate::plugin_native::verify_executable(&executable, &target.sha256)?;
             Ok(ModuleLaunch {
                 plugin_id: plugin_id.into(),
-                plugin_name: manifest.name,
-                plugin_version: manifest.version,
                 executable,
                 package_root: std::path::PathBuf::from(&install.install_path),
-                language_mode: store.preferences()?.language_mode,
                 args: target.args.clone(),
                 module,
             })

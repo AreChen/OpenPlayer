@@ -171,9 +171,6 @@ fn native_process_roundtrip_faults_and_lifecycle() {
     let launch = ModuleLaunch {
         plugin_id: "test.native.protocol".into(),
         package_root: std::env::temp_dir(),
-        plugin_name: "Test".into(),
-        plugin_version: "1.0.0".into(),
-        language_mode: "en-US".into(),
         executable,
         args: vec!["--spawn-child".into()],
         module: module(),

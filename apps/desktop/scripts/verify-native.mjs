@@ -30,8 +30,8 @@ assert(view.includes("pluginWorkerFilesystemApiSource()"), "custom views must re
 
 const commands = await source("src-tauri/src/plugin_native/commands.rs");
 assert.match(commands, /async fn plugin_native_stop[\s\S]*spawn_blocking/, "native stop cannot wait for process cleanup on the window thread");
-assert.match(commands, /verify_executable[\s\S]*generation != generation[\s\S]*Session::spawn/, "verify consent snapshot and executable before starting native code");
-assert.match(commands, /blocking_show/, "native launch requires a host-owned confirmation");
+assert.match(commands, /verify_executable[\s\S]*generation != generation[\s\S]*Session::spawn/, "verify lifecycle snapshot and executable before starting native code");
+assert.doesNotMatch(commands, /blocking_show|app\.dialog\(/, "installed plugins must not prompt again when starting declared native modules");
 
 const tree = await source("src-tauri/src/plugin_native/process_tree.rs");
 assert(tree.includes("CREATE_SUSPENDED"));

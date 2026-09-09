@@ -6,8 +6,9 @@ extension. The application version has not been bumped for a release.
 
 **Native modules are trusted software running with the current user's file,
 network, and environment access. They are NOT sandboxed.** The JavaScript worker
-remains sandboxed; `native.process` is a separate, high-risk permission with an
-explicit host-owned confirmation for each new process launch.
+remains sandboxed; `native.process` is a separate, high-risk declared permission.
+Installation grants declared permissions. There is no repeated launch prompt;
+permission, enablement, integrity and lifecycle checks still apply on every start.
 
 **Development Windows x64 builds now expose [single-stage video attachment](native-video.md).**
 `native.video.validatePlan()` checks a proposed format/rate chain and always
@@ -25,7 +26,7 @@ rtk proxy node scripts/build-native-example.mjs
 
 This builds the Rust echo executable, generates a manifest with its actual SHA256,
 and validates `.native-example/`. Import that directory into a development host.
-The context-menu action requests native launch confirmation, performs an echo
+The context-menu action starts the installed native module, performs an echo
 round trip, and stops the module. The script neither installs the example nor
 adds it to the official plugin catalog. Do not distribute the fault-injection
 `protocol-fixture` executable as a plugin.
@@ -58,7 +59,7 @@ capability category, not a separate permission. Existing categories may also
 include this permission. No vendor, AI, model, or effect names are host gates.
 
 The installer verifies every declared executable before replacing an installed
-package. Launch rechecks the selected executable before and after confirmation.
+package. Launch rechecks the selected executable immediately before spawning.
 Each executable is limited to 128 MiB; the existing whole-package size limit
 still applies. SHA256 detects mismatch with the manifest, but is not a signature
 or proof of publisher identity and does not authenticate dependent DLLs/models.
@@ -91,7 +92,7 @@ if (openplayer.capabilities.has("native.process") &&
 | API | Behavior |
 | --- | --- |
 | `list()` | Module id, protocol, methods, platform support, and running state |
-| `start(moduleId)` | Verify permission/enablement/integrity, prompt, spawn, negotiate; reuse an already-running session |
+| `start(moduleId)` | Verify permission/enablement/integrity, spawn, negotiate; reuse an already-running session |
 | `call(moduleId, method, params?, options?)` | One bounded request to an explicitly declared method |
 | `stop(moduleId)` | Terminate the module process group/job; on Windows, wait for job processes to exit |
 | `stopAll()` | Stop this plugin's modules, not other plugins |
@@ -101,10 +102,10 @@ if (openplayer.capabilities.has("native.process") &&
 There are at most 16 registered sessions across the application. Each session
 allows one in-flight request. Concurrent requests fail with `busy`, rather than
 forming an unbounded queue. `timeoutMs` is 1..5000, default 5000. Starting a new
-process prompts again; there is no persisted blanket grant. Only one launch
-confirmation can be pending. Confirmation may take longer than command callback
-deadlines; the reference runtime starts that interaction outside its timed
-command callback and reports completion/failure separately.
+process uses the installed plugin's declared permissions. Only one launch may be
+in progress; concurrent starts return a retryable error without spawning twice.
+The filesystem directory API opens the actual directory picker, not an additional
+authorization dialog. Installation does not grant undeclared SDK permissions.
 
 Timeout, transport failure, worker error, malformed output, or protocol mismatch
 terminates the session. The host does not restart it silently. Undeclared methods,
@@ -146,7 +147,7 @@ not by opening the host database from native code.
 
 - Disable, upgrade, and uninstall stop that plugin's registered native modules.
 - Pending starts are rejected if a plugin lifecycle operation invalidates their
-  snapshot while confirmation is open. Retry explicitly after the operation.
+  snapshot during startup. Retry explicitly after the operation.
 - On Windows, workers start suspended, join a kill-on-close Job Object, and only
   then execute, so startup helpers inherit the job. Stop waits up to two seconds
   per job; failed cleanup preserves tracking and fails the operation for retry.
