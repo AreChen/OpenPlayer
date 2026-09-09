@@ -364,6 +364,12 @@ fn exercise_windows(
         }
         thread::sleep(Duration::from_millis(50));
     }
+    #[cfg(windows)]
+    let attachment = if std::env::var_os("OPENPLAYER_SMOKE_NATIVE_ATTACHMENT").is_some() {
+        Some(crate::plugin_native::attachment_smoke::Run::start(app)?)
+    } else {
+        None
+    };
     exercise_native_filter(app)?;
     for index in 0..40 {
         on_main(app, move |app| {
@@ -421,10 +427,14 @@ fn exercise_windows(
     #[cfg(windows)]
     exercise_maximized_fullscreen(app)?;
     #[cfg(windows)]
-    if std::env::var_os("OPENPLAYER_SMOKE_NATIVE_FILTER").is_none() {
+    if std::env::var_os("OPENPLAYER_SMOKE_NATIVE_FILTER").is_none() && attachment.is_none() {
         exercise_capture_mode(app)?;
     } else {
         println!("PASS: maximized fullscreen client/video bounds with native filter");
+    }
+    #[cfg(windows)]
+    if let Some(attachment) = attachment {
+        attachment.finish()?;
     }
     #[cfg(windows)]
     if target == "main" {

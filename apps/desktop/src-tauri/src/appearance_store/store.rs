@@ -19,7 +19,7 @@ pub(super) struct AppearanceStore {
 }
 
 impl AppearanceStoreState {
-    #[cfg(all(test, windows))]
+    #[cfg(all(windows, any(test, feature = "window-smoke")))]
     pub(super) fn for_test(path: PathBuf) -> Self {
         Self {
             path,

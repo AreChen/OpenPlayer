@@ -26,6 +26,7 @@ struct Response {
 pub(super) struct Session {
     pub launch: ModuleLaunch,
     pub tree: ProcessTree,
+    pub(super) attachment: std::sync::Mutex<super::attachment::Attachment>,
     io: Mutex<SessionIo>,
 }
 
@@ -37,6 +38,27 @@ struct SessionIo {
 }
 
 impl Session {
+    #[cfg(all(windows, feature = "window-smoke"))]
+    pub(super) async fn crash_for_smoke(&self) -> Result<(), String> {
+        self.io
+            .lock()
+            .await
+            .child
+            .start_kill()
+            .map_err(|e| e.to_string())
+    }
+
+    pub(super) fn stop_and_wait(&self) -> Result<(), String> {
+        // Kill processing first so a wedged worker cannot keep an mpv callback
+        // waiting while the filter is removed. Keep failed cleanup for retry.
+        self.tree.stop();
+        self.tree.wait_stopped()?;
+        self.attachment
+            .lock()
+            .map_err(|_| "native attachment unavailable")?
+            .stop()
+    }
+
     pub(super) fn running(&self) -> bool {
         if self.tree.stopped() {
             return false;
@@ -70,6 +92,7 @@ impl Session {
         let session = Arc::new(Self {
             launch,
             tree,
+            attachment: Default::default(),
             io: Mutex::new(SessionIo {
                 child,
                 input,
@@ -85,6 +108,8 @@ impl Session {
                     break;
                 };
                 if !session.running() {
+                    // mpv cleanup may block: never run it on an async executor.
+                    let _ = tokio::task::spawn_blocking(move || session.stop_and_wait()).await;
                     break;
                 }
             }

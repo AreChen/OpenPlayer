@@ -1,3 +1,6 @@
+mod attachment;
+#[cfg(all(windows, feature = "window-smoke"))]
+pub(crate) mod attachment_smoke;
 mod commands;
 mod consent;
 mod process_tree;
@@ -38,7 +41,7 @@ impl Registry {
             self.sessions[key].tree.stop();
         }
         for key in &keys {
-            self.sessions[key].tree.wait_stopped()?;
+            self.sessions[key].stop_and_wait()?;
         }
         for key in keys {
             self.sessions.remove(&key);
@@ -54,7 +57,7 @@ impl Registry {
             .map(|(key, _)| key.clone())
             .collect();
         for key in &keys {
-            self.sessions[key].tree.wait_stopped()?;
+            self.sessions[key].stop_and_wait()?;
         }
         for key in keys {
             self.sessions.remove(&key);

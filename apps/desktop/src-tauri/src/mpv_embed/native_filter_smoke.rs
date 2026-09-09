@@ -1,5 +1,7 @@
 //! Opt-in developer smoke fixture. Not an IPC command or a public plugin API.
 use super::*;
+#[cfg(windows)]
+pub(crate) mod owned;
 
 pub(crate) async fn command(app: AppHandle, name: &str, args: Vec<String>) -> Result<(), String> {
     let name = name.to_owned();

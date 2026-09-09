@@ -78,8 +78,12 @@ fn exercise_frame_owner(mut lifecycle: impl FnMut(&str), packaged: Option<Module
                     .unwrap();
                 assert_eq!(configured["configured"], true);
             }
+            let frame_options = std::env::var("OPENPLAYER_NATIVE_FRAME_OPTIONS")
+                .ok()
+                .map(|text| serde_json::from_str(&text).expect("valid frame test options"))
+                .unwrap_or(Value::Null);
             let opened = session
-                .request("frames.open", Value::Null, 5000)
+                .request("frames.open", frame_options, 5000)
                 .await
                 .unwrap();
             assert_eq!(opened["protocol"], "openplayer-frame-experimental-v1");

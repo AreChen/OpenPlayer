@@ -82,7 +82,7 @@ impl ProcessTree {
         self.stopped.load(Ordering::SeqCst)
     }
 
-    #[cfg(all(test, windows))]
+    #[cfg(all(windows, any(test, feature = "window-smoke")))]
     pub(super) fn job_handle(&self) -> windows_sys::Win32::Foundation::HANDLE {
         self.job as _
     }

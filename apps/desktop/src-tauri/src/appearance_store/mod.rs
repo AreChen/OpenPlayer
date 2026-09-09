@@ -9,6 +9,8 @@ mod plugin_settings;
 mod preferences;
 mod records;
 mod runtime;
+#[cfg(all(windows, feature = "window-smoke"))]
+pub(crate) mod smoke;
 mod state;
 mod store;
 #[cfg(test)]

@@ -73,6 +73,22 @@ cover removing the source while a copy lease is alive, stale/live lease handling
 failed DLL-load cleanup, invalid paths, corrupt/extra files and unrelated cache
 entries. The host suite passed 201 tests with three explicitly gated tests ignored.
 
+## Session attachment follow-up
+
+The next development batch connects a single cleanup lease to each native session.
+Stop/prune remove the owned filter before forgetting the session; failed removal
+retains tracking for retry. Idle parent exit schedules cleanup on a blocking task.
+Only the Windows harness can install a real attachment; normal SDK startup cannot.
+It uses an isolated package, host-cached adapter and unique owned filter labels.
+No permission or Tauri command was added.
+
+The real-window stop/reconnect scenario passed on 2026-09-09. A subsequent disable
+scenario produced recovery screenshots but timed out before verified completion;
+the cause remains unresolved. Further foreground runs paused while the user was
+gaming. GPU-1 headless processing and real-store disable/replacement/uninstall
+passed separately, not as a combined window acceptance test. See the prototype's
+`docs/host-attachment.md` and `docs/gpu-selection.md` for evidence and reproduction.
+
 ## Remaining attachment work
 
 This fixture passes original frames through; it is not a combined DLSSNR plugin
@@ -80,5 +96,6 @@ UI/SDK attachment test. Real React controls, native launch consent, an active
 plugin uninstall during enhancement, PTS/A-V synchronization and a public attach /
 detach operation remain unverified or unimplemented. The loader alone must not
 make `native.video.validatePlan()` executable. No new permission or JS API was
-introduced. The next step is connecting the existing native frame owner to this
-runtime through a single, bounded host-owned video attachment lifecycle.
+introduced. The next step is completing the combined window lifecycle matrix and
+production authorization/ownership integration before exposing executable SDK
+attachment.

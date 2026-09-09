@@ -186,7 +186,33 @@ fn native_process_roundtrip_faults_and_lifecycle() {
             (launch.plugin_id.clone(), launch.module.id.clone()),
             session.clone(),
         );
+        let attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = attempts.clone();
+        session
+            .attachment
+            .lock()
+            .unwrap()
+            .mount(
+                || Ok(()),
+                Box::new(move || {
+                    if counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+                        Err("fixture detach failure".into())
+                    } else {
+                        Ok(())
+                    }
+                }),
+            )
+            .unwrap();
+        assert!(invalidate_plugin(&launch.plugin_id).is_err());
+        assert!(
+            REGISTRY
+                .lock()
+                .unwrap()
+                .sessions
+                .contains_key(&(launch.plugin_id.clone(), launch.module.id.clone()))
+        );
         invalidate_plugin(&launch.plugin_id).unwrap();
+        assert!(attempts.load(std::sync::atomic::Ordering::SeqCst) >= 2);
         assert!(!session.running());
         assert!(session.request("echo", Value::Null, 100).await.is_err());
         for method in ["delay", "fail", "crash", "oversize"] {

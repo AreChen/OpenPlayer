@@ -123,7 +123,7 @@ pub(crate) async fn plugin_native_start(
     if let Err(error) = session.initialize().await {
         session.tree.stop();
         tauri::async_runtime::spawn_blocking(move || {
-            session.tree.wait_stopped()?;
+            session.stop_and_wait()?;
             let mut registry = REGISTRY.lock().map_err(|_| "native registry unavailable")?;
             if registry
                 .sessions
