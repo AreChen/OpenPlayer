@@ -232,6 +232,9 @@ impl Run {
         if std::env::var_os("OPENPLAYER_SMOKE_PAUSED_PREVIEW").is_some() {
             run.verify_paused_preview(worker)?;
         }
+        if std::env::var_os("OPENPLAYER_SMOKE_REALTIME").is_some() {
+            run.verify_realtime()?;
+        }
         println!("PASS: session attachment pause seek detach reattach reused worker");
         Ok(run)
     }
@@ -323,6 +326,45 @@ impl Run {
         println!(
             "PASS: paused settings refresh preserved position and worker; playback refresh was a no-op"
         );
+        Ok(())
+    }
+
+    fn verify_realtime(&self) -> Result<(), String> {
+        let started = Instant::now();
+        let position = self.snapshot()?.position;
+        let processed_before = self.status()?["processedFrames"]
+            .as_u64()
+            .ok_or("missing processed frame counter")?;
+        let mut peak = 0.0_f64;
+        let mut samples = 0;
+        while started.elapsed() < Duration::from_secs(20) {
+            thread::sleep(Duration::from_millis(250));
+            let diagnostic = native_filter_smoke::video_diagnostics(&self.app)?;
+            println!("REALTIME_SAMPLE {diagnostic}");
+            if started.elapsed() > Duration::from_secs(2) {
+                let sync = diagnostic["avsync"]
+                    .as_str()
+                    .and_then(|s| s.parse::<f64>().ok())
+                    .filter(|s| s.is_finite())
+                    .ok_or("audio/video sync measurement unavailable")?;
+                peak = peak.max(sync.abs());
+                samples += 1;
+            }
+        }
+        let elapsed = started.elapsed().as_secs_f64();
+        let advanced = self.snapshot()?.position - position;
+        let processed = self.status()?["processedFrames"]
+            .as_u64()
+            .ok_or("missing processed frame counter")?
+            - processed_before;
+        println!(
+            "REALTIME_RESULT {}",
+            json!({"peakAvsync":peak,"samples":samples,"elapsed":elapsed,"advanced":advanced,"processedFrames":processed})
+        );
+        if peak > 0.25 || samples < 40 || (advanced - elapsed).abs() > 0.5 || processed < 180 {
+            return Err("real-time playback exceeded 250ms sync/500ms clock budget".into());
+        }
+        println!("PASS: real-time playback stayed within audio/video sync budget");
         Ok(())
     }
 

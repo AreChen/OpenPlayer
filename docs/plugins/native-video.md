@@ -28,6 +28,7 @@ if (openplayer.capabilities.has("native.video") &&
   // Configure the module using its declared, plugin-specific control methods.
   const result = await openplayer.native.video.attach("enhance", {
     inputConversion: "sdr-bt709", // Optional compatibility conversion, not HDR passthrough.
+    frameRateLimit: 15, // Optional fixed-cadence cap before expensive processing.
     settings: {},
   });
   await openplayer.log.info(JSON.stringify(result));
@@ -60,6 +61,17 @@ to normalize HDR, Dolby Vision, other ranges/matrices and 10-bit input before th
 adapter. Already-compatible SDR bypasses conversion. This preserves resolution
 and frame rate, but **outputs SDR, not HDR or Dolby Vision**.
 
+`frameRateLimit` is an optional finite number from 1 to 120. It is consumed by
+the host, not forwarded to `frames.open`. The host inserts an owned FFmpeg `fps`
+filter before color normalization and native processing, using the lower of the
+requested limit and known container FPS (the requested rate when unknown).
+It changes video cadence, not media duration or audio speed. Variable-rate input
+is normalized to that cadence, which can also repeat frames. Omitting the option
+preserves the previous input-cadence behavior. Detach/stop removes the rate filter
+and restores original playback. Change the limit by detaching and attaching again.
+This is a capacity control, not automatic performance detection or a guarantee
+that any GPU can sustain the selected rate.
+
 The host batches a fixed hardware-download/10-bit format, libplacebo conversion,
 and VapourSynth attachment into one filter-list update. libplacebo applies DV RPU
 metadata and removes it from the converted output. Each filter has an owned label;
@@ -90,6 +102,12 @@ requires restarting the player, not merely toggling the plugin.
 updates change displayed pixels while paused, retain position (within 20ms) and
 reuse the same GPU-1 worker. Refresh during playback is a no-op. Exact refresh
 can be slower for long-GOP media; coalesce slider updates before requesting it.
+
+`.local/realtime-1080p60-final.json` uses the user's 1920x1080 60000/1001 FPS
+video on GPU 1 with a 15 FPS cap: 303 processed frames in 20.21 seconds,
+20.20 seconds of media progression and peak mpv-reported A/V error below 1ms.
+`.local/paused-1080p60-final.json` verifies paused pixel changes with that cap.
+These are short functional runs, not perceptual lip-sync or long-duration guarantees.
 
 2026-09-09 evidence in sibling `openplayer-dlssnr/.local/`:
 

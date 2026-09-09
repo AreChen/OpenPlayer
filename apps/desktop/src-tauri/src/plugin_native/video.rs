@@ -45,7 +45,19 @@ fn endpoint(value: Value) -> Result<Value, String> {
     serde_json::to_value(endpoint).map_err(|e| e.to_string())
 }
 
-fn frame_options(mut options: Value) -> Result<(Value, bool), String> {
+fn frame_options(mut options: Value) -> Result<(Value, bool, Option<f64>), String> {
+    let rate = options
+        .as_object_mut()
+        .and_then(|object| object.remove("frameRateLimit"));
+    let rate = match rate {
+        None => None,
+        Some(value) => Some(
+            value
+                .as_f64()
+                .filter(|fps| fps.is_finite() && (1.0..=120.0).contains(fps))
+                .ok_or("frameRateLimit must be a number from 1 to 120")?,
+        ),
+    };
     let conversion = match &mut options {
         Value::Object(object) => object.remove("inputConversion"),
         Value::Null => None,
@@ -57,7 +69,7 @@ fn frame_options(mut options: Value) -> Result<(Value, bool), String> {
         Some("sdr-bt709") => true,
         _ => return Err("inputConversion must be none or sdr-bt709".into()),
     };
-    Ok((options, normalize))
+    Ok((options, normalize, rate))
 }
 
 #[derive(Serialize)]
@@ -145,7 +157,7 @@ pub(crate) async fn plugin_native_video_attach(
             if !session.running() {
                 return Err("native session has exited".into());
             }
-            let (options, normalize) = frame_options(options)?;
+            let (options, normalize, rate) = frame_options(options)?;
             let normalize = filter::validate_media(&app, normalize)?;
             let cache = app
                 .path()
@@ -169,6 +181,7 @@ pub(crate) async fn plugin_native_video_attach(
             }
             let mut filter = filter::OwnedFilter::prepare(app.clone(), &scripts, &endpoint)?;
             filter.normalize_to_sdr(normalize);
+            filter.limit_frame_rate(rate);
             let filter = Arc::new(filter);
             let cleanup = filter.clone();
             slot.mount(|| filter.install(), Box::new(move || cleanup.remove()))?;
@@ -244,19 +257,31 @@ mod tests {
     use serde_json::json;
     #[test]
     fn conversion_is_host_owned_and_bounded() {
-        assert_eq!(frame_options(Value::Null).unwrap(), (Value::Null, false));
+        assert_eq!(
+            frame_options(Value::Null).unwrap(),
+            (Value::Null, false, None)
+        );
         assert_eq!(
             frame_options(json!({"inputConversion":"sdr-bt709", "settings":{"intensity":1}}))
                 .unwrap(),
-            (json!({"settings":{"intensity":1}}), true)
+            (json!({"settings":{"intensity":1}}), true, None)
         );
         for value in [
             json!(3),
             json!({"inputConversion":null}),
             json!({"inputConversion":"lavfi=arbitrary"}),
+            json!({"frameRateLimit":0}),
+            json!({"frameRateLimit":121}),
+            json!({"frameRateLimit":true}),
+            json!({"frameRateLimit":"15"}),
+            json!({"frameRateLimit":null}),
         ] {
             assert!(frame_options(value).is_err());
         }
+        assert_eq!(
+            frame_options(json!({"frameRateLimit":15,"settings":{}})).unwrap(),
+            (json!({"settings":{}}), false, Some(15.0))
+        );
     }
     #[test]
     fn endpoint_rejects_extra_fields_invalid_ports_and_tokens() {

@@ -22,7 +22,8 @@ assert.match(video, /session\.launch\.package_root/, "video runtimes must resolv
 assert(!video.includes("OPENPLAYER_SMOKE"), "public attachment cannot use developer environment overrides");
 assert.match(video, /frame_options\(options\)/, "host conversion options must be separated from plugin controls");
 const filter = await source("src-tauri/src/mpv_embed/native_video_filter.rs");
-assert.match(filter, /format=fmt=yuv420p10[\s\S]*libplacebo=apply_dolbyvision=true/, "download hardware frames without discarding DV precision before color conversion");
+assert.match(filter, /self.normalize\s*\{\s*"yuv420p10"\s*\}[\s\S]*libplacebo=apply_dolbyvision=true/, "download hardware frames without discarding DV precision before color conversion");
+assert.match(filter, /-rate:lavfi=\[fps=fps=[\s\S]*libplacebo=apply_dolbyvision=true/, "limit rate before expensive color conversion and native processing");
 assert.match(filter, /native-input-/, "conversion filters require independent owned labels and cleanup");
 assert.match(await source("src-tauri/src/mpv_embed/commands/lifecycle.rs"), /media_change_guard[\s\S]*stop_existing_player_for_replacement/);
 

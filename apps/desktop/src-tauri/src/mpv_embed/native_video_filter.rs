@@ -16,6 +16,7 @@ pub(crate) struct OwnedFilter {
     label: String,
     script_created: bool,
     normalize: bool,
+    frame_rate_limit: Option<f64>,
 }
 
 impl OwnedFilter {
@@ -46,6 +47,7 @@ impl OwnedFilter {
             label,
             script_created: false,
             normalize: false,
+            frame_rate_limit: None,
         };
         let encoded = serde_json::to_string(&endpoint.to_string()).map_err(|e| e.to_string())?;
         let mut file = std::fs::OpenOptions::new()
@@ -67,6 +69,10 @@ impl OwnedFilter {
         self.label.replacen("native-owned-", "native-input-", 1)
     }
 
+    pub(crate) fn limit_frame_rate(&mut self, rate: Option<f64>) {
+        self.frame_rate_limit = rate;
+    }
+
     pub(crate) fn install(&self) -> Result<(), String> {
         let script = self.script.to_str().ok_or("non-UTF8 adapter path")?;
         let filter = format!(
@@ -77,24 +83,47 @@ impl OwnedFilter {
         );
         let state = self.app.state::<MpvEmbedState>();
         with_player(state.inner(), |player| {
-            let filter = if self.normalize {
+            let mut chain = Vec::new();
+            if self.normalize || self.frame_rate_limit.is_some() {
                 // Force mpv's hardware download before libavfilter negotiation.
                 // Preserve 10-bit DV samples; libplacebo performs the color conversion.
-                let download =
-                    format!("@{}-download:format=fmt=yuv420p10", self.conversion_label());
+                let format = if self.normalize {
+                    "yuv420p10"
+                } else {
+                    "yuv420p"
+                };
+                let download = format!("@{}-download:format=fmt={format}", self.conversion_label());
+                chain.push(download);
+            }
+            if let Some(limit) = self.frame_rate_limit {
+                let source = player
+                    .mpv
+                    .get_property::<f64>("container-fps")
+                    .unwrap_or(limit);
+                let rate = if source.is_finite() && source > 0.0 {
+                    source.min(limit)
+                } else {
+                    limit
+                };
+                // Drop before normalization/NR, preserving media time and audio speed.
+                chain.push(format!(
+                    "@{}-rate:lavfi=[fps=fps={rate}]",
+                    self.conversion_label()
+                ));
+            }
+            if self.normalize {
                 // Interpret Dolby Vision RPU before RGB processing, then strip it.
                 // Fixed host-owned graph: no arbitrary filter text crosses the SDK.
                 let conversion = format!(
                     "@{}:lavfi=[libplacebo=apply_dolbyvision=true:colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:format=yuv420p]",
                     self.conversion_label()
                 );
-                format!("{download},{conversion},{filter}")
-            } else {
-                filter
-            };
+                chain.push(conversion);
+            }
+            chain.push(filter);
             player
                 .mpv
-                .command("vf", &["add", &filter])
+                .command("vf", &["add", &chain.join(",")])
                 .map_err(|e| e.to_string())
         })
     }
@@ -109,6 +138,7 @@ impl OwnedFilter {
                 &self.label,
                 &self.conversion_label(),
                 &format!("{}-download", self.conversion_label()),
+                &format!("{}-rate", self.conversion_label()),
             ]
             .into_iter()
             .filter(|owned| filters.iter().any(|(label, _)| label == *owned))
