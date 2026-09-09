@@ -2,6 +2,16 @@ use serde_json::{Value, json};
 use tauri::{AppHandle, Manager};
 
 #[tauri::command]
+pub(crate) async fn plugin_native_video_refresh_paused(
+    app: AppHandle,
+    plugin_id: String,
+    module_id: String,
+) -> Result<bool, String> {
+    let _ = (app, plugin_id, module_id);
+    Err("native video attachment requires Windows x64 and mpv-embed".into())
+}
+
+#[tauri::command]
 pub(crate) async fn plugin_native_video_status(
     app: AppHandle,
     plugin_id: String,

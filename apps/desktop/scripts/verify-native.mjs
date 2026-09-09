@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 const source = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 for (const runtime of ["embedded", "fallback"]) {
   const bootstrap = await source(`src-tauri/src/bootstrap/${runtime}.rs`);
-  for (const command of ["list", "start", "call", "stop", "validate_video_plan", "video_attach", "video_detach", "video_status"]) {
+  for (const command of ["list", "start", "call", "stop", "validate_video_plan", "video_attach", "video_detach", "video_status", "video_refresh_paused"]) {
     assert(bootstrap.includes(`crate::plugin_native::plugin_native_${command}`), `${runtime} must register native ${command}`);
   }
   assert.match(bootstrap, /RunEvent::Exit[\s\S]*plugin_native::shutdown/, `${runtime} must clean up native modules on exit`);

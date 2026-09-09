@@ -213,6 +213,31 @@ pub(crate) async fn plugin_native_video_detach(
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+pub(crate) async fn plugin_native_video_refresh_paused(
+    app: AppHandle,
+    plugin_id: String,
+    module_id: String,
+) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let _media = MEDIA
+            .try_lock()
+            .map_err(|_| "native video operation is busy")?;
+        let session = session(&app, &plugin_id, &module_id)?
+            .ok_or("start the installed native module first")?;
+        let slot = session
+            .attachment
+            .lock()
+            .map_err(|_| "native attachment unavailable")?;
+        if !session.running() || !slot.attached() || !filter::enabled(&app)? {
+            return Err("native video is not attached".into());
+        }
+        filter::refresh_paused(&app)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

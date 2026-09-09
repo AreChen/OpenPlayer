@@ -134,6 +134,24 @@ pub(crate) fn enabled(app: &AppHandle) -> Result<bool, String> {
     Ok(enabled_filters(&status::filters(&player.mpv)?))
 }
 
+pub(crate) fn refresh_paused(app: &AppHandle) -> Result<bool, String> {
+    with_player(app.state::<MpvEmbedState>().inner(), |player| {
+        if !player.mpv.get_property::<bool>("pause").unwrap_or(false) {
+            return Ok(false);
+        }
+        if !player.mpv.get_property::<bool>("seekable").unwrap_or(false) {
+            return Err("paused frame refresh requires seekable media".into());
+        }
+        // A zero-distance exact seek invalidates cached filter frames without
+        // unpausing or advancing by one frame. The existing owner reuses its worker.
+        player
+            .mpv
+            .command("seek", &["0", "relative+exact"])
+            .map_err(|e| e.to_string())?;
+        Ok(true)
+    })
+}
+
 fn enabled_filters(filters: &[(String, bool)]) -> bool {
     filters
         .iter()

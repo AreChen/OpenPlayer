@@ -41,6 +41,7 @@ if (openplayer.capabilities.has("native.video") &&
 | --- | --- |
 | `attach(moduleId, options?)` | Requires a running, authorized session with a declared adapter. Resolves the installed package, pins its verified host-owned runtime, calls `frames.open(options)`, and installs a host-generated filter. No script, executable, endpoint or filter expression can be supplied by JavaScript. |
 | `status(moduleId)` | Returns `supported`, `running`, `attached`, `filterEnabled`. A cleanup lease is not proof of successful inference: also inspect the module's diagnostics. Unsupported platforms return `supported: false`. |
+| `refreshPaused(moduleId)` | After a settings update, queue a zero-distance exact seek to re-filter the paused position. Returns `true` when queued, `false` while playing. Requires an active owned attachment and seekable media. Completion is asynchronous; preserves pause and reuses the worker. |
 | `detach(moduleId)` | Removes the owned filter, calls `frames.close` if the module is running, and retains the control process. Repeating detach is harmless for the reference module. |
 | `stop(moduleId)` | Terminates the entire native job, waits, and cleans its attachment. This is the reference plugin's stop-and-release action. |
 
@@ -84,6 +85,11 @@ The cached embedded runtime stays resident until app exit; changing its inventor
 requires restarting the player, not merely toggling the plugin.
 
 ## Verification
+
+2026-09-10: sibling `.local/paused-preview-first.json` verifies two parameter
+updates change displayed pixels while paused, retain position (within 20ms) and
+reuse the same GPU-1 worker. Refresh during playback is a no-op. Exact refresh
+can be slower for long-GOP media; coalesce slider updates before requesting it.
 
 2026-09-09 evidence in sibling `openplayer-dlssnr/.local/`:
 

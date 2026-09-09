@@ -74,6 +74,7 @@ pub fn run() {
             crate::plugin_native::plugin_native_video_attach,
             crate::plugin_native::plugin_native_video_detach,
             crate::plugin_native::plugin_native_video_status,
+            crate::plugin_native::plugin_native_video_refresh_paused,
             crate::appearance_store::commands::appearance_reset,
             crate::appearance_store::commands::preferences_state,
             crate::appearance_store::commands::preferences_set_incognito_mode,

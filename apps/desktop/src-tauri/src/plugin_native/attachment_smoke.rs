@@ -229,6 +229,9 @@ impl Run {
             return Err("reattach replaced the frame worker".into());
         }
         run.screenshot("processed.png")?;
+        if std::env::var_os("OPENPLAYER_SMOKE_PAUSED_PREVIEW").is_some() {
+            run.verify_paused_preview(worker)?;
+        }
         println!("PASS: session attachment pause seek detach reattach reused worker");
         Ok(run)
     }
@@ -263,6 +266,64 @@ impl Run {
         )?);
         let cleanup = filter.clone();
         slot.mount(|| filter.install(), Box::new(move || cleanup.remove()))
+    }
+
+    fn verify_paused_preview(&self, worker: u64) -> Result<(), String> {
+        let refresh = || {
+            tauri::async_runtime::block_on(super::plugin_native_video_refresh_paused(
+                self.app.clone(),
+                self.session.launch.plugin_id.clone(),
+                self.session.launch.module.id.clone(),
+            ))
+        };
+        if refresh()? {
+            return Err("refresh must not seek during playback".into());
+        }
+        self.command("set", &["pause", "yes"])?;
+        thread::sleep(Duration::from_millis(300));
+        let before = self.snapshot()?;
+        for (index, intensity) in [0.0, 5.0].into_iter().enumerate() {
+            let generation = self.status()?["generation"]
+                .as_u64()
+                .ok_or("missing generation")?;
+            let updated = tauri::async_runtime::block_on(self.session.request(
+                "frames.update",
+                json!({"settings":{"intensity":intensity}}),
+                5000,
+            ))?;
+            if updated["applied"] != true || !refresh()? {
+                return Err("paused refresh not queued".into());
+            }
+            let deadline = Instant::now() + Duration::from_secs(8);
+            loop {
+                let status = self.status()?;
+                let diagnostics = native_filter_smoke::video_diagnostics(&self.app)?;
+                if status["generation"]
+                    .as_u64()
+                    .is_some_and(|g| g > generation)
+                    && diagnostics["seeking"] == "no"
+                {
+                    break;
+                }
+                if Instant::now() > deadline {
+                    return Err(format!("paused refresh timed out: {diagnostics}"));
+                }
+                thread::sleep(Duration::from_millis(100));
+            }
+            let after = self.snapshot()?;
+            if !after.paused
+                || (after.position - before.position).abs() > 0.02
+                || self.status()?["workerPid"].as_u64() != Some(worker)
+            {
+                return Err("paused refresh changed position, pause or worker".into());
+            }
+            self.screenshot(&format!("paused-{index}.png"))?;
+        }
+        self.command("set", &["pause", "no"])?;
+        println!(
+            "PASS: paused settings refresh preserved position and worker; playback refresh was a no-op"
+        );
+        Ok(())
     }
 
     fn command(&self, name: &str, args: &[&str]) -> Result<(), String> {

@@ -17,6 +17,7 @@ export const handlePluginNativeRuntimeCommand: PluginRuntimeCommandHandler = asy
     case "native.video.attach": return invoke("plugin_native_video_attach", { pluginId, moduleId, options: record.options ?? {} });
     case "native.video.detach": return invoke("plugin_native_video_detach", { pluginId, moduleId });
     case "native.video.status": return invoke("plugin_native_video_status", { pluginId, moduleId });
+    case "native.video.refreshPaused": return invoke("plugin_native_video_refresh_paused", { pluginId, moduleId });
     case "native.start": return invoke("plugin_native_start", { pluginId, moduleId });
     case "native.stop": return invoke("plugin_native_stop", { pluginId, moduleId });
     case "native.call": return invoke("plugin_native_call", {

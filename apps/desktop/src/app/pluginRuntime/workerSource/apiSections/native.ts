@@ -5,6 +5,7 @@ export function pluginWorkerNativeApiSource() {
       attach(moduleId, options = {}) { return requestHost("native.video.attach", { moduleId, options }); },
       detach(moduleId) { return requestHost("native.video.detach", { moduleId }); },
       status(moduleId) { return requestHost("native.video.status", { moduleId }); },
+      refreshPaused(moduleId) { return requestHost("native.video.refreshPaused", { moduleId }); },
     }),
     list() { return requestHost("native.list", {}); },
     start(moduleId) { return requestHost("native.start", { moduleId }); },
