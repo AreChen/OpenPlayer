@@ -69,8 +69,17 @@ pub fn run() {
         })
         .build(context)
         .expect("window smoke app should start");
-    app.run(move |app, event| {
+    // Unlike App::run, run_return lets the fixture verify loop completion and
+    // remove its temporary WebView directory before exiting the process.
+    let exit_code = app.run_return(move |app, event| {
         if matches!(event, RunEvent::Exit) {
+            println!("TRACE: native application exit received");
+            crate::plugin_native::shutdown();
+            #[cfg(windows)]
+            if let Err(error) = crate::plugin_native::attachment_smoke::verify_exit() {
+                eprintln!("window smoke failed: {error}");
+                std::process::exit(1);
+            }
             let player = tauri::async_runtime::block_on(mpv_embed_snapshot(app.clone()));
             if !close_started.load(Ordering::SeqCst)
                 || !app.webview_windows().is_empty()
@@ -83,7 +92,12 @@ pub fn run() {
             println!("PASS: resize alignment, fullscreen restore, companion close, mpv teardown");
         }
     });
+    println!("TRACE: native event loop returned");
     let _ = fs::remove_dir_all(directory);
+    if exit_code != 0 {
+        std::process::exit(exit_code);
+    }
+    println!("PASS: window smoke process ready to exit");
 }
 
 fn on_main<T: Send + 'static>(
@@ -440,6 +454,7 @@ fn exercise_windows(
     if target == "main" {
         tauri::async_runtime::block_on(super::window_set_capture_mode(app.clone(), true))?;
     }
+    println!("TRACE: requesting native window close");
     if target == "overlay-alt-f4" {
         on_main(app, |app| chrome::focus_overlay(app.clone()))?;
     }
@@ -461,11 +476,17 @@ fn exercise_windows(
             let handle = window.hwnd().map_err(|error| error.to_string())?;
             if target == "main" || target == "overlay-alt-f4" {
                 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-                    INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput, VK_F4,
-                    VK_MENU,
+                    GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
+                    SendInput, VK_CONTROL, VK_F4, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
                 };
                 if !std::ptr::eq(unsafe { GetForegroundWindow() }, handle.0) {
                     return Err("refusing to inject Alt+F4 outside the smoke window".into());
+                }
+                if [VK_CONTROL, VK_SHIFT, VK_LWIN, VK_RWIN, VK_MENU, VK_F4]
+                    .into_iter()
+                    .any(|key| unsafe { GetAsyncKeyState(key as i32) } < 0)
+                {
+                    return Err("held keyboard modifiers would change Alt+F4; release keys and retry the smoke test".into());
                 }
                 let inputs = [
                     (VK_MENU, 0),
@@ -493,6 +514,7 @@ fn exercise_windows(
                 {
                     return Err("failed to send native Alt+F4".into());
                 }
+                println!("TRACE: native close input sent");
             } else if unsafe { PostMessageW(handle.0 as _, WM_CLOSE, 0, 0) } == 0 {
                 return Err("failed to send native close request".into());
             }

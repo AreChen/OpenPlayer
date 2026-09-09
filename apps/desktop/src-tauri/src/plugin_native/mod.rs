@@ -76,11 +76,9 @@ pub(crate) fn invalidate_plugin(plugin_id: &str) -> Result<(), String> {
 }
 
 pub(crate) fn shutdown() {
-    if let Ok(mut registry) = REGISTRY.lock() {
-        registry.generation += 1;
-        for session in registry.sessions.values() {
-            session.tree.stop();
-        }
-        registry.sessions.clear();
+    if let Ok(mut registry) = REGISTRY.lock()
+        && let Err(error) = registry.stop_matching(|_| true)
+    {
+        eprintln!("native shutdown cleanup failed: {error}");
     }
 }

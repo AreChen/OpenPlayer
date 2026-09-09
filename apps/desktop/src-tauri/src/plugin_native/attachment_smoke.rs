@@ -12,11 +12,43 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     path::PathBuf,
-    sync::Arc,
+    sync::{Arc, Mutex},
     thread,
     time::{Duration, Instant},
 };
 use tauri::AppHandle;
+
+static EXIT_RUN: Mutex<Option<Run>> = Mutex::new(None);
+
+pub(crate) fn verify_exit() -> Result<(), String> {
+    let run = EXIT_RUN
+        .lock()
+        .map_err(|_| "exit fixture unavailable")?
+        .take();
+    if let Some(run) = run {
+        if !run.session.tree.stopped() {
+            return Err("application exit did not stop the native job".into());
+        }
+        run.session.tree.wait_stopped()?;
+        if !REGISTRY
+            .lock()
+            .map_err(|_| "registry unavailable")?
+            .sessions
+            .is_empty()
+        {
+            return Err("application exit retained native sessions".into());
+        }
+        if std::fs::read_dir(&run.directory)
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .any(|entry| entry.path().extension().is_some_and(|ext| ext == "vpy"))
+        {
+            return Err("application exit retained the adapter script".into());
+        }
+        println!("PASS: active attachment app exit released filter and native job");
+    }
+    Ok(())
+}
 
 pub(crate) struct Run {
     app: AppHandle,
@@ -229,6 +261,12 @@ impl Run {
     pub(crate) fn finish(self) -> Result<(), String> {
         let action =
             std::env::var("OPENPLAYER_SMOKE_NATIVE_ATTACHMENT").map_err(|e| e.to_string())?;
+        if action == "app-exit" {
+            *EXIT_RUN.lock().map_err(|_| "exit fixture unavailable")? = Some(self);
+            println!("TRACE: retaining active attachment until application exit");
+            return Ok(());
+        }
+        println!("TRACE: beginning attachment {action}");
         match action.as_str() {
             "stop" => tauri::async_runtime::block_on(super::plugin_native_stop(
                 self.session.launch.plugin_id.clone(),

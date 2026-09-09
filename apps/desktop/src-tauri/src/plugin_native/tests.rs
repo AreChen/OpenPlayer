@@ -238,6 +238,34 @@ fn native_process_roundtrip_faults_and_lifecycle() {
         );
         session.tree.wait_stopped().unwrap();
 
+        let session = Session::spawn(launch.clone()).unwrap();
+        session.initialize().await.unwrap();
+        let cleaned = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = cleaned.clone();
+        session
+            .attachment
+            .lock()
+            .unwrap()
+            .mount(
+                || Ok(()),
+                Box::new(move || {
+                    flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                    Ok(())
+                }),
+            )
+            .unwrap();
+        REGISTRY.lock().unwrap().sessions.insert(
+            (launch.plugin_id.clone(), launch.module.id.clone()),
+            session.clone(),
+        );
+        shutdown();
+        assert!(
+            cleaned.load(std::sync::atomic::Ordering::SeqCst),
+            "shutdown skipped attachment cleanup"
+        );
+        session.tree.wait_stopped().unwrap();
+        assert!(REGISTRY.lock().unwrap().sessions.is_empty());
+
         let session = Session::spawn(launch).unwrap();
         session.initialize().await.unwrap();
         let busy = session.clone();

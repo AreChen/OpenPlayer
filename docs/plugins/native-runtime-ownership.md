@@ -75,27 +75,38 @@ entries. The host suite passed 201 tests with three explicitly gated tests ignor
 
 ## Session attachment follow-up
 
-The next development batch connects a single cleanup lease to each native session.
+The session attachment layer connects a single cleanup lease to each native session.
 Stop/prune remove the owned filter before forgetting the session; failed removal
 retains tracking for retry. Idle parent exit schedules cleanup on a blocking task.
 Only the Windows harness can install a real attachment; normal SDK startup cannot.
 It uses an isolated package, host-cached adapter and unique owned filter labels.
 No permission or Tauri command was added.
 
-The real-window stop/reconnect scenario passed on 2026-09-09. A subsequent disable
-scenario produced recovery screenshots but timed out before verified completion;
-the cause remains unresolved. Further foreground runs paused while the user was
-gaming. GPU-1 headless processing and real-store disable/replacement/uninstall
-passed separately, not as a combined window acceptance test. See the prototype's
-`docs/host-attachment.md` and `docs/gpu-selection.md` for evidence and reproduction.
+On 2026-09-09 all six combined real-window scenarios passed with NR explicitly on
+GPU 1: stop/reconnect, disable, upgrade, uninstall, worker crash and application
+exit while enhancement remained active. The user authorized foreground tests.
+Evidence: the prototype's `.local/attachment-matrix-final.json`; source and user
+configuration remained unchanged. The earlier disable timeout did not recur in
+an isolated repeat or subsequent matrices; its original cause remains unknown.
+See the prototype's `docs/host-attachment.md` and `docs/gpu-selection.md` for
+reproduction and GPU identity checks.
+
+Application shutdown now reuses the stop-all lifecycle, including job waits and
+attachment cleanup, instead of only terminating jobs and clearing the registry.
+Cleanup failures are logged and remain tracked. A gated protocol integration test
+verifies the shutdown callback, and the window test checks zero remaining job
+processes/sessions/scripts after active-enhancement exit. The harness uses
+`run_return` so event-loop completion is observable and its temporary WebView
+directory can be cleaned; it rejects held modifiers before injecting Alt+F4.
+The host suite passed 203 tests (three gated tests ignored), and the protocol
+lifecycle test passed when explicitly enabled.
 
 ## Remaining attachment work
 
-This fixture passes original frames through; it is not a combined DLSSNR plugin
-UI/SDK attachment test. Real React controls, native launch consent, an active
-plugin uninstall during enhancement, PTS/A-V synchronization and a public attach /
-detach operation remain unverified or unimplemented. The loader alone must not
+The combined fixture processes frames through the NR worker, but it is not a
+production plugin UI/SDK attachment test. Real React controls, native launch
+consent, media/format changes, PTS/A-V synchronization and a public attach/detach
+operation remain unverified or unimplemented. The loader alone must not
 make `native.video.validatePlan()` executable. No new permission or JS API was
-introduced. The next step is completing the combined window lifecycle matrix and
-production authorization/ownership integration before exposing executable SDK
-attachment.
+introduced. The next step is production authorization/ownership integration and
+a plugin enable/disable/GPU-selection view backed by executable SDK attachment.
