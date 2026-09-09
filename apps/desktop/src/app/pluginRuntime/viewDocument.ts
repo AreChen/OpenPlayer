@@ -562,6 +562,94 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
   resize: vertical;
 }
 
+.op-select {
+  color-scheme: dark;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.op-select option {
+  color: var(--op-text);
+  background: var(--op-panel);
+}
+
+@supports (appearance: base-select) {
+  .op-select,
+  .op-select::picker(select) {
+    appearance: base-select;
+  }
+  .op-select {
+    align-items: center;
+    padding: 7px 10px;
+    overflow: hidden;
+  }
+  .op-select::picker(select) {
+    color: var(--op-text);
+    background: var(--op-panel);
+    border: 1px solid var(--op-line);
+    border-radius: var(--op-radius);
+    padding: 4px;
+    max-height: 240px;
+    max-width: calc(100vw - 24px);
+    overflow: auto;
+    box-shadow: 0 8px 24px #0005;
+  }
+  .op-select option {
+    padding: 8px;
+    border-radius: 4px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .op-select option:hover,
+  .op-select option:checked {
+    background: color-mix(in srgb, var(--op-accent) 18%, var(--op-panel));
+  }
+  .op-select::picker-icon,
+  .op-select option::checkmark {
+    color: var(--op-accent);
+  }
+}
+
+.op-checkbox {
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  margin: 0;
+  border: 1px solid var(--op-line);
+  border-radius: 4px;
+  background: var(--op-control);
+  color: var(--op-text);
+  cursor: pointer;
+}
+
+.op-checkbox:checked {
+  border-color: var(--op-accent);
+  background: color-mix(in srgb, var(--op-accent) 30%, var(--op-control));
+}
+
+.op-checkbox:checked::after {
+  content: "";
+  width: 7px;
+  height: 4px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-1px) rotate(-45deg);
+}
+
+.op-checkbox:focus-visible {
+  outline: 2px solid var(--op-focus-ring);
+  outline-offset: 2px;
+}
+
+.op-select:disabled,
+.op-checkbox:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .op-input::placeholder,
 .op-textarea::placeholder {
   color: var(--op-muted);

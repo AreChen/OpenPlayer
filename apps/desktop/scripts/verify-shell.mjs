@@ -589,7 +589,7 @@ assert.match(tauriRuntimeSource, /body_base64/, "plugin network backend must ret
 assert.match(tauriRuntimeSource, /plugin_network_body_file_path/, "plugin network backend must validate managed artifact body file paths");
 assert.match(tauriRuntimeSource, /audio-clips[\s\S]*frame-captures/, "plugin network body files must be limited to current-plugin managed media artifacts");
 assert.match(styles, /\.plugin-view-shell[\s\S]*inset:\s*0/, "plugin overlay views must still render as transparent full-stage overlays");
-assert.match(styles, /plugin-view-shell--sidePanel[\s\S]*inset:\s*10px\s+24px\s+24px\s+auto/, "plugin side panels must align with window controls and transport margins");
+assert.match(styles, /plugin-view-shell--sidePanel[\s\S]*inset:\s*var\(--plugin-panel-top, 52px\) 24px var\(--plugin-panel-bottom, 140px\) auto/, "plugin side panels must reserve measured window chrome and transport space");
 assert.match(styles, /plugin-view-shell--sidePanel[\s\S]*width:\s*min\(444px,\s*calc\(100vw - 48px\)\)/, "plugin side panels must leave a right margin instead of filling the edge");
 assert.match(styles, /plugin-view-shell--sidePanel[\s\S]*border-radius:\s*14px/, "plugin side panels must inherit the rounded menu surface shape");
 assert.match(styles, /plugin-view-shell--sidePanel \.plugin-view-frame[\s\S]*opacity:\s*var\(--plugin-view-frame-opacity,\s*1\)/, "plugin side panel iframes must use a setting-driven host opacity fallback for WebView2 transparent subframe composition");

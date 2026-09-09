@@ -745,11 +745,18 @@ Custom views are best for rich plugin-owned UI. Keep these rules:
   CSS: `.op-view`, `.op-surface`, `.op-stack`, `.op-row`, `.op-button`,
   `.op-button--primary`, `.op-button--ghost`, `.op-button--danger`,
   `.op-icon-button`, `.op-input`, `.op-select`, `.op-textarea`, `.op-slider`,
-  `.op-switch`, `.op-switch__thumb`, `.op-list`, `.op-list-item`, `.op-badge`,
+  `.op-checkbox`, `.op-switch`, `.op-switch__thumb`, `.op-list`, `.op-list-item`, `.op-badge`,
   `.op-table`, `.op-kbd`, and `.op-muted`.
   These classes use tokens such as `--op-accent`, `--op-control`, `--op-text`,
   `--op-line`, and `--op-radius`, so theme plugins and user accent overrides
   automatically apply to plugin views.
+- Use `<input type="checkbox" class="op-checkbox">` with an associated label
+  for binary settings. Keep native semantics, keyboard focus and disabled states.
+  `.op-select` themes both the field and, on WebViews supporting `base-select`,
+  its popup; older engines retain a themed native select fallback.
+- Side panels reserve the measured window-button and transport bounds plus a
+  12px gap at both ends, including while chrome is hidden. Keep scrolling inside
+  the plugin view; do not position controls outside the host-provided frame.
 - Use reusable layout and state classes before creating plugin-local UI systems:
   `.op-section` for grouped content, `.op-toolbar` with `.op-spacer` for action
   rows, `.op-field` with `.op-label` and `.op-help` for settings-like controls,

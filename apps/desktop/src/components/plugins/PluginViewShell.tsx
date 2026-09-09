@@ -1,6 +1,7 @@
 import type { CSSProperties, RefObject } from "react";
 import type { ActivePluginView } from "../../app/types";
 import type { AppStrings } from "../../i18n";
+import { usePluginPanelInsets } from "../../hooks/usePluginPanelInsets";
 
 type PluginViewShellProps = {
   t: AppStrings;
@@ -11,6 +12,7 @@ type PluginViewShellProps = {
 };
 
 export function PluginViewShell({ activePluginView, documentHtml, frameRef }: PluginViewShellProps) {
+  const shellRef = usePluginPanelInsets(activePluginView.presentation === "sidePanel");
   const shellStyle =
     activePluginView.frameOpacity === null
       ? undefined
@@ -18,6 +20,7 @@ export function PluginViewShell({ activePluginView, documentHtml, frameRef }: Pl
 
   return (
     <section
+      ref={shellRef}
       className={`plugin-view-shell plugin-view-shell--${activePluginView.presentation}`}
       aria-label={activePluginView.title}
       style={shellStyle}

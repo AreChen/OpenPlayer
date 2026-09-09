@@ -109,7 +109,7 @@
 }
 
 .plugin-view-shell--sidePanel {
-  inset: 10px 24px 24px auto;
+  inset: var(--plugin-panel-top, 52px) 24px var(--plugin-panel-bottom, 140px) auto;
   display: flex;
   width: min(444px, calc(100vw - 48px));
   border-radius: 14px;
