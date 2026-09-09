@@ -26,7 +26,10 @@ if (openplayer.capabilities.has("native.video") &&
     openplayer.capabilities.hasPermission("native.video")) {
   await openplayer.native.start("enhance"); // Uses installed declared permissions.
   // Configure the module using its declared, plugin-specific control methods.
-  const result = await openplayer.native.video.attach("enhance", { settings: {} });
+  const result = await openplayer.native.video.attach("enhance", {
+    inputConversion: "sdr-bt709", // Optional compatibility conversion, not HDR passthrough.
+    settings: {},
+  });
   await openplayer.log.info(JSON.stringify(result));
   const state = await openplayer.native.video.status("enhance");
   await openplayer.native.video.detach("enhance");
@@ -50,9 +53,26 @@ token. Transport uses loopback and bounded shared buffers, not pixel JSON RPC.
 
 ## Media and lifecycle
 
-The initial adapter accepts constant 8-bit, limited-range BT.709 SDR YUV up to
-1920x1080. It preserves dimensions and frame rate; it does not implement HDR,
-interpolation, upscaling, multi-stage execution or shared GPU textures.
+The adapter processes constant 8-bit, limited-range BT.709 SDR YUV up to
+3840x2160. `inputConversion` defaults to `"none"`; `"sdr-bt709"` permits the host
+to normalize HDR, Dolby Vision, other ranges/matrices and 10-bit input before the
+adapter. Already-compatible SDR bypasses conversion. This preserves resolution
+and frame rate, but **outputs SDR, not HDR or Dolby Vision**.
+
+The host batches a fixed hardware-download/10-bit format, libplacebo conversion,
+and VapourSynth attachment into one filter-list update. libplacebo applies DV RPU
+metadata and removes it from the converted output. Each filter has an owned label;
+detach/stop/exit remove the entire owned chain while preserving unrelated filters.
+If conversion fails, status must not report a healthy enabled attachment. The
+plugin receives only its settings in `frames.open`; the host consumes the reserved
+`inputConversion` option. Plugins cannot supply arbitrary conversion filter text.
+
+This requires the bundled libmpv's FFmpeg/libplacebo filter support. It is not a
+zero-copy path. At 4K, seeks can take several seconds and CPU conversion plus
+NR processing can fall behind audio. Compatibility is not a claim of real-time
+4K playback, HDR preservation, interpolation, upscaling or shared GPU textures.
+The processing GPU selected by the plugin is the NR GPU; mpv owns decode, color
+conversion and presentation device selection independently.
 `native.video.validatePlan()` remains validation-only (`executable: false`).
 
 Opening another media item or stopping playback stops declared video sessions
@@ -83,3 +103,11 @@ session. On 2026-09-10 the user confirmed GUI installation and enhancement work.
 Launch confirmations were subsequently removed at the user's request.
 Long-duration A/V synchronization, color
 fidelity, mid-stream format changes and sustained performance remain unverified.
+
+2026-09-10: `.local/gpu1-live-update.json` in the sibling plugin repository proves
+parameter updates change pixels without replacing the GPU-1 worker.
+`.local/dv-profile5-batched.json` uses the user's 3840x1606 Profile-5 file, seeks
+to 180 seconds, waits for `seeking=no`, actual BT.709 SDR output and advancing
+playback before taking a scene screenshot. It passes processing, worker reuse,
+owned-chain removal and original Dolby Vision playback recovery. Earlier tests
+that captured immediately after seeking were insufficient to establish readiness.

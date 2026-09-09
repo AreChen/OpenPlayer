@@ -17,9 +17,13 @@ assert.match(mpvModules, /#\[cfg\(feature = "window-smoke"\)\]\s*pub\(crate\) mo
 const smokeAdapter = await source("src-tauri/src/mpv_embed/native_filter_smoke.rs");
 assert(!smokeAdapter.includes("#[tauri::command]"), "smoke helpers are not plugin APIs");
 const video = await source("src-tauri/src/plugin_native/video.rs");
-assert.match(video, /start and authorize the native module first/);
+assert.match(video, /start the installed native module first/);
 assert.match(video, /session\.launch\.package_root/, "video runtimes must resolve from the authorized installed session");
 assert(!video.includes("OPENPLAYER_SMOKE"), "public attachment cannot use developer environment overrides");
+assert.match(video, /frame_options\(options\)/, "host conversion options must be separated from plugin controls");
+const filter = await source("src-tauri/src/mpv_embed/native_video_filter.rs");
+assert.match(filter, /format=fmt=yuv420p10[\s\S]*libplacebo=apply_dolbyvision=true/, "download hardware frames without discarding DV precision before color conversion");
+assert.match(filter, /native-input-/, "conversion filters require independent owned labels and cleanup");
 assert.match(await source("src-tauri/src/mpv_embed/commands/lifecycle.rs"), /media_change_guard[\s\S]*stop_existing_player_for_replacement/);
 
 const worker = await source("src/app/pluginRuntime/workerSource/apiSections.ts");

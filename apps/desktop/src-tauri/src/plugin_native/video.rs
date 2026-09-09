@@ -45,6 +45,21 @@ fn endpoint(value: Value) -> Result<Value, String> {
     serde_json::to_value(endpoint).map_err(|e| e.to_string())
 }
 
+fn frame_options(mut options: Value) -> Result<(Value, bool), String> {
+    let conversion = match &mut options {
+        Value::Object(object) => object.remove("inputConversion"),
+        Value::Null => None,
+        _ => return Err("native video options must be an object".into()),
+    };
+    let normalize = match conversion.as_ref().and_then(Value::as_str) {
+        None if conversion.is_none() => false,
+        Some("none") => false,
+        Some("sdr-bt709") => true,
+        _ => return Err("inputConversion must be none or sdr-bt709".into()),
+    };
+    Ok((options, normalize))
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct VideoStatus {
@@ -113,7 +128,7 @@ pub(crate) async fn plugin_native_video_attach(
             .try_lock()
             .map_err(|_| "native video operation is busy")?;
         let session = session(&app, &plugin_id, &module_id)?
-            .ok_or("start and authorize the native module first")?;
+            .ok_or("start the installed native module first")?;
         if session
             .attachment
             .lock()
@@ -130,7 +145,8 @@ pub(crate) async fn plugin_native_video_attach(
             if !session.running() {
                 return Err("native session has exited".into());
             }
-            filter::validate_media(&app)?;
+            let (options, normalize) = frame_options(options)?;
+            let normalize = filter::validate_media(&app, normalize)?;
             let cache = app
                 .path()
                 .app_cache_dir()
@@ -151,11 +167,9 @@ pub(crate) async fn plugin_native_video_attach(
             if !session.running() {
                 return Err("native session stopped during attachment".into());
             }
-            let filter = Arc::new(filter::OwnedFilter::prepare(
-                app.clone(),
-                &scripts,
-                &endpoint,
-            )?);
+            let mut filter = filter::OwnedFilter::prepare(app.clone(), &scripts, &endpoint)?;
+            filter.normalize_to_sdr(normalize);
+            let filter = Arc::new(filter);
             let cleanup = filter.clone();
             slot.mount(|| filter.install(), Box::new(move || cleanup.remove()))?;
             Ok(())
@@ -203,6 +217,22 @@ pub(crate) async fn plugin_native_video_detach(
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn conversion_is_host_owned_and_bounded() {
+        assert_eq!(frame_options(Value::Null).unwrap(), (Value::Null, false));
+        assert_eq!(
+            frame_options(json!({"inputConversion":"sdr-bt709", "settings":{"intensity":1}}))
+                .unwrap(),
+            (json!({"settings":{"intensity":1}}), true)
+        );
+        for value in [
+            json!(3),
+            json!({"inputConversion":null}),
+            json!({"inputConversion":"lavfi=arbitrary"}),
+        ] {
+            assert!(frame_options(value).is_err());
+        }
+    }
     #[test]
     fn endpoint_rejects_extra_fields_invalid_ports_and_tokens() {
         assert!(endpoint(json!({"port":1234,"token":"a".repeat(64)})).is_ok());

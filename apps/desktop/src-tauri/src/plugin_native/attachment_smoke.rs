@@ -113,8 +113,12 @@ impl Run {
             .map_err(|_| "provide explicit developer frame options")?;
         let frame_options = serde_json::from_str(&frame_options)
             .map_err(|e| format!("invalid frame options: {e}"))?;
-        let opened =
-            tauri::async_runtime::block_on(session.request("frames.open", frame_options, 5000))?;
+        let opened = if session.launch.module.video_adapter.is_some() {
+            // The production command owns option parsing and opening the frame service.
+            json!({"protocol":"openplayer-frame-experimental-v1", "endpoint":null})
+        } else {
+            tauri::async_runtime::block_on(session.request("frames.open", frame_options, 5000))?
+        };
         if opened["protocol"] != "openplayer-frame-experimental-v1" {
             return Err("invalid frame protocol".into());
         }
@@ -177,9 +181,19 @@ impl Run {
         if !still.paused || (paused.position - still.position).abs() > 0.05 {
             return Err("attachment ignored pause".into());
         }
-        run.command("seek", &["0.2", "absolute+exact"])?;
+        let seek = std::env::var("OPENPLAYER_SMOKE_SEEK_SECONDS")
+            .ok()
+            .map(|s| s.parse::<f64>())
+            .transpose()
+            .map_err(|e| e.to_string())?
+            .unwrap_or(0.2);
+        if !seek.is_finite() || !(0.0..=36000.0).contains(&seek) {
+            return Err("invalid smoke seek position".into());
+        }
+        run.command("seek", &[&seek.to_string(), "absolute+exact"])?;
+        println!("TRACE: seeking to {seek}");
         thread::sleep(Duration::from_millis(1200));
-        if (run.snapshot()?.position - 0.2).abs() > 0.15 {
+        if (run.snapshot()?.position - seek).abs() > 0.15 {
             return Err("attachment ignored seek".into());
         }
         run.session
@@ -190,7 +204,27 @@ impl Run {
         run.assert_detached()?;
         run.mount()?;
         run.command("set", &["pause", "no"])?;
-        thread::sleep(Duration::from_millis(1200));
+        let deadline = Instant::now() + Duration::from_secs(8);
+        loop {
+            let diagnostic = native_filter_smoke::video_diagnostics(&run.app)?;
+            println!("VIDEO_DIAGNOSTICS {diagnostic}");
+            let pts = diagnostic["time-pos"]
+                .as_str()
+                .and_then(|value| value.parse::<f64>().ok());
+            let output: Value =
+                serde_json::from_str(diagnostic["video-out-params"].as_str().unwrap_or("null"))
+                    .unwrap_or(Value::Null);
+            if diagnostic["seeking"] == "no"
+                && output["pixelformat"] == "yuv420p"
+                && pts.is_some_and(|pts| pts > seek + 0.04 && pts < seek + 10.0)
+            {
+                break;
+            }
+            if Instant::now() >= deadline {
+                return Err("enhanced video frame did not reach the seek target".into());
+            }
+            thread::sleep(Duration::from_millis(300));
+        }
         if run.status()?["workerPid"].as_u64() != Some(worker) {
             return Err("reattach replaced the frame worker".into());
         }
@@ -263,7 +297,10 @@ impl Run {
 
     fn assert_detached(&self) -> Result<(), String> {
         let filters = owned::filters(&self.app)?;
-        if filters.contains("native-owned-") || !filters.contains("smoke-unrelated") {
+        if filters.contains("native-owned-")
+            || filters.contains("native-input-")
+            || !filters.contains("smoke-unrelated")
+        {
             return Err(format!(
                 "attachment cleanup damaged filter ownership: {filters}"
             ));

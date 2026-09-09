@@ -15,6 +15,7 @@ pub(crate) struct OwnedFilter {
     script: PathBuf,
     label: String,
     script_created: bool,
+    normalize: bool,
 }
 
 impl OwnedFilter {
@@ -44,6 +45,7 @@ impl OwnedFilter {
             script: directory.join(format!("{label}.vpy")),
             label,
             script_created: false,
+            normalize: false,
         };
         let encoded = serde_json::to_string(&endpoint.to_string()).map_err(|e| e.to_string())?;
         let mut file = std::fs::OpenOptions::new()
@@ -57,6 +59,14 @@ impl OwnedFilter {
         Ok(filter)
     }
 
+    pub(crate) fn normalize_to_sdr(&mut self, enabled: bool) {
+        self.normalize = enabled;
+    }
+
+    fn conversion_label(&self) -> String {
+        self.label.replacen("native-owned-", "native-input-", 1)
+    }
+
     pub(crate) fn install(&self) -> Result<(), String> {
         let script = self.script.to_str().ok_or("non-UTF8 adapter path")?;
         let filter = format!(
@@ -67,6 +77,21 @@ impl OwnedFilter {
         );
         let state = self.app.state::<MpvEmbedState>();
         with_player(state.inner(), |player| {
+            let filter = if self.normalize {
+                // Force mpv's hardware download before libavfilter negotiation.
+                // Preserve 10-bit DV samples; libplacebo performs the color conversion.
+                let download =
+                    format!("@{}-download:format=fmt=yuv420p10", self.conversion_label());
+                // Interpret Dolby Vision RPU before RGB processing, then strip it.
+                // Fixed host-owned graph: no arbitrary filter text crosses the SDK.
+                let conversion = format!(
+                    "@{}:lavfi=[libplacebo=apply_dolbyvision=true:colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:format=yuv420p]",
+                    self.conversion_label()
+                );
+                format!("{download},{conversion},{filter}")
+            } else {
+                filter
+            };
             player
                 .mpv
                 .command("vf", &["add", &filter])
@@ -79,16 +104,22 @@ impl OwnedFilter {
         let player = state.player.lock().map_err(|_| "mpv state unavailable")?;
         // No player means its filter was already destroyed on stop/replacement.
         if let Some(player) = player.as_ref() {
-            if !status::filters(&player.mpv)?
-                .iter()
-                .any(|(label, _)| label == &self.label)
-            {
-                return Ok(());
+            let filters = status::filters(&player.mpv)?;
+            let labels = [
+                &self.label,
+                &self.conversion_label(),
+                &format!("{}-download", self.conversion_label()),
+            ]
+            .into_iter()
+            .filter(|owned| filters.iter().any(|(label, _)| label == *owned))
+            .map(|owned| format!("@{owned}"))
+            .collect::<Vec<_>>();
+            if !labels.is_empty() {
+                player
+                    .mpv
+                    .command("vf", &["remove", &labels.join(",")])
+                    .map_err(|e| e.to_string())?;
             }
-            player
-                .mpv
-                .command("vf", &["remove", &format!("@{}", self.label)])
-                .map_err(|e| e.to_string())?;
         }
         Ok(())
     }
@@ -100,12 +131,19 @@ pub(crate) fn enabled(app: &AppHandle) -> Result<bool, String> {
     let Some(player) = player.as_ref() else {
         return Ok(false);
     };
-    Ok(status::filters(&player.mpv)?
-        .iter()
-        .any(|(label, enabled)| label.starts_with("native-owned-") && *enabled))
+    Ok(enabled_filters(&status::filters(&player.mpv)?))
 }
 
-pub(crate) fn validate_media(app: &AppHandle) -> Result<(), String> {
+fn enabled_filters(filters: &[(String, bool)]) -> bool {
+    filters
+        .iter()
+        .any(|(label, enabled)| label.starts_with("native-owned-") && *enabled)
+        && filters
+            .iter()
+            .all(|(label, enabled)| !label.starts_with("native-input-") || *enabled)
+}
+
+pub(crate) fn validate_media(app: &AppHandle, normalize: bool) -> Result<bool, String> {
     with_player(app.state::<MpvEmbedState>().inner(), |player| {
         let mpv = &player.mpv;
         let width = mpv.get_property::<i64>("video-params/w").unwrap_or(0);
@@ -128,18 +166,22 @@ pub(crate) fn validate_media(app: &AppHandle) -> Result<(), String> {
         let levels = mpv
             .get_property::<String>("video-params/colorlevels")
             .unwrap_or_default();
-        if !(16..=1920).contains(&width)
-            || !(16..=1080).contains(&height)
-            || !matches!(format.as_str(), "yuv420p" | "yuv422p" | "yuv444p" | "nv12")
-            || matrix != "bt.709"
-            || levels != "limited"
-            || !matches!(gamma.as_str(), "bt.1886" | "bt.709" | "srgb")
-        {
+        if !(16..=3840).contains(&width) || !(16..=2160).contains(&height) {
             return Err(format!(
-                "native video requires 8-bit limited-range BT.709 SDR up to 1080p; current: {width}x{height} {format} {matrix} {gamma} {levels}"
+                "native video dimensions must be 16..3840 x 16..2160; current: {width}x{height}"
             ));
         }
-        Ok(())
+        let needs_conversion =
+            !matches!(format.as_str(), "yuv420p" | "yuv422p" | "yuv444p" | "nv12")
+                || matrix != "bt.709"
+                || levels != "limited"
+                || !matches!(gamma.as_str(), "bt.1886" | "bt.709" | "srgb");
+        if !normalize && needs_conversion {
+            return Err(format!(
+                "native video requires 8-bit limited-range BT.709 SDR or inputConversion=sdr-bt709; current: {width}x{height} {format} {matrix} {gamma} {levels}"
+            ));
+        }
+        Ok(needs_conversion)
     })
 }
 
@@ -159,4 +201,22 @@ pub(crate) fn filters(app: &AppHandle) -> Result<String, String> {
             .get_property::<String>("vf")
             .map_err(|e| e.to_string())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::enabled_filters;
+    #[test]
+    fn failed_conversion_is_not_an_enabled_attachment() {
+        assert!(enabled_filters(&[("native-owned-a".into(), true)]));
+        assert!(!enabled_filters(&[("native-input-a".into(), true)]));
+        assert!(!enabled_filters(&[
+            ("native-owned-a".into(), true),
+            ("native-input-a".into(), false)
+        ]));
+        assert!(!enabled_filters(&[
+            ("native-owned-a".into(), false),
+            ("native-input-a".into(), true)
+        ]));
+    }
 }

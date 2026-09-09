@@ -3,6 +3,26 @@
 pub(crate) use super::native_video_filter as owned;
 use super::*;
 
+pub(crate) fn video_diagnostics(app: &AppHandle) -> Result<Value, String> {
+    with_player(app.state::<MpvEmbedState>().inner(), |player| {
+        let mut result = serde_json::Map::new();
+        for key in [
+            "time-pos",
+            "seeking",
+            "avsync",
+            "frame-drop-count",
+            "video-out-params",
+        ] {
+            result.insert(
+                key.into(),
+                serde_json::to_value(player.mpv.get_property::<String>(key).ok())
+                    .map_err(|e| e.to_string())?,
+            );
+        }
+        Ok(Value::Object(result))
+    })
+}
+
 pub(crate) async fn command(app: AppHandle, name: &str, args: Vec<String>) -> Result<(), String> {
     let name = name.to_owned();
     run_mpv_command(app, move |state| {

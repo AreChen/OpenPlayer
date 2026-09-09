@@ -97,7 +97,7 @@ if (openplayer.capabilities.has("native.process") &&
 | `stop(moduleId)` | Terminate the module process group/job; on Windows, wait for job processes to exit |
 | `stopAll()` | Stop this plugin's modules, not other plugins |
 | `video.validatePlan(plan)` | Validate and normalize a proposed chain; never executes it |
-| `video.attach/detach/status` | Separately permissioned, declared single-stage SDR attachment; see [native video](native-video.md) |
+| `video.attach/detach/status` | Declared single-stage SDR attachment with optional HDR/DV-to-SDR normalization; see [native video](native-video.md) |
 
 There are at most 16 registered sessions across the application. Each session
 allows one in-flight request. Concurrent requests fail with `busy`, rather than
