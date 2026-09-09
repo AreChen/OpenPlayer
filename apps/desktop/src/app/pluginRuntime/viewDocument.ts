@@ -1,5 +1,6 @@
 import type { ThemePluginSummary, ThemeTokens } from "../types";
 import { pluginWorkerNativeApiSource } from "./workerSource/apiSections/native";
+import { pluginWorkerFilesystemApiSource } from "./workerSource/apiSections/filesystem";
 import {
   OPENPLAYER_API_COMPATIBILITY,
   OPENPLAYER_HOST_CAPABILITIES,
@@ -168,6 +169,7 @@ export function buildPluginViewDocument(html: string, plugin: ThemePluginSummary
       },
     }),
     ${pluginWorkerNativeApiSource()},
+    ${pluginWorkerFilesystemApiSource()},
     artifacts: Object.freeze({
       list(args = {}) {
         return requestHost("plugin.artifacts.list", args);

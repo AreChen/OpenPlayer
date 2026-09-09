@@ -31,6 +31,8 @@ pub fn open_path_for_window(
     let path = validate_media_path(&path)?;
     let path_text = path.to_string_lossy().to_string();
     let initial_volume = normalize_initial_volume(initial_volume)?;
+    #[cfg(windows)]
+    let _native_video = crate::plugin_native::video::media_change_guard()?;
     stop_existing_player_for_replacement(state)?;
 
     let host = MpvVideoHost::new(window)?;

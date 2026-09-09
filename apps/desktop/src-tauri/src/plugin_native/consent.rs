@@ -8,6 +8,7 @@ struct Text {
     warning: String,
     executable: String,
     confirm: String,
+    video: String,
 }
 
 static TEXT: LazyLock<HashMap<String, Text>> = LazyLock::new(|| {
@@ -23,7 +24,11 @@ pub(super) fn message(launch: &ModuleLaunch) -> (String, String) {
         text.title.clone(),
         format!(
             "{}\n\n{} {} / {}\n\n{}: {}\n\n{}",
-            text.warning,
+            if launch.module.video_adapter.is_some() {
+                format!("{}\n\n{}", text.warning, text.video)
+            } else {
+                text.warning.clone()
+            },
             launch.plugin_name,
             launch.plugin_version,
             launch.module.id,

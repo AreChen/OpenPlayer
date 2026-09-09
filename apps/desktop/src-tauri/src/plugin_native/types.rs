@@ -7,6 +7,8 @@ pub(crate) struct NativeModule {
     pub id: String,
     pub protocol: String,
     pub methods: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video_adapter: Option<String>,
     pub targets: BTreeMap<String, NativeTarget>,
 }
 
@@ -36,6 +38,8 @@ pub(crate) struct ModuleLaunch {
     pub plugin_version: String,
     pub language_mode: String,
     pub executable: PathBuf,
+    #[cfg_attr(not(all(windows, feature = "mpv-embed")), allow(dead_code))]
+    pub package_root: PathBuf,
     pub args: Vec<String>,
     pub module: NativeModule,
 }

@@ -127,6 +127,7 @@ pub(super) fn is_supported_plugin_permission(permission: &str) -> bool {
         permission,
         "mpv.subtitleStyle"
             | "native.process"
+            | "native.video"
             | "mpv.loadOptions"
             | "mpv.capture"
             | "mpv.wall"

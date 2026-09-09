@@ -59,6 +59,7 @@ impl AppearanceStoreState {
                 plugin_name: manifest.name,
                 plugin_version: manifest.version,
                 executable,
+                package_root: std::path::PathBuf::from(&install.install_path),
                 language_mode: store.preferences()?.language_mode,
                 args: target.args.clone(),
                 module,

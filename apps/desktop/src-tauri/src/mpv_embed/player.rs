@@ -73,6 +73,8 @@ impl MpvEmbedState {
 }
 
 pub(super) fn stop_player(state: &MpvEmbedState) -> Result<(), String> {
+    #[cfg(windows)]
+    let _native_video = crate::plugin_native::video::media_change_guard()?;
     let mut player = state
         .player
         .lock()

@@ -1,5 +1,5 @@
-//! Verified, process-owned runtime copies. Currently exercised by developer smoke
-//! tests only; not a plugin command or an authorization boundary for native code.
+//! Verified, process-owned copies for declared, explicitly authorized native video.
+//! Integrity checks are not a sandbox or proof of publisher identity.
 mod cache;
 mod inventory;
 #[cfg(test)]

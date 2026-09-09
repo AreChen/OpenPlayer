@@ -26,6 +26,19 @@ pub(crate) fn validate_modules(
     }
     let mut ids = HashSet::new();
     for module in modules {
+        if let Some(adapter) = &module.video_adapter
+            && (adapter != "vapoursynth-rgb-v1"
+                || !permissions.iter().any(|p| p == "native.video")
+                || !["frames.open", "frames.status", "frames.close"]
+                    .iter()
+                    .all(|m| module.methods.iter().any(|v| v == m))
+                || module.targets.keys().any(|p| p != "windows-x86_64"))
+        {
+            return Err(
+                "video adapter requires native.video, Windows x64 and frames.open/status/close"
+                    .into(),
+            );
+        }
         if !identifier(&module.id)
             || !ids.insert(&module.id)
             || module.protocol != "openplayer-native-v1"

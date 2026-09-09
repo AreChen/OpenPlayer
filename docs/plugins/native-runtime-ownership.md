@@ -2,8 +2,9 @@
 
 The Windows developer window harness now loads its embedded video runtime from
 a verified, process-owned copy rather than an installed plugin directory.
-**This is compiled only for tests and `window-smoke`, not exposed through Tauri
-or the public plugin SDK.** Normal player startup and published 1.6.3 are unchanged.
+**The current development host also uses this for authorized
+[native video attachment](native-video.md).** Published 1.6.3 is unchanged.
+The historical evidence below predates that public development interface.
 
 ## Ownership and limits
 
@@ -78,7 +79,7 @@ entries. The host suite passed 201 tests with three explicitly gated tests ignor
 The session attachment layer connects a single cleanup lease to each native session.
 Stop/prune remove the owned filter before forgetting the session; failed removal
 retains tracking for retry. Idle parent exit schedules cleanup on a blocking task.
-Only the Windows harness can install a real attachment; normal SDK startup cannot.
+The initial milestone only allowed the Windows harness to install an attachment.
 It uses an isolated package, host-cached adapter and unique owned filter labels.
 No permission or Tauri command was added.
 
@@ -106,7 +107,8 @@ lifecycle test passed when explicitly enabled.
 The combined fixture processes frames through the NR worker, but it is not a
 production plugin UI/SDK attachment test. Real React controls, native launch
 consent, media/format changes, PTS/A-V synchronization and a public attach/detach
-operation remain unverified or unimplemented. The loader alone must not
+operation were unverified or unimplemented at that milestone. The loader alone must not
 make `native.video.validatePlan()` executable. No new permission or JS API was
-introduced. The next step is production authorization/ownership integration and
-a plugin enable/disable/GPU-selection view backed by executable SDK attachment.
+introduced in that milestone. The subsequent [native video integration](native-video.md)
+adds permissioned attachment and the independent plugin's enable/disable/GPU view.
+Its GUI authorization acceptance and sustained A/V performance still need testing.

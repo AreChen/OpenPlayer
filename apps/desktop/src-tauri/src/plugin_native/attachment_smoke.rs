@@ -16,7 +16,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 static EXIT_RUN: Mutex<Option<Run>> = Mutex::new(None);
 
@@ -38,13 +38,7 @@ pub(crate) fn verify_exit() -> Result<(), String> {
         {
             return Err("application exit retained native sessions".into());
         }
-        if std::fs::read_dir(&run.directory)
-            .map_err(|e| e.to_string())?
-            .filter_map(Result::ok)
-            .any(|entry| entry.path().extension().is_some_and(|ext| ext == "vpy"))
-        {
-            return Err("application exit retained the adapter script".into());
-        }
+        run.assert_scripts_removed()?;
         println!("PASS: active attachment app exit released filter and native job");
     }
     Ok(())
@@ -74,6 +68,7 @@ impl Run {
         let package = Package::import(
             &path("OPENPLAYER_SMOKE_RUNTIME_BUNDLE")?,
             &directory.join("store"),
+            app,
         )?;
         let launch = package.launch()?;
         let installed = launch
@@ -82,8 +77,10 @@ impl Run {
             .and_then(|p| p.parent())
             .ok_or("bad package root")?
             .to_path_buf();
-        let cached = crate::native_runtime::pin_vsscript(&installed, &directory.join("cache"))?;
-        println!("PASS: attachment runtime {}", cached.display());
+        if launch.module.video_adapter.is_none() {
+            let cached = crate::native_runtime::pin_vsscript(&installed, &directory.join("cache"))?;
+            println!("PASS: attachment runtime {}", cached.display());
+        }
         let library = path("OPENPLAYER_SMOKE_NVIDIA_RUNTIME")?;
         let digest = format!(
             "{:x}",
@@ -145,6 +142,32 @@ impl Run {
             return Err(format!("frame owner failed: {status}"));
         }
         run.assert_worker_in_job(worker as u32)?;
+        if run.session.launch.module.video_adapter.is_some() {
+            let state = tauri::async_runtime::block_on(super::plugin_native_video_status(
+                app.clone(),
+                run.session.launch.plugin_id.clone(),
+                run.session.launch.module.id.clone(),
+            ))?;
+            let value = serde_json::to_value(state).map_err(|e| e.to_string())?;
+            if value["filterEnabled"] != true || value["attached"] != true {
+                return Err(format!(
+                    "public video status disagrees with active processing: {value}"
+                ));
+            }
+            println!("PASS: public video status reports an enabled attachment");
+            let duplicate = tauri::async_runtime::block_on(super::plugin_native_video_attach(
+                app.clone(),
+                run.session.launch.plugin_id.clone(),
+                run.session.launch.module.id.clone(),
+                json!({}),
+            ));
+            if duplicate.is_ok() || !run.session.running() {
+                return Err(
+                    "duplicate public attach replaced or stopped the active session".into(),
+                );
+            }
+            println!("PASS: duplicate public attachment rejected without stopping processing");
+        }
         println!("PASS: registered native frame worker {worker}");
         run.command("set", &["pause", "yes"])?;
         thread::sleep(Duration::from_millis(200));
@@ -177,6 +200,20 @@ impl Run {
     }
 
     fn mount(&self) -> Result<(), String> {
+        if self.session.launch.module.video_adapter.is_some() {
+            let options: Value = serde_json::from_str(
+                &std::env::var("OPENPLAYER_SMOKE_FRAME_OPTIONS").map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
+            tauri::async_runtime::block_on(super::plugin_native_video_attach(
+                self.app.clone(),
+                self.session.launch.plugin_id.clone(),
+                self.session.launch.module.id.clone(),
+                options,
+            ))?;
+            println!("PASS: public native video attachment command");
+            return Ok(());
+        }
         let mut slot = self
             .session
             .attachment
@@ -234,6 +271,30 @@ impl Run {
         Ok(())
     }
 
+    fn assert_scripts_removed(&self) -> Result<(), String> {
+        let directory = if self.session.launch.module.video_adapter.is_some() {
+            self.app
+                .path()
+                .app_cache_dir()
+                .map_err(|e| e.to_string())?
+                .join("native-video/scripts")
+        } else {
+            self.directory.clone()
+        };
+        for entry in std::fs::read_dir(directory).map_err(|e| e.to_string())? {
+            if entry
+                .map_err(|e| e.to_string())?
+                .path()
+                .extension()
+                .is_some_and(|ext| ext == "vpy")
+            {
+                return Err("attachment cleanup retained a generated script".into());
+            }
+        }
+        println!("PASS: actual host attachment script directory is clean");
+        Ok(())
+    }
+
     fn assert_worker_in_job(&self, pid: u32) -> Result<(), String> {
         use windows_sys::Win32::{
             Foundation::CloseHandle,
@@ -268,6 +329,42 @@ impl Run {
         }
         println!("TRACE: beginning attachment {action}");
         match action.as_str() {
+            "detach" => {
+                let state = tauri::async_runtime::block_on(super::plugin_native_video_detach(
+                    self.app.clone(),
+                    self.session.launch.plugin_id.clone(),
+                    self.session.launch.module.id.clone(),
+                ))?;
+                let state = serde_json::to_value(state).map_err(|e| e.to_string())?;
+                if state["attached"] != false
+                    || state["filterEnabled"] != false
+                    || state["running"] != true
+                {
+                    return Err(format!("public detach state mismatch: {state}"));
+                }
+                println!("PASS: public detach removed processing and retained control module");
+                tauri::async_runtime::block_on(super::plugin_native_stop(
+                    self.session.launch.plugin_id.clone(),
+                    None,
+                ))?;
+            }
+            "media-change" => {
+                let path = path("OPENPLAYER_SMOKE_REPLACEMENT_MEDIA")?
+                    .to_string_lossy()
+                    .into_owned();
+                crate::window::smoke::on_main(&self.app, move |app| {
+                    crate::window::mpv_overlay_open_path(
+                        app.clone(),
+                        app.state::<mpv_embed::MpvEmbedState>(),
+                        path,
+                        None,
+                        Some(0.0),
+                        None,
+                    )
+                    .map(|_| ())
+                })?;
+                println!("PASS: media replacement invalidated native video session");
+            }
             "stop" => tauri::async_runtime::block_on(super::plugin_native_stop(
                 self.session.launch.plugin_id.clone(),
                 None,
@@ -293,7 +390,14 @@ impl Run {
             _ => return Err("unknown attachment lifecycle scenario".into()),
         }
         self.session.tree.wait_stopped()?;
-        self.assert_detached()?;
+        self.assert_scripts_removed()?;
+        if action == "media-change" {
+            if owned::filters(&self.app)?.contains("native-owned-") {
+                return Err("old attachment survived media replacement".into());
+            }
+        } else {
+            self.assert_detached()?;
+        }
         if self.mount().is_ok() {
             return Err("stopped session reattached".into());
         }

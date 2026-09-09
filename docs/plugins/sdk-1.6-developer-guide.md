@@ -12,8 +12,9 @@ Development builds also expose permissioned out-of-process native modules.
 See [Native modules](./native-modules.md) for the separate trust boundary,
 `openplayer.native` API, executable packaging, and verification instructions.
 This extension is not in published 1.6.3 binaries. Its video-plan validator does
-not attach effects to playback; live DLSSNR, interpolation, and upscaling remain
-separate integration work.
+not attach effects to playback. The separate [native video API](./native-video.md)
+now attaches a declared single-stage SDR processor; interpolation, upscaling and
+multi-stage execution remain outside this implementation.
 
 ## Where The SDK Lives
 

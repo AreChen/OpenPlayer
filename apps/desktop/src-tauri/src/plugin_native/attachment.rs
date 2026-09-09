@@ -1,4 +1,4 @@
-//! One session-owned video lease. Only developer fixtures can install one yet.
+//! One session-owned video lease with retained rollback on cleanup failure.
 type Cleanup = Box<dyn FnMut() -> Result<(), String> + Send>;
 
 #[derive(Default)]
@@ -8,7 +8,12 @@ pub(super) struct Attachment {
 }
 
 impl Attachment {
-    #[cfg(any(test, all(windows, feature = "window-smoke")))]
+    #[cfg(all(windows, feature = "mpv-embed"))]
+    pub(super) fn attached(&self) -> bool {
+        self.cleanup.is_some()
+    }
+
+    #[cfg(any(test, all(windows, feature = "mpv-embed")))]
     pub(super) fn mount(
         &mut self,
         mount: impl FnOnce() -> Result<(), String>,

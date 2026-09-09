@@ -100,7 +100,7 @@ pub fn run() {
     println!("PASS: window smoke process ready to exit");
 }
 
-fn on_main<T: Send + 'static>(
+pub(crate) fn on_main<T: Send + 'static>(
     app: &AppHandle,
     action: impl FnOnce(&AppHandle) -> Result<T, String> + Send + 'static,
 ) -> Result<T, String> {

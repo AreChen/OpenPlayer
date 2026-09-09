@@ -9,7 +9,7 @@ mod appearance_store;
 mod bootstrap;
 mod external_open;
 mod media_paths;
-#[cfg(all(windows, any(test, feature = "window-smoke")))]
+#[cfg(all(windows, any(test, feature = "mpv-embed")))]
 mod native_runtime;
 mod native_shortcuts;
 mod platform_support;

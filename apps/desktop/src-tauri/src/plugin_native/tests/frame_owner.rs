@@ -34,6 +34,7 @@ fn exercise_frame_owner(mut lifecycle: impl FnMut(&str), packaged: Option<Module
             ];
             let launch = ModuleLaunch {
                 plugin_id: "test.native.frame.owner".into(),
+                package_root: root.clone(),
                 plugin_name: "Frame lifecycle fixture".into(),
                 plugin_version: "1.0.0".into(),
                 language_mode: "en-US".into(),

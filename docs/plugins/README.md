@@ -27,7 +27,8 @@ custom views, and verification commands, read
 Development native extensions are documented in
 [Native modules](./native-modules.md). They run as separately confirmed, trusted
 processes, not inside the JavaScript sandbox. The generic control protocol is
-implemented; live video-frame processing is not.
+implemented. Development Windows x64 builds also provide a separately permissioned
+[single-stage video attachment](./native-video.md); this is not in released 1.6.3.
 
 ## Current Capabilities
 

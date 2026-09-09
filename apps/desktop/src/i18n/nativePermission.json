@@ -3,12 +3,14 @@
     "title": "OpenPlayer - Native Plugin Permission",
     "warning": "This plugin will run native software with your account's file and network access. It is NOT sandboxed. Only continue if you trust the entire plugin package.",
     "executable": "Executable",
-    "confirm": "Allow this launch?"
+    "confirm": "Allow this launch?",
+    "video": "This module may also load its declared video runtime into OpenPlayer and process playback frames. A runtime failure can crash the player. The runtime remains loaded until you exit OpenPlayer."
   },
   "zh-CN": {
     "title": "OpenPlayer - 原生插件授权",
     "warning": "此插件将以当前用户权限运行原生程序，可以访问文件和网络，不受插件沙箱限制。请仅在信任整个插件包时继续。",
     "executable": "可执行文件",
-    "confirm": "允许本次启动吗？"
+    "confirm": "允许本次启动吗？",
+    "video": "此模块还可将声明的视频运行时加载到 OpenPlayer 进程并处理播放画面。运行时故障可能导致播放器崩溃，加载后将驻留至播放器退出。"
   }
 }

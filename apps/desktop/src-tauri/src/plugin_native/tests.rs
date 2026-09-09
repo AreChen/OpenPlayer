@@ -14,6 +14,29 @@ fn module() -> NativeModule {
 }
 
 #[test]
+fn video_declarations_require_permission_adapter_methods_and_platform() {
+    let mut m = module();
+    m.video_adapter = Some("vapoursynth-rgb-v1".into());
+    m.methods = vec![
+        "frames.open".into(),
+        "frames.status".into(),
+        "frames.close".into(),
+    ];
+    let permissions = vec!["native.process".into(), "native.video".into()];
+    assert!(validate_modules(std::slice::from_ref(&m), &permissions).is_ok());
+    assert!(validate_modules(std::slice::from_ref(&m), &["native.process".into()]).is_err());
+    m.video_adapter = Some("other.py".into());
+    assert!(validate_modules(std::slice::from_ref(&m), &permissions).is_err());
+    m.video_adapter = Some("vapoursynth-rgb-v1".into());
+    m.methods.pop();
+    assert!(validate_modules(std::slice::from_ref(&m), &permissions).is_err());
+    m.methods.push("frames.close".into());
+    let target = m.targets.remove("windows-x86_64").unwrap();
+    m.targets.insert("linux-x86_64".into(), target);
+    assert!(validate_modules(&[m], &permissions).is_err());
+}
+
+#[test]
 fn requires_native_permission_and_unique_declarations() {
     let m = module();
     assert!(validate_modules(&[], &[]).is_ok());
@@ -147,6 +170,7 @@ fn native_process_roundtrip_faults_and_lifecycle() {
         .into();
     let launch = ModuleLaunch {
         plugin_id: "test.native.protocol".into(),
+        package_root: std::env::temp_dir(),
         plugin_name: "Test".into(),
         plugin_version: "1.0.0".into(),
         language_mode: "en-US".into(),

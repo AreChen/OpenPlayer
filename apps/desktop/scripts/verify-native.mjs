@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 const source = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 for (const runtime of ["embedded", "fallback"]) {
   const bootstrap = await source(`src-tauri/src/bootstrap/${runtime}.rs`);
-  for (const command of ["list", "start", "call", "stop", "validate_video_plan"]) {
+  for (const command of ["list", "start", "call", "stop", "validate_video_plan", "video_attach", "video_detach", "video_status"]) {
     assert(bootstrap.includes(`crate::plugin_native::plugin_native_${command}`), `${runtime} must register native ${command}`);
   }
   assert.match(bootstrap, /RunEvent::Exit[\s\S]*plugin_native::shutdown/, `${runtime} must clean up native modules on exit`);
@@ -16,11 +16,17 @@ assert.match(mpvModules, /#\[cfg\(feature = "window-smoke"\)\]\s*pub\(crate\) mo
   "the experimental frame adapter must stay behind the window-smoke feature");
 const smokeAdapter = await source("src-tauri/src/mpv_embed/native_filter_smoke.rs");
 assert(!smokeAdapter.includes("#[tauri::command]"), "smoke helpers are not plugin APIs");
+const video = await source("src-tauri/src/plugin_native/video.rs");
+assert.match(video, /start and authorize the native module first/);
+assert.match(video, /session\.launch\.package_root/, "video runtimes must resolve from the authorized installed session");
+assert(!video.includes("OPENPLAYER_SMOKE"), "public attachment cannot use developer environment overrides");
+assert.match(await source("src-tauri/src/mpv_embed/commands/lifecycle.rs"), /media_change_guard[\s\S]*stop_existing_player_for_replacement/);
 
 const worker = await source("src/app/pluginRuntime/workerSource/apiSections.ts");
 const view = await source("src/app/pluginRuntime/viewDocument.ts");
 assert(worker.includes("pluginWorkerNativeApiSource()"));
 assert(view.includes("pluginWorkerNativeApiSource()"), "workers and custom views must reuse the same native API source");
+assert(view.includes("pluginWorkerFilesystemApiSource()"), "custom views must reuse the permissioned filesystem picker bridge");
 
 const commands = await source("src-tauri/src/plugin_native/commands.rs");
 assert.match(commands, /async fn plugin_native_stop[\s\S]*spawn_blocking/, "native stop cannot wait for process cleanup on the window thread");

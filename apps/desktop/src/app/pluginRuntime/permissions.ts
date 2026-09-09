@@ -5,6 +5,7 @@ export type PluginPermissionRisk = "normal" | "warning" | "danger";
 export function pluginPermissionRisk(permission: string): PluginPermissionRisk {
   if (
     permission === "native.process" ||
+    permission === "native.video" ||
     permission === "mpv.core" ||
     permission === "mpv.scriptMessage" ||
     permission === "network.request" ||

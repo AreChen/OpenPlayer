@@ -9,7 +9,15 @@ mod session;
 pub(crate) mod tests;
 mod types;
 mod validation;
+#[cfg(all(windows, feature = "mpv-embed"))]
+pub(crate) mod video;
 mod video_plan;
+#[cfg(all(windows, feature = "mpv-embed"))]
+pub(crate) use video::*;
+#[cfg(not(all(windows, feature = "mpv-embed")))]
+mod video_unavailable;
+#[cfg(not(all(windows, feature = "mpv-embed")))]
+pub(crate) use video_unavailable::*;
 
 pub(crate) use commands::*;
 use session::Session;

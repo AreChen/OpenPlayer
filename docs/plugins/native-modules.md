@@ -9,10 +9,10 @@ network, and environment access. They are NOT sandboxed.** The JavaScript worker
 remains sandboxed; `native.process` is a separate, high-risk permission with an
 explicit host-owned confirmation for each new process launch.
 
-**There is no public live video processing attachment yet.**
+**Development Windows x64 builds now expose [single-stage video attachment](native-video.md).**
 `native.video.validatePlan()` checks a proposed format/rate chain and always
 returns `executable: false`. It does not enable DLSSNR, interpolation, upscaling,
-or rendering. The existing mpv host and transparent control window are unchanged.
+or rendering by itself. The existing mpv host and transparent control window are unchanged.
 
 ## Run the reference module
 
@@ -96,6 +96,7 @@ if (openplayer.capabilities.has("native.process") &&
 | `stop(moduleId)` | Terminate the module process group/job; on Windows, wait for job processes to exit |
 | `stopAll()` | Stop this plugin's modules, not other plugins |
 | `video.validatePlan(plan)` | Validate and normalize a proposed chain; never executes it |
+| `video.attach/detach/status` | Separately permissioned, declared single-stage SDR attachment; see [native video](native-video.md) |
 
 There are at most 16 registered sessions across the application. Each session
 allows one in-flight request. Concurrent requests fail with `busy`, rather than
@@ -180,7 +181,11 @@ interpolator can raise the rate with a larger `maxOutputFrames`. The tests cover
 720p/24 to 1080p/24 to 1080p/48. The result includes the normalized plan, output
 format, accumulated `lookaheadMs`, and `executable: false`.
 
-### Remaining playback work (not implemented APIs)
+### Historical playback integration stages
+
+The following records describe earlier test-only milestones. For the current
+public development contract, authorization and remaining limits, use
+[native video attachment](native-video.md).
 
 Live playback still needs an mpv frame adapter, bounded shared-memory/GPU texture
 transport, GPU synchronization, and a scheduler carrying frame PTS/duration.
