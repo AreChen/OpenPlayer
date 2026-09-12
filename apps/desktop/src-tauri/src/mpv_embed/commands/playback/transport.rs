@@ -6,6 +6,8 @@ pub async fn mpv_embed_play(app: AppHandle) -> Result<MpvEmbedSnapshot, String> 
         with_player(state, |player| {
             player.force_paused_until = None;
             player.ended = false;
+            #[cfg(windows)]
+            native_presentation::invalidate(player, Some(false));
             player
                 .mpv
                 .set_property("pause", false)
@@ -21,6 +23,8 @@ pub async fn mpv_embed_pause(app: AppHandle) -> Result<MpvEmbedSnapshot, String>
     run_mpv_command(app, |state| {
         with_player(state, |player| {
             player.force_paused_until = None;
+            #[cfg(windows)]
+            native_presentation::invalidate(player, Some(true));
             player
                 .mpv
                 .set_property("pause", true)
@@ -41,6 +45,8 @@ pub async fn mpv_embed_seek(app: AppHandle, position: f64) -> Result<MpvEmbedSna
         with_player(state, |player| {
             player.force_paused_until = None;
             player.ended = false;
+            #[cfg(windows)]
+            native_presentation::invalidate(player, None);
             player
                 .mpv
                 .command("seek", &[&position.to_string(), "absolute"])

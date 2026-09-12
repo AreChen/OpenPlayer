@@ -3,7 +3,14 @@
 The Windows developer window harness now loads its embedded video runtime from
 a verified, process-owned copy rather than an installed plugin directory.
 **The current development host also uses this for authorized
-[native video attachment](native-video.md).** Published 1.6.3 is unchanged.
+[`vapoursynth-rgb-v1` attachment](native-video.md).** The experimental
+`present-rgba-v1` path does not load the XeFG vendor runtime through this cache;
+that runtime stays in the native presenter process. It can consume an upstream
+NR filter, but the combination is unverified. The presenter's real-host tests
+cover output restoration after detach/crash and process exit, including close
+during initialization; see [current evidence](native-video.md#host-verification-2026-09-12).
+These results do not validate NR composition or complete an installable XeFG
+product. Published 1.6.3 is unchanged.
 The historical evidence below predates that public development interface.
 
 ## Ownership and limits

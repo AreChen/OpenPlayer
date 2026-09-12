@@ -1,6 +1,41 @@
 use super::*;
+use crate::appearance_store::manifest::parse_theme_plugin_manifest_json;
 use serde_json::json;
 use sha2::{Digest, Sha256};
+
+#[test]
+fn native_video_manifests_validate_adapter_contract() {
+    for adapter in ["vapoursynth-rgb-v1", "present-rgba-v1"] {
+        let manifest = json!({
+            "id":"test.native.video", "name":"Native video", "version":"1.0.0", "entry":"manifest",
+            "contributes": {
+                "capabilities":[{"id":"native", "name":"Native", "kind":"nativeTool", "permissions":["native.process", "native.video"]}],
+                "nativeModules":[{"id":"enhance", "protocol":"openplayer-native-v1", "videoAdapter":adapter,
+                    "methods":["frames.open", "frames.status", "frames.close"],
+                    "targets":{"windows-x86_64":{"entry":"worker.exe", "sha256":"0".repeat(64)}}}]
+            }
+        });
+        let parsed = parse_theme_plugin_manifest_json(&manifest.to_string()).unwrap();
+        assert_eq!(
+            parsed.contributes.native_modules[0]
+                .video_adapter
+                .as_deref(),
+            Some(adapter)
+        );
+        for permissions in [json!(["native.process"]), json!(["native.video"])] {
+            let mut invalid = manifest.clone();
+            invalid["contributes"]["capabilities"][0]["permissions"] = permissions;
+            assert!(parse_theme_plugin_manifest_json(&invalid.to_string()).is_err());
+        }
+        let mut invalid = manifest.clone();
+        invalid["contributes"]["nativeModules"][0]["videoAdapter"] = json!("present-rgba-v2");
+        assert!(parse_theme_plugin_manifest_json(&invalid.to_string()).is_err());
+        let mut invalid = manifest;
+        invalid["contributes"]["capabilities"][0]["permissions"] =
+            json!(["native.process", "native.video", "vendor.video"]);
+        assert!(parse_theme_plugin_manifest_json(&invalid.to_string()).is_err());
+    }
+}
 
 #[test]
 #[cfg(windows)]

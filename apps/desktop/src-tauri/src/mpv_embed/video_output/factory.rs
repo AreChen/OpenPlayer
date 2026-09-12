@@ -30,6 +30,10 @@ fn create_embed_player_with_log_subscription(
         #[cfg(target_os = "macos")]
         let _ = hwnd;
         configure_native_video_output(&initializer, &video_output_config)?;
+        #[cfg(all(windows, feature = "window-smoke"))]
+        if std::env::var_os("OPENPLAYER_SMOKE_PRESENTATION").is_some() {
+            initializer.set_option("hwdec", "no")?;
+        }
         #[cfg(target_os = "macos")]
         initializer.set_option("video-timing-offset", "0")?;
         initializer.set_option("input-default-bindings", false)?;

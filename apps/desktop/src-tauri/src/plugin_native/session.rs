@@ -63,6 +63,10 @@ impl Session {
         if self.tree.stopped() {
             return false;
         }
+        if self.attachment.try_lock().is_ok_and(|slot| !slot.healthy()) {
+            self.tree.stop();
+            return false;
+        }
         if let Ok(mut io) = self.io.try_lock()
             && !matches!(io.child.try_wait(), Ok(None))
         {

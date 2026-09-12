@@ -4,10 +4,19 @@ type Cleanup = Box<dyn FnMut() -> Result<(), String> + Send>;
 #[derive(Default)]
 pub(super) struct Attachment {
     cleanup: Option<Cleanup>,
+    health: Option<Box<dyn Fn() -> bool + Send>>,
     stopped: bool,
 }
 
 impl Attachment {
+    pub(super) fn healthy(&self) -> bool {
+        self.health.as_ref().is_none_or(|check| check())
+    }
+
+    #[cfg(all(windows, feature = "mpv-embed"))]
+    pub(super) fn watch_health(&mut self, check: Box<dyn Fn() -> bool + Send>) {
+        self.health = Some(check);
+    }
     #[cfg(all(windows, feature = "mpv-embed"))]
     pub(super) fn attached(&self) -> bool {
         self.cleanup.is_some()
@@ -38,6 +47,7 @@ impl Attachment {
         if let Some(cleanup) = self.cleanup.as_mut() {
             cleanup()?;
             self.cleanup = None;
+            self.health = None;
         }
         Ok(())
     }
@@ -55,6 +65,18 @@ mod tests {
         Arc,
         atomic::{AtomicUsize, Ordering},
     };
+
+    #[test]
+    fn successful_cleanup_clears_the_previous_health_probe() {
+        let mut attachment = Attachment::default();
+        attachment.mount(|| Ok(()), Box::new(|| Ok(()))).unwrap();
+        assert!(attachment.healthy());
+        attachment.health = Some(Box::new(|| false));
+        assert!(!attachment.healthy());
+        attachment.detach().unwrap();
+        assert!(attachment.healthy());
+        assert!(attachment.health.is_none());
+    }
 
     #[test]
     fn detach_is_idempotent_and_allows_reattach_but_stop_is_terminal() {

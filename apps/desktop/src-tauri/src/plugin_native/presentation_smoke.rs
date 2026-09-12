@@ -1,0 +1,240 @@
+//! Opt-in real-package/native-window integration; never built into release IPC.
+use super::{REGISTRY, Session};
+use crate::{
+    appearance_store::smoke::Package,
+    mpv_embed::{self, native_presentation},
+};
+use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+    thread,
+    time::{Duration, Instant},
+};
+use tauri::AppHandle;
+
+static EXIT_SESSION: Mutex<Option<Arc<Session>>> = Mutex::new(None);
+pub(crate) fn verify_exit() -> Result<(), String> {
+    if let Some(session) = EXIT_SESSION
+        .lock()
+        .map_err(|_| "presentation fixture poisoned")?
+        .take()
+    {
+        session.tree.wait_stopped()?;
+        println!("PASS: native presenter job terminated on application exit");
+    }
+    Ok(())
+}
+
+pub(crate) struct Run {
+    app: AppHandle,
+    package: Package,
+    session: Arc<Session>,
+    before: Value,
+    options: Value,
+}
+impl Run {
+    pub(crate) fn start(app: &AppHandle) -> Result<Self, String> {
+        let executable = PathBuf::from(
+            std::env::var_os("OPENPLAYER_SMOKE_PRESENTATION")
+                .ok_or("provide native presenter executable")?,
+        );
+        if !executable.is_absolute() || !executable.is_file() {
+            return Err("presentation fixture executable must exist at an absolute path".into());
+        }
+        let luid = std::env::var("OPENPLAYER_SMOKE_PRESENTATION_LUID")
+            .map_err(|_| "provide an explicit GPU LUID")?;
+        let directory = std::env::temp_dir().join(format!(
+            "openplayer-presentation-package-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&directory).map_err(|e| e.to_string())?;
+        let source = directory.join("package");
+        std::fs::create_dir(&source).map_err(|e| e.to_string())?;
+        std::fs::create_dir(source.join("bin")).map_err(|e| e.to_string())?;
+        let parent = executable
+            .parent()
+            .ok_or("invalid native executable path")?;
+        for file in [
+            "libxess_fg.dll",
+            "libxell.dll",
+            "Intel-LICENSE.txt",
+            "Intel-third-party-programs.txt",
+        ] {
+            std::fs::copy(parent.join(file), source.join("bin").join(file))
+                .map_err(|e| e.to_string())?;
+        }
+        let bytes = std::fs::read(&executable).map_err(|e| e.to_string())?;
+        std::fs::write(source.join("bin/presenter.exe"), &bytes).map_err(|e| e.to_string())?;
+        let manifest = json!({ "id":"dev.openplayer.fixture.presenter", "name":"Native Presentation Fixture", "version":"0.1.0", "apiVersion":"1", "entry":"manifest",
+            "runtime":{"kind":"webviewJs","entry":"runtime.js","sandbox":"openplayer-worker"},
+            "contributes":{"capabilities":[{"id":"presenter","name":"Presenter","kind":"nativeTool","permissions":["native.process","native.video"]}],
+                "nativeModules":[{"id":"enhance","protocol":"openplayer-native-v1","videoAdapter":"present-rgba-v1",
+                    "methods":["describe","gpu.list","frames.open","frames.status","frames.close"],
+                    "targets":{"windows-x86_64":{"entry":"bin/presenter.exe","sha256":format!("{:x}",Sha256::digest(&bytes))}}}]}});
+        std::fs::write(
+            source.join("manifest.json"),
+            serde_json::to_vec(&manifest).unwrap(),
+        )
+        .map_err(|e| e.to_string())?;
+        std::fs::write(
+            source.join("runtime.js"),
+            "// Native fixture driven by the opted-in host harness.\n",
+        )
+        .map_err(|e| e.to_string())?;
+        let package = Package::import(&source, &directory.join("store"), app)?;
+        let session = spawn(&package)?;
+        let before = native_presentation::diagnostics(app)?;
+        let run = Self {
+            app: app.clone(),
+            package,
+            session,
+            before,
+            options: json!({"adapterLuid":luid,"width":960,"height":540,"frameRateLimit":30}),
+        };
+        if std::env::var_os("OPENPLAYER_SMOKE_CLOSE_DURING_PRESENTATION_INIT").is_some() {
+            *EXIT_SESSION
+                .lock()
+                .map_err(|_| "presentation fixture poisoned")? = Some(run.session.clone());
+            let result = run.attach();
+            println!(
+                "TRACE: attachment returned during close: {}",
+                if result.is_ok() {
+                    "attached"
+                } else {
+                    "cancelled"
+                }
+            );
+            thread::sleep(Duration::from_secs(10));
+            return Err("application did not exit after close during initialization".into());
+        }
+        run.attach()?;
+        run.wait_generated(20)?;
+        println!("PASS: installed native presenter receives frames from the existing mpv core");
+        let paused = tauri::async_runtime::block_on(mpv_embed::mpv_embed_pause(app.clone()))?;
+        thread::sleep(Duration::from_millis(250));
+        let still = run.status()?;
+        let before_hash = native_presentation::diagnostics(app)?["lastHash"].clone();
+        tauri::async_runtime::block_on(mpv_embed::mpv_embed_plugin_command(
+            app.clone(),
+            "show-text".into(),
+            json!(["Paused native presentation redraw", 10000]),
+        ))?;
+        wait("paused OSD redraw", || {
+            Ok(native_presentation::diagnostics(app)?["lastHash"] != before_hash)
+        })?;
+        let after = tauri::async_runtime::block_on(mpv_embed::mpv_embed_snapshot(app.clone()))?
+            .ok_or("player missing")?;
+        if !after.paused
+            || (after.position - paused.position).abs() > 0.05
+            || run.status()?["generatedFrames"] != still["generatedFrames"]
+        {
+            return Err("native presenter advanced while paused".into());
+        }
+        tauri::async_runtime::block_on(mpv_embed::mpv_embed_seek(
+            app.clone(),
+            paused.position + 1.0,
+        ))?;
+        thread::sleep(Duration::from_millis(250));
+        tauri::async_runtime::block_on(mpv_embed::mpv_embed_play(app.clone()))?;
+        let generated = run.status()?["generatedFrames"].as_u64().unwrap_or(0);
+        run.wait_generated(generated + 15)?;
+        println!("PASS: paused redraw, seek, resume and temporal-history invalidation");
+        Ok(run)
+    }
+    fn attach(&self) -> Result<(), String> {
+        let state = tauri::async_runtime::block_on(super::plugin_native_video_attach(
+            self.app.clone(),
+            self.session.launch.plugin_id.clone(),
+            self.session.launch.module.id.clone(),
+            self.options.clone(),
+        ))?;
+        let state = serde_json::to_value(state).map_err(|e| e.to_string())?;
+        if state["presentationActive"] != true || state["filterEnabled"] != false {
+            return Err(format!("invalid presenter attachment status: {state}"));
+        }
+        Ok(())
+    }
+    fn status(&self) -> Result<Value, String> {
+        tauri::async_runtime::block_on(self.session.request("frames.status", Value::Null, 5000))
+    }
+    fn wait_generated(&self, count: u64) -> Result<(), String> {
+        wait("generated native frames", || {
+            let status = self.status()?;
+            if status["phase"] == "failed" || !status["error"].is_null() {
+                return Err(format!("native renderer: {status}"));
+            }
+            Ok(status["generatedFrames"].as_u64().unwrap_or(0) >= count)
+        })
+    }
+    fn assert_restored(&self) -> Result<(), String> {
+        wait("original mpv output restored", || {
+            let state = native_presentation::diagnostics(&self.app)?;
+            Ok(state["core"] == self.before["core"]
+                && state["vo"] == self.before["vo"]
+                && state["currentVo"] == self.before["currentVo"]
+                && state["hwdec"] == self.before["hwdec"]
+                && state["presentationActive"] == false)
+        })
+    }
+    pub(crate) fn finish(mut self) -> Result<(), String> {
+        let count = self.status()?["generatedFrames"].as_u64().unwrap_or(0);
+        self.wait_generated(count + 5)?;
+        let running = native_presentation::diagnostics(&self.app)?;
+        println!("TRACE: presentation after window transitions {running}");
+        tauri::async_runtime::block_on(super::plugin_native_video_detach(
+            self.app.clone(),
+            self.session.launch.plugin_id.clone(),
+            self.session.launch.module.id.clone(),
+        ))?;
+        self.assert_restored()?;
+        self.attach()?;
+        self.wait_generated(10)?;
+        tauri::async_runtime::block_on(self.session.crash_for_smoke())?;
+        self.assert_restored()?;
+        self.session.stop_and_wait()?;
+        println!(
+            "PASS: detach and native-process crash restore original output on the same mpv core"
+        );
+        self.session = spawn(&self.package)?;
+        self.attach()?;
+        self.wait_generated(10)?;
+        *EXIT_SESSION
+            .lock()
+            .map_err(|_| "presentation fixture poisoned")? = Some(self.session.clone());
+        println!("PASS: presenter reattached; leaving it active for real application close");
+        Ok(())
+    }
+}
+fn spawn(package: &Package) -> Result<Arc<Session>, String> {
+    let launch = package.launch()?;
+    tauri::async_runtime::block_on(async {
+        let session = Session::spawn(launch)?;
+        session.initialize().await?;
+        REGISTRY
+            .lock()
+            .map_err(|_| "native registry unavailable")?
+            .sessions
+            .insert(
+                (
+                    session.launch.plugin_id.clone(),
+                    session.launch.module.id.clone(),
+                ),
+                session.clone(),
+            );
+        Ok(session)
+    })
+}
+fn wait(label: &str, mut check: impl FnMut() -> Result<bool, String>) -> Result<(), String> {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if check()? {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(format!("presentation fixture timed out: {label}"));
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+}

@@ -9,10 +9,17 @@ remains sandboxed; `native.process` is a separate, high-risk declared permission
 Installation grants declared permissions. There is no repeated launch prompt;
 permission, enablement, integrity and lifecycle checks still apply on every start.
 
-**Windows x64 builds expose [single-stage video attachment](native-video.md).**
+**Windows x64 builds expose [native video adapters](native-video.md).** The
+development checkout adds experimental `present-rgba-v1` CPU RGBA presentation
+alongside the existing `vapoursynth-rgb-v1` filter. The real host harness verifies
+generation, paused OSD redraw, seek/resume, window transitions, restoration and
+exit; see the [evidence and remaining limits](native-video.md#host-verification-2026-09-12).
+NR composition and an installable XeFG product remain incomplete; `refreshPaused`
+and paused resize were not independently tested.
 `native.video.validatePlan()` checks a proposed format/rate chain and always
 returns `executable: false`. It does not enable DLSSNR, interpolation, upscaling,
-or rendering by itself. The existing mpv host and transparent control window are unchanged.
+or rendering by itself. The main mpv host and transparent control window remain;
+the presentation adapter switches video output to a module-owned child window.
 
 ## Run the reference module
 
@@ -43,6 +50,7 @@ Add `contributes.nativeModules`, an array of at most four declarations:
 | `id` | Unique module identifier, 1..96 ASCII letters/digits/dot/underscore/hyphen |
 | `protocol` | `openplayer-native-v1` |
 | `methods` | 1..64 unique identifiers; `host.*` is reserved |
+| `videoAdapter` | Optional `vapoursynth-rgb-v1` or experimental `present-rgba-v1`; requires `native.process`, `native.video`, all `frames.open/status/close` methods and only Windows x64 targets |
 | `targets` | Platform-to-executable map; at least one target |
 | `targets[platform].entry` | Relative package path, at most 240 UTF-8 bytes; Windows requires `.exe` |
 | `targets[platform].sha256` | 64 hex characters, verified against the executable |
@@ -96,7 +104,7 @@ if (openplayer.capabilities.has("native.process") &&
 | `stop(moduleId)` | Terminate the module process group/job; on Windows, wait for job processes to exit |
 | `stopAll()` | Stop this plugin's modules, not other plugins |
 | `video.validatePlan(plan)` | Validate and normalize a proposed chain; never executes it |
-| `video.attach/detach/status` | Declared single-stage SDR attachment with optional HDR/DV-to-SDR normalization; see [native video](native-video.md) |
+| `video.attach/detach/status` | Declared SDR filter or experimental exclusive CPU RGBA presenter; conversion, capacity, status and verification limits differ by adapter; see [native video](native-video.md) |
 
 There are at most 16 registered sessions across the application. Each session
 allows one in-flight request. Concurrent requests fail with `busy`, rather than

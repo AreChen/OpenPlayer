@@ -34,7 +34,13 @@ pub fn run() {
     let finished = Arc::new(AtomicBool::new(false));
     let watchdog = finished.clone();
     thread::spawn(move || {
-        thread::sleep(Duration::from_secs(45));
+        let seconds =
+            if std::env::var_os("OPENPLAYER_SMOKE_CLOSE_DURING_PRESENTATION_INIT").is_some() {
+                10
+            } else {
+                45
+            };
+        thread::sleep(Duration::from_secs(seconds));
         if !watchdog.load(Ordering::SeqCst) {
             eprintln!("window smoke timed out (native event loop or teardown stalled)");
             std::process::exit(1);
@@ -77,6 +83,11 @@ pub fn run() {
             crate::plugin_native::shutdown();
             #[cfg(windows)]
             if let Err(error) = crate::plugin_native::attachment_smoke::verify_exit() {
+                eprintln!("window smoke failed: {error}");
+                std::process::exit(1);
+            }
+            #[cfg(windows)]
+            if let Err(error) = crate::plugin_native::presentation_smoke::verify_exit() {
                 eprintln!("window smoke failed: {error}");
                 std::process::exit(1);
             }
@@ -385,6 +396,15 @@ fn exercise_windows(
         None
     };
     exercise_native_filter(app)?;
+    #[cfg(windows)]
+    let presentation = if std::env::var_os("OPENPLAYER_SMOKE_PRESENTATION").is_some() {
+        if std::env::var_os("OPENPLAYER_SMOKE_CLOSE_DURING_PRESENTATION_INIT").is_some() {
+            close_started.store(true, Ordering::SeqCst);
+        }
+        Some(crate::plugin_native::presentation_smoke::Run::start(app)?)
+    } else {
+        None
+    };
     for index in 0..40 {
         on_main(app, move |app| {
             let window = if cfg!(target_os = "macos") {
@@ -441,7 +461,10 @@ fn exercise_windows(
     #[cfg(windows)]
     exercise_maximized_fullscreen(app)?;
     #[cfg(windows)]
-    if std::env::var_os("OPENPLAYER_SMOKE_NATIVE_FILTER").is_none() && attachment.is_none() {
+    if std::env::var_os("OPENPLAYER_SMOKE_NATIVE_FILTER").is_none()
+        && attachment.is_none()
+        && presentation.is_none()
+    {
         exercise_capture_mode(app)?;
     } else {
         println!("PASS: maximized fullscreen client/video bounds with native filter");
@@ -449,6 +472,10 @@ fn exercise_windows(
     #[cfg(windows)]
     if let Some(attachment) = attachment {
         attachment.finish()?;
+    }
+    #[cfg(windows)]
+    if let Some(presentation) = presentation {
+        presentation.finish()?;
     }
     #[cfg(windows)]
     if target == "main" {

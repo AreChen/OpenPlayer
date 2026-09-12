@@ -1,25 +1,32 @@
-# Attach a native video processor
+# Native video adapters
 
-**Requires OpenPlayer 1.6.4 or later; unavailable in 1.6.3.** This is
-a single-stage Windows x64 attachment, not executable video-plan scheduling.
-The existing mpv window and transparent React overlay remain unchanged.
+**Native video requires OpenPlayer 1.6.4 or later; unavailable in 1.6.3.**
+The current development checkout additionally implements the experimental Windows
+x64 `present-rgba-v1` adapter. Its presence here is not a claim of availability
+in a released installer or a completed installable XeFG plugin.
+The main mpv host window and transparent React overlay remain; a presenter owns
+a native child output window. Neither adapter makes video-plan scheduling executable.
 
 ## Trust and declaration
 
 Declare both `native.process` and `native.video`. Add
-`videoAdapter: "vapoursynth-rgb-v1"` to a native module with only a
+`videoAdapter: "vapoursynth-rgb-v1"` or `"present-rgba-v1"` to a native module with only a
 `windows-x86_64` target and the methods `frames.open`, `frames.status`, and
-`frames.close`. Other method names remain plugin-defined. The package root must
-contain the schema-2 inventory and private runtime layout described in
-[runtime ownership](native-runtime-ownership.md).
+`frames.close`. Other method names remain plugin-defined. No vendor-specific
+permission is required. The VapourSynth adapter requires the schema-2 inventory
+and private runtime layout described in [runtime ownership](native-runtime-ownership.md).
 
-This permission allows trusted package code to run inside the player through
-VapourSynth/CPython. A runtime failure can crash the player. Installing the plugin
+The VapourSynth path runs trusted package code inside the player through
+VapourSynth/CPython; a runtime failure can crash the player. The presentation path
+keeps the vendor runtime in the native module process. Installing the plugin
 grants its declared permissions, including native file/network access; starting
 it does not prompt again. Permission descriptions remain visible in plugin
 settings. A hash is not a signature. Only install trusted packages.
 
-## Compose the APIs
+## Shared API and status
+
+This example uses the existing `vapoursynth-rgb-v1` adapter. Its
+`inputConversion` option does not configure the experimental presentation path.
 
 ```js
 if (openplayer.capabilities.has("native.video") &&
@@ -40,20 +47,101 @@ if (openplayer.capabilities.has("native.video") &&
 
 | API | Contract |
 | --- | --- |
-| `attach(moduleId, options?)` | Requires a running, authorized session with a declared adapter. Resolves the installed package, pins its verified host-owned runtime, calls `frames.open(options)`, and installs a host-generated filter. No script, executable, endpoint or filter expression can be supplied by JavaScript. |
-| `status(moduleId)` | Returns `supported`, `running`, `attached`, `filterEnabled`. A cleanup lease is not proof of successful inference: also inspect the module's diagnostics. Unsupported platforms return `supported: false`. |
-| `refreshPaused(moduleId)` | After a settings update, queue a zero-distance exact seek to re-filter the paused position. Returns `true` when queued, `false` while playing. Requires an active owned attachment and seekable media. Completion is asynchronous; preserves pause and reuses the worker. |
-| `detach(moduleId)` | Removes the owned filter, calls `frames.close` if the module is running, and retains the control process. Repeating detach is harmless for the reference module. |
+| `attach(moduleId, options?)` | Requires a running, authorized session with a declared adapter. Installs the owned VapourSynth filter or starts the exclusive presentation source, depending on the declaration. Endpoints and window handles are host-owned. |
+| `status(moduleId)` | Returns `supported`, `running`, `attached`, `filterEnabled`, and on the new host `presentationActive`. Unsupported platforms return `supported: false`. Read the module's diagnostics separately for generated-frame counts and errors. |
+| `refreshPaused(moduleId)` | Queues an exact zero-distance seek for an active attachment; returns `false` while playing. This remains asynchronous. Presenter `refreshPaused` has not been independently tested; the paused OSD redraw test does not cover this method. |
+| `detach(moduleId)` | Removes the owned filter or restores the saved output/decode settings and stops the presentation source, then calls `frames.close`. Presenter detach waits for `closed`; the control module can remain running. |
 | `stop(moduleId)` | Terminates the entire native job, waits, and cleans its attachment. This is the reference plugin's stop-and-release action. |
 
-Only one native attachment can own the player. Duplicate attachment is rejected
-without stopping the existing attachment. Installation failures stop the attempted
+`attached` means a cleanup lease exists. `filterEnabled` describes this module's
+owned `vapoursynth-rgb-v1` filter, not the whole mpv filter list.
+`presentationActive` means this module owns an active host presentation source
+whose transport is not closed; it is not proof of generated frames or correct
+physical output. The SDK makes it optional for older hosts. A presenter can
+report `filterEnabled: false` and `presentationActive: true` even with an upstream
+NR filter; query the NR module separately for that filter's status.
+
+## Experimental CPU RGBA presentation
+
+`present-rgba-v1` uses mpv's software render API (`sw`, `rgb0` with opaque alpha)
+to produce tightly packed CPU RGBA after the mpv filter chain. The host switches
+to `vo=libmpv`, `hwdec=no`, retaining the same mpv core and media/audio clock.
+The module receives a bounded shared-memory endpoint using
+`openplayer-present-rgba-v1`, not pixels in JSON or shared GPU textures. The host
+supplies `endpoint`, `parentWindow`, and `sourceFps` to `frames.open` and waits for
+`ready` before installing the presentation source. The XeFG module selects its
+GPU by explicit `adapterLuid`; it does not use a default-device fallback.
+
+The host currently requires seekable media with known cadence and SDR BT.709
+filter output: `colormatrix=bt.709` and gamma `bt.1886`, `bt.709`, or `srgb`.
+HDR/Dolby Vision must already have been converted upstream before attachment.
+The old adapter's `inputConversion` option does not perform conversion here.
+Software rendering does not support mpv `brightness` and other GPU VO options;
+GPU shaders, tone mapping, and complete color equivalence with the normal GPU
+output are not supported promises. CPU RGBA transport is not HDR passthrough.
+
+Only one presenter may own the output. An existing `vapoursynth-rgb-v1` NR filter
+can remain upstream and its output can feed the presenter, but NR plus XeFG has
+not been verified. This is not an executable multi-stage video plan. The native
+module owns its presentation child; the host continues to own media and the
+transparent control overlay.
+
+Development host options `width` and `height` specify opening limits (defaults
+1920x1080; integer ranges 128..3840 and 128..2160), with endpoint capacity fixed
+at `width * height * 4` bytes. Actual initial/frame dimensions follow the window
+viewport, fit within these limits, and change after a 150 ms stable-size debounce.
+The host scales down larger viewports; each dimension has a 128-pixel minimum,
+so exact aspect preservation is not promised for very small/extreme windows.
+Resize invalidates the epoch and requests `REDRAW`/`RESET`, including while paused.
+The module resizes its swapchain/resources on its render thread without recreating
+the XeFG context or changing GPU. Increasing the opening capacity requires a new
+attachment. These are implemented mechanics, not a passed host paused-resize test.
+
+`frameRateLimit` is optional, finite, and 1..120. With it, the host appends an owned
+FFmpeg `fps` filter using the lower of the limit and known post-filter/source FPS.
+It limits frames reaching the presenter without changing audio speed, but may
+repeat frames and does not reduce work already done by upstream NR filters.
+Omitting it adds no rate filter. It is not a generated-output FPS guarantee.
+The host removes its rate filter on restoration while retaining upstream filters.
+
+The TypeScript `NativeVideoAttachOptions` interface types `inputConversion`,
+`frameRateLimit`, `settings`, `width`, and `height`. Its string index signature
+accepts module-specific top-level options such as `adapterLuid` as `unknown`,
+without weakening known field types or adding vendor-specific SDK fields.
+The host and module still validate options at runtime; host-owned endpoint,
+window and cadence fields cannot be supplied by plugins.
+
+### Host verification (2026-09-12)
+
+The real installed-package host harness verified generated frames, paused
+`show-text` OSD redraw with a changed pixel hash and no position/generated-count
+advance, seek/resume, resize and maximized-to-fullscreen transitions, detach and
+re-attach, and native-process crash recovery retaining the same mpv core and
+restoring actual `current-vo` and `hwdec`. The normal close path uses `WM_CLOSE`.
+Evidence: [`presentation-smoke.log`](../../target/presentation-smoke.log).
+
+Real Alt+F4 completed process exit in
+[`presentation-smoke-alt-f4.log`](../../target/presentation-smoke-alt-f4.log).
+Closing while `frames.open` initialization held the media guard also completed
+normal exit in [`presentation-smoke-init-close.log`](../../target/presentation-smoke-init-close.log).
+These local build logs record the tested harness paths, not a shipped XeFG product.
+
+NR composition, long-duration A/V behavior, real React UI integration and user
+image-quality acceptance remain unverified. `refreshPaused` and resize while
+paused were not independently tested. OSD pixel hashes do not establish subtitle
+fidelity, full color equivalence or physical display quality. An installable XeFG
+product is not complete, and no desktop readback is required for this contract.
+
+## VapourSynth filter adapter
+
+The following behavior and historical evidence apply to `vapoursynth-rgb-v1`.
+Duplicate attachment is rejected. Installation failures stop the attempted
 session and execute rollback; cleanup failures retain tracking for retry.
-The frame endpoint is accepted only from the authorized module's reply, with
+Its frame endpoint is accepted only from the authorized module's reply, with
 protocol `openplayer-frame-experimental-v1`, a nonzero `u16` port and a 64-hex
 token. Transport uses loopback and bounded shared buffers, not pixel JSON RPC.
 
-## Media and lifecycle
+### Media and lifecycle
 
 The adapter processes constant 8-bit, limited-range BT.709 SDR YUV up to
 3840x2160. `inputConversion` defaults to `"none"`; `"sdr-bt709"` permits the host
@@ -96,7 +184,7 @@ the plugin panel alone leaves processing active; stopping is an explicit action.
 The cached embedded runtime stays resident until app exit; changing its inventory
 requires restarting the player, not merely toggling the plugin.
 
-## Verification
+### Verification
 
 2026-09-10: sibling `.local/paused-preview-first.json` verifies two parameter
 updates change displayed pixels while paused, retain position (within 20ms) and

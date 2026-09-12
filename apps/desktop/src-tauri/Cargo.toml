@@ -74,3 +74,6 @@ objc2-foundation = { version = "0.3.2", optional = true, default-features = fals
   "NSGeometry",
   "objc2-core-foundation",
 ] }
+
+[target.'cfg(windows)'.dependencies]
+openplayer-native-sdk = { path = "../../../vendor/rust/openplayer-native-sdk-0.1.0", features = ["presentation"] }

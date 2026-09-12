@@ -1,19 +1,35 @@
-//! Single-stage CPU frame attachment, deliberately separate from plan validation.
+//! Session-owned video filters and native presentation, separate from plan validation.
 use super::{REGISTRY, Session};
 use crate::{appearance_store::AppearanceStoreState, mpv_embed::native_video_filter as filter};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use tauri::{AppHandle, Manager};
 
 static MEDIA: Mutex<()> = Mutex::new(());
+static MEDIA_TEARDOWN: AtomicBool = AtomicBool::new(false);
+
+pub(crate) struct MediaChangeGuard {
+    _lock: MutexGuard<'static, ()>,
+}
+impl Drop for MediaChangeGuard {
+    fn drop(&mut self) {
+        MEDIA_TEARDOWN.store(false, Ordering::Release);
+    }
+}
+pub(crate) fn media_teardown_active() -> bool {
+    MEDIA_TEARDOWN.load(Ordering::Acquire)
+}
 
 // Order: media -> registry -> attachment -> mpv. Media replacement retains this
 // guard through player creation, so no attachment can bind to the outgoing player.
-pub(crate) fn media_change_guard() -> Result<MutexGuard<'static, ()>, String> {
+pub(crate) fn media_change_guard() -> Result<MediaChangeGuard, String> {
     let guard = MEDIA
         .lock()
         .map_err(|_| "native video operation unavailable")?;
+    let guard = MediaChangeGuard { _lock: guard };
+    MEDIA_TEARDOWN.store(true, Ordering::Release);
     let mut registry = REGISTRY.lock().map_err(|_| "native registry unavailable")?;
     let keys: Vec<_> = registry
         .sessions
@@ -79,14 +95,18 @@ pub(crate) struct VideoStatus {
     running: bool,
     attached: bool,
     filter_enabled: bool,
+    presentation_active: bool,
 }
 
 fn session(app: &AppHandle, plugin: &str, module: &str) -> Result<Option<Arc<Session>>, String> {
     let modules = app.state::<AppearanceStoreState>().native_modules(plugin)?;
-    if !modules
-        .iter()
-        .any(|m| m.id == module && m.video_adapter.as_deref() == Some("vapoursynth-rgb-v1"))
-    {
+    if !modules.iter().any(|m| {
+        m.id == module
+            && matches!(
+                m.video_adapter.as_deref(),
+                Some("vapoursynth-rgb-v1" | "present-rgba-v1")
+            )
+    }) {
         return Err("module does not declare a native video adapter".into());
     }
     Ok(REGISTRY
@@ -111,7 +131,14 @@ fn status(app: &AppHandle, session: Option<&Arc<Session>>) -> Result<VideoStatus
         supported: true,
         running,
         attached,
-        filter_enabled: attached && filter::enabled(app)?,
+        filter_enabled: attached
+            && session.is_some_and(|s| {
+                s.launch.module.video_adapter.as_deref() == Some("vapoursynth-rgb-v1")
+            })
+            && filter::enabled(app)?,
+        presentation_active: attached
+            && session.is_some_and(is_presenter)
+            && crate::mpv_embed::native_presentation::active(app)?,
     })
 }
 
@@ -156,6 +183,9 @@ pub(crate) async fn plugin_native_video_attach(
                 .map_err(|_| "native attachment unavailable")?;
             if !session.running() {
                 return Err("native session has exited".into());
+            }
+            if is_presenter(&session) {
+                return super::presentation::attach(&app, &session, &mut slot, options);
             }
             let (options, normalize, rate) = frame_options(options)?;
             let normalize = filter::validate_media(&app, normalize)?;
@@ -218,6 +248,9 @@ pub(crate) async fn plugin_native_video_detach(
                 .detach()?;
             if session.running() {
                 tauri::async_runtime::block_on(session.request("frames.close", Value::Null, 5000))?;
+                if is_presenter(session) {
+                    super::presentation::wait_phase(session, "closed", 5)?;
+                }
             }
         }
         status(&app, session.as_ref())
@@ -242,13 +275,22 @@ pub(crate) async fn plugin_native_video_refresh_paused(
             .attachment
             .lock()
             .map_err(|_| "native attachment unavailable")?;
-        if !session.running() || !slot.attached() || !filter::enabled(&app)? {
+        let enabled = if is_presenter(&session) {
+            crate::mpv_embed::native_presentation::active(&app)?
+        } else {
+            filter::enabled(&app)?
+        };
+        if !session.running() || !slot.attached() || !enabled {
             return Err("native video is not attached".into());
         }
         filter::refresh_paused(&app)
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+fn is_presenter(session: &Arc<Session>) -> bool {
+    session.launch.module.video_adapter.as_deref() == Some("present-rgba-v1")
 }
 
 #[cfg(test)]

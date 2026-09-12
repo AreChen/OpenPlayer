@@ -39,6 +39,8 @@ mod media;
 #[cfg(feature = "window-smoke")]
 pub(crate) mod native_filter_smoke;
 #[cfg(windows)]
+pub(crate) mod native_presentation;
+#[cfg(windows)]
 pub(crate) mod native_video_filter;
 mod player;
 mod player_events;

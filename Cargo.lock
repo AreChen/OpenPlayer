@@ -2320,6 +2320,7 @@ dependencies = [
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
+ "openplayer-native-sdk",
  "raw-window-handle",
  "redb",
  "reqwest",
@@ -2333,6 +2334,16 @@ dependencies = [
  "tokio",
  "windows-sys 0.61.2",
  "zip",
+]
+
+[[package]]
+name = "openplayer-native-sdk"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.3.4",
+ "serde",
+ "serde_json",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

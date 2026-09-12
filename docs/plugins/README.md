@@ -28,7 +28,13 @@ Development native extensions are documented in
 [Native modules](./native-modules.md). They run as separately confirmed, trusted
 processes, not inside the JavaScript sandbox. The generic control protocol is
 implemented. Development Windows x64 builds also provide a separately permissioned
-[single-stage video attachment](./native-video.md); this is not in released 1.6.3.
+[native video adapters](./native-video.md); this is not in released 1.6.3.
+The development `present-rgba-v1` CPU RGBA presenter has real-host harness evidence
+for generation, paused OSD redraw, window transitions, restoration and exit.
+See the [verification scope](./native-video.md#host-verification-2026-09-12): NR
+composition, long-duration A/V, real React UI and user image-quality acceptance
+remain unverified; `refreshPaused` and paused resize were not independently tested.
+This is not a completed installable XeFG product.
 
 ## Current Capabilities
 

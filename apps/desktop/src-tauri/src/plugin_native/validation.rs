@@ -27,7 +27,7 @@ pub(crate) fn validate_modules(
     let mut ids = HashSet::new();
     for module in modules {
         if let Some(adapter) = &module.video_adapter
-            && (adapter != "vapoursynth-rgb-v1"
+            && (!matches!(adapter.as_str(), "vapoursynth-rgb-v1" | "present-rgba-v1")
                 || !permissions.iter().any(|p| p == "native.video")
                 || !["frames.open", "frames.status", "frames.close"]
                     .iter()

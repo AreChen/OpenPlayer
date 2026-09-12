@@ -1,7 +1,7 @@
 //! Host-generated single-owner filter. Public callers resolve a declared runtime
 //! and an authorized native session; they cannot supply scripts or filter graphs.
 use super::*;
-mod status;
+pub(in crate::mpv_embed) mod status;
 use std::{
     io::Write,
     sync::atomic::{AtomicBool, AtomicU64, Ordering},

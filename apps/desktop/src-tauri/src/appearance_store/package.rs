@@ -41,8 +41,13 @@ pub(super) fn replace_directory_with_writer(
 pub(super) fn copy_directory_contents(source: &Path, target: &Path) -> Result<(), String> {
     fs::create_dir_all(target)
         .map_err(|error| format!("failed to create plugin install directory: {error}"))?;
-    for entry in
-        fs::read_dir(source).map_err(|error| format!("failed to read plugin directory: {error}"))?
+    let source = source.canonicalize().map_err(|error| error.to_string())?;
+    let target = target.canonicalize().map_err(|error| error.to_string())?;
+    if target.starts_with(&source) {
+        return Err("plugin source directory cannot contain its installation directory".into());
+    }
+    for entry in fs::read_dir(&source)
+        .map_err(|error| format!("failed to read plugin directory: {error}"))?
     {
         let entry =
             entry.map_err(|error| format!("failed to read plugin directory entry: {error}"))?;
@@ -220,4 +225,24 @@ pub(super) fn resolve_plugin_package_file_path(
         return Err(format!("plugin package entry is not a file: {entry}"));
     }
     Ok(file)
+}
+
+#[cfg(test)]
+mod copy_tests {
+    use super::*;
+    #[test]
+    fn rejects_copying_a_plugin_into_its_own_descendant() {
+        let directory = std::env::temp_dir().join(format!(
+            "openplayer-copy-overlap-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&directory).unwrap();
+        let result = copy_directory_contents(&directory, &directory.join("nested-install"));
+        assert!(result.unwrap_err().contains("cannot contain"));
+        fs::remove_dir_all(directory).unwrap();
+    }
 }

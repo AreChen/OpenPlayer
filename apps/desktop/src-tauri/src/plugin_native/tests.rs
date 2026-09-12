@@ -15,25 +15,38 @@ fn module() -> NativeModule {
 
 #[test]
 fn video_declarations_require_permission_adapter_methods_and_platform() {
-    let mut m = module();
-    m.video_adapter = Some("vapoursynth-rgb-v1".into());
-    m.methods = vec![
-        "frames.open".into(),
-        "frames.status".into(),
-        "frames.close".into(),
-    ];
     let permissions = vec!["native.process".into(), "native.video".into()];
-    assert!(validate_modules(std::slice::from_ref(&m), &permissions).is_ok());
-    assert!(validate_modules(std::slice::from_ref(&m), &["native.process".into()]).is_err());
-    m.video_adapter = Some("other.py".into());
-    assert!(validate_modules(std::slice::from_ref(&m), &permissions).is_err());
-    m.video_adapter = Some("vapoursynth-rgb-v1".into());
-    m.methods.pop();
-    assert!(validate_modules(std::slice::from_ref(&m), &permissions).is_err());
-    m.methods.push("frames.close".into());
-    let target = m.targets.remove("windows-x86_64").unwrap();
-    m.targets.insert("linux-x86_64".into(), target);
-    assert!(validate_modules(&[m], &permissions).is_err());
+    for adapter in ["vapoursynth-rgb-v1", "present-rgba-v1"] {
+        let mut m = module();
+        m.video_adapter = Some(adapter.into());
+        m.methods = vec![
+            "frames.open".into(),
+            "frames.status".into(),
+            "frames.close".into(),
+        ];
+        assert!(validate_modules(std::slice::from_ref(&m), &permissions).is_ok());
+        for permission in &permissions {
+            assert!(
+                validate_modules(std::slice::from_ref(&m), std::slice::from_ref(permission))
+                    .is_err()
+            );
+        }
+        for missing in &m.methods {
+            let mut invalid = m.clone();
+            invalid.methods.retain(|method| method != missing);
+            assert!(validate_modules(&[invalid], &permissions).is_err());
+        }
+        for platform in ["windows-aarch64", "linux-x86_64", "macos-x86_64"] {
+            let mut invalid = m.clone();
+            let target = invalid.targets.remove("windows-x86_64").unwrap();
+            invalid.targets.insert(platform.into(), target.clone());
+            assert!(validate_modules(std::slice::from_ref(&invalid), &permissions).is_err());
+            invalid.targets.insert("windows-x86_64".into(), target);
+            assert!(validate_modules(&[invalid], &permissions).is_err());
+        }
+        m.video_adapter = Some("other.py".into());
+        assert!(validate_modules(&[m], &permissions).is_err());
+    }
 }
 
 #[test]

@@ -10,7 +10,7 @@ impl Drop for Node {
 
 // vf is a native array of maps, not a sub-property list with vf/count. Read one
 // atomic snapshot and free mpv's allocation after all borrowed fields are used.
-pub(super) fn filters(mpv: &libmpv2::Mpv) -> Result<Vec<(String, bool)>, String> {
+pub(in crate::mpv_embed) fn filters(mpv: &libmpv2::Mpv) -> Result<Vec<(String, bool)>, String> {
     let mut node = Node(unsafe { std::mem::zeroed() });
     let result = unsafe {
         sys::mpv_get_property(

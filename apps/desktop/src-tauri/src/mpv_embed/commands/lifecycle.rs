@@ -53,6 +53,8 @@ pub fn open_path_for_window(
         .lock()
         .map_err(|_| "mpv embed state lock failed".to_string())?;
     *player = Some(MpvEmbedPlayer {
+        #[cfg(windows)]
+        presentation: None,
         #[cfg(target_os = "macos")]
         _render_context: render_context,
         mpv,

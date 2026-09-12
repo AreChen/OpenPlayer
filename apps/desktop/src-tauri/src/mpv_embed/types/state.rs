@@ -32,6 +32,8 @@ pub struct MpvWallState {
 }
 
 pub(crate) struct MpvEmbedPlayer {
+    #[cfg(windows)]
+    pub(crate) presentation: Option<crate::mpv_embed::native_presentation::Presentation>,
     #[cfg(target_os = "macos")]
     pub(crate) _render_context: MacosMpvRenderContext,
     pub(crate) mpv: libmpv2::Mpv,

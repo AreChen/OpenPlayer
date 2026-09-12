@@ -1,0 +1,27 @@
+[package]
+name = "openplayer-native-sdk"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[workspace]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+test-fixture = []
+presentation = ["dep:getrandom", "dep:windows-sys"]
+
+[target.'cfg(windows)'.dependencies]
+getrandom = { version = "0.3", optional = true }
+windows-sys = { version = "0.61", optional = true, features = [
+  "Win32_Foundation", "Win32_Security", "Win32_System_Memory",
+  "Win32_System_Threading", "Win32_System_Performance",
+] }
+
+[[example]]
+name = "protocol-fixture"
+required-features = ["test-fixture"]

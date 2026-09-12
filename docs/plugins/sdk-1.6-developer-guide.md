@@ -13,8 +13,13 @@ See [Native modules](./native-modules.md) for the separate trust boundary,
 `openplayer.native` API, executable packaging, and verification instructions.
 This extension is not in published 1.6.3 binaries. Its video-plan validator does
 not attach effects to playback. The separate [native video API](./native-video.md)
-now attaches a declared single-stage SDR processor; interpolation, upscaling and
-multi-stage execution remain outside this implementation.
+supports the existing SDR filter adapter and experimental Windows x64
+`present-rgba-v1` CPU RGBA presentation. Real-host harness tests cover generation,
+paused OSD redraw, seek/resume, window transitions, restoration and exit.
+See the [verification scope](./native-video.md#host-verification-2026-09-12) for
+remaining NR, long-duration A/V, React UI and image-quality work; `refreshPaused`
+and paused resize were not independently tested. An installable XeFG product is
+not complete. Upscaling and video-plan execution remain outside this contract.
 
 ## Where The SDK Lives
 

@@ -32,6 +32,8 @@ where
 
 pub(super) fn frame_step(state: &MpvEmbedState, command: &str) -> Result<MpvEmbedSnapshot, String> {
     with_player(state, |player| {
+        #[cfg(windows)]
+        native_presentation::invalidate(player, Some(true));
         player
             .mpv
             .command(command, &[])
@@ -59,6 +61,12 @@ pub(super) fn settle_frame_step_pause(mpv: &libmpv2::Mpv) -> Result<(), String> 
 impl MpvEmbedState {
     #[allow(dead_code)]
     pub fn resize_video_host(&self) -> Result<(), String> {
+        #[cfg(windows)]
+        let player = self
+            .player
+            .try_lock()
+            .map_err(|_| "mpv video host resize is busy".to_string())?;
+        #[cfg(not(windows))]
         let player = self
             .player
             .lock()

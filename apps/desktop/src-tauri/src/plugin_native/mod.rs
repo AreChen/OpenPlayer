@@ -2,6 +2,10 @@ mod attachment;
 #[cfg(all(windows, feature = "window-smoke"))]
 pub(crate) mod attachment_smoke;
 mod commands;
+#[cfg(all(windows, feature = "mpv-embed"))]
+mod presentation;
+#[cfg(all(windows, feature = "window-smoke"))]
+pub(crate) mod presentation_smoke;
 mod process_tree;
 mod session;
 #[cfg(test)]

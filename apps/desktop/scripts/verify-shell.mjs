@@ -73,6 +73,18 @@ const styles = [stylesEntrySource, stylesModuleSource].filter(Boolean).join("\n"
 const mainSource = await readFile(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
 const tauriLibSource = await readFile(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
 const tauriRuntimeSource = [tauriLibSource, await readSourceTree(new URL("../src-tauri/src/", import.meta.url), [".rs"])].filter(Boolean).join("\n");
+const presentationRenderSource = await readFile(new URL("../src-tauri/src/mpv_embed/native_presentation/render.rs", import.meta.url), "utf8");
+const presentationRenderLoop = presentationRenderSource.slice(
+  presentationRenderSource.indexOf("fn render_loop("),
+  presentationRenderSource.indexOf("pub(super) fn viewport_size("),
+);
+assert.ok(presentationRenderLoop.length > 0, "native presentation must retain a dedicated render loop");
+assert.doesNotMatch(presentationRenderLoop, /\.(get_property|set_property|command|wait_event)\s*\(/, "normal mpv client calls must stay off the render thread to prevent lock inversion");
+assert.doesNotMatch(presentationRenderSource, /\b(GetPixel|BitBlt)\b/, "native presentation must not perform desktop GDI readback");
+assert.match(presentationRenderLoop, /\.try_send\(/, "external frame submission must remain nonblocking");
+assert.match(presentationRenderLoop, /mpv_render_context_report_swap/, "mpv must receive present acknowledgements even when the consumer is busy");
+const presentationTransactionSource = await readFile(new URL("../src-tauri/src/mpv_embed/native_presentation/transaction.rs", import.meta.url), "utf8");
+assert.match(presentationTransactionSource, /Event::PlaybackRestart/, "VO switching must wait for actual playback restart, not the pre-seek seeking=false state");
 assert.equal(
   [...tauriRuntimeSource.matchAll(/tauri::generate_context!\s*\(/g)].length,
   1,
