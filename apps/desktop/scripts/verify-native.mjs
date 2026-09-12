@@ -31,6 +31,8 @@ const presentation = await source("src-tauri/src/mpv_embed/native_presentation/m
 assert.match(presentation, /conversion_requested\(options.remove\("inputConversion"\)\)/, "presentation consumes the host-owned conversion option");
 assert.match(presentation, /transaction::switch[\s\S]*validate_media\(&player.mpv, false\)\?[\s\S]*\.store\(true, Ordering::Release\)/, "validate converted pixels before publishing active presentation");
 assert.match(presentation, /fn restore[\s\S]*conversion.remove\(mpv\)\?[\s\S]*transaction::switch/, "restore original color/output after presentation");
+const properties = await source("src-tauri/src/mpv_embed/commands/playback/properties.rs");
+assert.match(properties, /fn mpv_embed_set_hwdec[\s\S]*player.presentation.is_some\(\)[\s\S]*hwdec != "no"[\s\S]*return Err[\s\S]*return Ok\(player.snapshot/, "decoding commands cannot override active native presentation");
 assert.match(filter, /native-input-/, "conversion filters require independent owned labels and cleanup");
 assert.match(await source("src-tauri/src/mpv_embed/commands/lifecycle.rs"), /media_change_guard[\s\S]*stop_existing_player_for_replacement/);
 

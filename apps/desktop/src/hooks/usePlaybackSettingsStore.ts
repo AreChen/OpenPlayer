@@ -37,6 +37,7 @@ export function usePlaybackSettingsStore({
 
   function applyPlaybackSettingsFromStore(settings: Partial<PlaybackSettings> | null | undefined) {
     const normalized = normalizePlaybackSettings(settings);
+    const decodingPreferenceChanged = normalized.hwdecMode !== playbackSettingsRef.current.hwdecMode;
     playbackSettingsRef.current = normalized;
     setPlaybackSettings((previous) => JSON.stringify(previous) === JSON.stringify(normalized) ? previous : normalized);
     setVolumeLevel(normalized.volume / 100);
@@ -44,8 +45,12 @@ export function usePlaybackSettingsStore({
       previousAudibleVolumeRef.current = normalized.volume / 100;
     }
     setPlaybackSpeedValue(normalized.playbackSpeed);
-    setHardwareDecodingModeValue(normalized.hwdecMode);
-    hardwareDecodingModeRef.current = normalized.hwdecMode;
+    // A native presenter can temporarily require software decoding. Repeated
+    // store reads must not overwrite the effective mode reported by mpv.
+    if (decodingPreferenceChanged) {
+      setHardwareDecodingModeValue(normalized.hwdecMode);
+      hardwareDecodingModeRef.current = normalized.hwdecMode;
+    }
     setIsVideoFillEnabled(normalized.videoFill);
     setTimeDisplayModeValue(normalized.timeDisplayMode);
     setLoopModeValue(normalized.loopMode);

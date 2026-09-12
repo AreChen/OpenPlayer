@@ -131,6 +131,23 @@ impl Run {
         }
         run.attach()?;
         run.wait_generated(20)?;
+        if tauri::async_runtime::block_on(mpv_embed::mpv_embed_set_hwdec(
+            app.clone(),
+            "hardware".into(),
+        ))
+        .is_ok()
+        {
+            return Err("hardware decoding override bypassed presentation ownership".into());
+        }
+        let decode = tauri::async_runtime::block_on(mpv_embed::mpv_embed_set_hwdec(
+            app.clone(),
+            "software".into(),
+        ))?;
+        if decode.hwdec != "no" || native_presentation::diagnostics(app)?["hwdec"] != "no" {
+            return Err("native presentation lost software decode ownership".into());
+        }
+        run.wait_generated(25)?;
+        println!("PASS: decoding override is rejected without interrupting presentation");
         println!("PASS: installed native presenter receives frames from the existing mpv core");
         let paused = tauri::async_runtime::block_on(mpv_embed::mpv_embed_pause(app.clone()))?;
         thread::sleep(Duration::from_millis(250));

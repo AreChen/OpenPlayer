@@ -27,6 +27,11 @@ export function hookHarness() {
   return {
     react: {
       useRef(value) { return slots[cursor++] ??= { current: value }; },
+      useState(initial) {
+        const index = cursor++;
+        const slot = slots[index] ??= { value: typeof initial === "function" ? initial() : initial };
+        return [slot.value, (next) => { slot.value = typeof next === "function" ? next(slot.value) : next; }];
+      },
       useEffect(effect, dependencies) {
         const index = cursor++;
         const previous = slots[index];

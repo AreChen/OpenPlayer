@@ -38,6 +38,13 @@ pub async fn mpv_embed_set_hwdec(app: AppHandle, mode: String) -> Result<MpvEmbe
 
     run_mpv_command(app, move |state| {
         with_player(state, |player| {
+            #[cfg(windows)]
+            if player.presentation.is_some() {
+                if hwdec != "no" {
+                    return Err("native presentation currently requires software decoding; stop the presentation plugin before switching to hardware decoding".into());
+                }
+                return Ok(player.snapshot(0, "playing"));
+            }
             player
                 .mpv
                 .set_property("hwdec", hwdec)
