@@ -15,6 +15,7 @@ use std::{
 use tauri::AppHandle;
 
 static EXIT_SESSION: Mutex<Option<Arc<Session>>> = Mutex::new(None);
+static EXIT_UPSTREAM: Mutex<Option<super::composition_smoke::Upstream>> = Mutex::new(None);
 pub(crate) fn verify_exit() -> Result<(), String> {
     if let Some(session) = EXIT_SESSION
         .lock()
@@ -23,6 +24,14 @@ pub(crate) fn verify_exit() -> Result<(), String> {
     {
         session.tree.wait_stopped()?;
         println!("PASS: native presenter job terminated on application exit");
+    }
+    if let Some(upstream) = EXIT_UPSTREAM
+        .lock()
+        .map_err(|_| "upstream fixture poisoned")?
+        .take()
+    {
+        upstream.verify_stopped()?;
+        println!("PASS: upstream NR job stopped with the native presenter on application exit");
     }
     Ok(())
 }
@@ -33,6 +42,7 @@ pub(crate) struct Run {
     session: Arc<Session>,
     before: Value,
     options: Value,
+    upstream: Option<super::composition_smoke::Upstream>,
 }
 impl Run {
     pub(crate) fn start(app: &AppHandle) -> Result<Self, String> {
@@ -50,40 +60,49 @@ impl Run {
             std::process::id()
         ));
         std::fs::create_dir(&directory).map_err(|e| e.to_string())?;
-        let source = directory.join("package");
-        std::fs::create_dir(&source).map_err(|e| e.to_string())?;
-        std::fs::create_dir(source.join("bin")).map_err(|e| e.to_string())?;
-        let parent = executable
-            .parent()
-            .ok_or("invalid native executable path")?;
-        for file in [
-            "libxess_fg.dll",
-            "libxell.dll",
-            "Intel-LICENSE.txt",
-            "Intel-third-party-programs.txt",
-        ] {
-            std::fs::copy(parent.join(file), source.join("bin").join(file))
-                .map_err(|e| e.to_string())?;
-        }
-        let bytes = std::fs::read(&executable).map_err(|e| e.to_string())?;
-        std::fs::write(source.join("bin/presenter.exe"), &bytes).map_err(|e| e.to_string())?;
-        let manifest = json!({ "id":"dev.openplayer.fixture.presenter", "name":"Native Presentation Fixture", "version":"0.1.0", "apiVersion":"1", "entry":"manifest",
+        let package = if executable.extension().is_some_and(|ext| ext == "opplugin") {
+            Package::import(&executable, &directory.join("store"), app)?
+        } else {
+            let source = directory.join("package");
+            std::fs::create_dir(&source).map_err(|e| e.to_string())?;
+            std::fs::create_dir(source.join("bin")).map_err(|e| e.to_string())?;
+            let parent = executable
+                .parent()
+                .ok_or("invalid native executable path")?;
+            for file in [
+                "libxess_fg.dll",
+                "libxell.dll",
+                "Intel-LICENSE.txt",
+                "Intel-third-party-programs.txt",
+            ] {
+                std::fs::copy(parent.join(file), source.join("bin").join(file))
+                    .map_err(|e| e.to_string())?;
+            }
+            let bytes = std::fs::read(&executable).map_err(|e| e.to_string())?;
+            std::fs::write(source.join("bin/presenter.exe"), &bytes).map_err(|e| e.to_string())?;
+            let manifest = json!({ "id":"dev.openplayer.fixture.presenter", "name":"Native Presentation Fixture", "version":"0.1.0", "apiVersion":"1", "entry":"manifest",
             "runtime":{"kind":"webviewJs","entry":"runtime.js","sandbox":"openplayer-worker"},
             "contributes":{"capabilities":[{"id":"presenter","name":"Presenter","kind":"nativeTool","permissions":["native.process","native.video"]}],
                 "nativeModules":[{"id":"enhance","protocol":"openplayer-native-v1","videoAdapter":"present-rgba-v1",
                     "methods":["describe","gpu.list","frames.open","frames.status","frames.close"],
                     "targets":{"windows-x86_64":{"entry":"bin/presenter.exe","sha256":format!("{:x}",Sha256::digest(&bytes))}}}]}});
-        std::fs::write(
-            source.join("manifest.json"),
-            serde_json::to_vec(&manifest).unwrap(),
-        )
-        .map_err(|e| e.to_string())?;
-        std::fs::write(
-            source.join("runtime.js"),
-            "// Native fixture driven by the opted-in host harness.\n",
-        )
-        .map_err(|e| e.to_string())?;
-        let package = Package::import(&source, &directory.join("store"), app)?;
+            std::fs::write(
+                source.join("manifest.json"),
+                serde_json::to_vec(&manifest).unwrap(),
+            )
+            .map_err(|e| e.to_string())?;
+            std::fs::write(
+                source.join("runtime.js"),
+                "// Native fixture driven by the opted-in host harness.\n",
+            )
+            .map_err(|e| e.to_string())?;
+            Package::import(&source, &directory.join("store"), app)?
+        };
+        let upstream = if std::env::var_os("OPENPLAYER_SMOKE_NR_PACKAGE").is_some() {
+            Some(super::composition_smoke::Upstream::start(app)?)
+        } else {
+            None
+        };
         let session = spawn(&package)?;
         let before = native_presentation::diagnostics(app)?;
         let run = Self {
@@ -92,6 +111,7 @@ impl Run {
             session,
             before,
             options: json!({"adapterLuid":luid,"width":960,"height":540,"frameRateLimit":30}),
+            upstream,
         };
         if std::env::var_os("OPENPLAYER_SMOKE_CLOSE_DURING_PRESENTATION_INIT").is_some() {
             *EXIT_SESSION
@@ -132,6 +152,19 @@ impl Run {
         {
             return Err("native presenter advanced while paused".into());
         }
+        if let Some(upstream) = &run.upstream {
+            let before_hash = native_presentation::diagnostics(app)?["lastHash"].clone();
+            upstream.update_paused()?;
+            wait("paused NR update reaches presenter", || {
+                Ok(native_presentation::diagnostics(app)?["lastHash"] != before_hash)
+            })?;
+            let after = tauri::async_runtime::block_on(mpv_embed::mpv_embed_snapshot(app.clone()))?
+                .ok_or("player missing")?;
+            if !after.paused || (after.position - paused.position).abs() > 0.08 {
+                return Err("NR refresh advanced playback while paused".into());
+            }
+            println!("PASS: paused NR parameter update reaches downstream presentation pixels");
+        }
         tauri::async_runtime::block_on(mpv_embed::mpv_embed_seek(
             app.clone(),
             paused.position + 1.0,
@@ -141,7 +174,66 @@ impl Run {
         let generated = run.status()?["generatedFrames"].as_u64().unwrap_or(0);
         run.wait_generated(generated + 15)?;
         println!("PASS: paused redraw, seek, resume and temporal-history invalidation");
+        if run.upstream.is_some() {
+            run.sample_composition()?;
+        }
         Ok(run)
+    }
+    fn sample_composition(&self) -> Result<(), String> {
+        use crate::mpv_embed::native_filter_smoke::video_diagnostics;
+        let start = Instant::now();
+        let before = video_diagnostics(&self.app)?;
+        let before_frames = self.status()?;
+        let upstream = self.upstream.as_ref().unwrap();
+        let before_processed = upstream.processed_frames()?;
+        let mut max_av = 0.0f64;
+        while start.elapsed() < Duration::from_secs(12) {
+            self.upstream.as_ref().unwrap().validate()?;
+            let value = video_diagnostics(&self.app)?;
+            let av = value["avsync"]
+                .as_str()
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .ok_or("mpv A/V clock diagnostic missing")?;
+            max_av = max_av.max(av.abs());
+            thread::sleep(Duration::from_millis(250));
+        }
+        let elapsed = start.elapsed().as_secs_f64();
+        let after = video_diagnostics(&self.app)?;
+        let position = |v: &Value| {
+            v["time-pos"]
+                .as_str()
+                .and_then(|v| v.parse::<f64>().ok())
+                .ok_or("mpv time diagnostic missing")
+        };
+        let progression = position(&after)? - position(&before)?;
+        let frames = self.status()?;
+        let source = frames["sourceFrames"]
+            .as_u64()
+            .unwrap_or(0)
+            .saturating_sub(before_frames["sourceFrames"].as_u64().unwrap_or(0));
+        let processed = upstream
+            .processed_frames()?
+            .saturating_sub(before_processed);
+        let generated = frames["generatedFrames"]
+            .as_u64()
+            .unwrap_or(0)
+            .saturating_sub(before_frames["generatedFrames"].as_u64().unwrap_or(0));
+        println!(
+            "TRACE: NR plus XeFG short A/V sample {}",
+            json!({"elapsedSeconds":elapsed,"mediaSeconds":progression,"maxMpvAvSyncSeconds":max_av,"nrProcessedFrames":processed,"sourceFrames":source,"generatedFrames":generated,"presenter":frames})
+        );
+        if (progression - elapsed).abs() > 1.0
+            || max_av > 0.15
+            || generated < 30
+            || source > processed + 5
+            || source as f64 / elapsed > 16.0
+            || generated > source + 1
+            || generated < source.saturating_mul(9) / 10
+        {
+            return Err("NR plus XeFG short A/V/cadence sample failed".into());
+        }
+        Ok(())
     }
     fn attach(&self) -> Result<(), String> {
         let state = tauri::async_runtime::block_on(super::plugin_native_video_attach(
@@ -189,10 +281,16 @@ impl Run {
             self.session.launch.module.id.clone(),
         ))?;
         self.assert_restored()?;
+        if let Some(upstream) = &self.upstream {
+            upstream.validate()?;
+        }
         self.attach()?;
         self.wait_generated(10)?;
         tauri::async_runtime::block_on(self.session.crash_for_smoke())?;
         self.assert_restored()?;
+        if let Some(upstream) = &self.upstream {
+            upstream.validate()?;
+        }
         self.session.stop_and_wait()?;
         println!(
             "PASS: detach and native-process crash restore original output on the same mpv core"
@@ -203,6 +301,9 @@ impl Run {
         *EXIT_SESSION
             .lock()
             .map_err(|_| "presentation fixture poisoned")? = Some(self.session.clone());
+        *EXIT_UPSTREAM
+            .lock()
+            .map_err(|_| "upstream fixture poisoned")? = self.upstream.take();
         println!("PASS: presenter reattached; leaving it active for real application close");
         Ok(())
     }

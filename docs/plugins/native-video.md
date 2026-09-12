@@ -81,8 +81,8 @@ GPU shaders, tone mapping, and complete color equivalence with the normal GPU
 output are not supported promises. CPU RGBA transport is not HDR passthrough.
 
 Only one presenter may own the output. An existing `vapoursynth-rgb-v1` NR filter
-can remain upstream and its output can feed the presenter, but NR plus XeFG has
-not been verified. This is not an executable multi-stage video plan. The native
+can remain upstream and its output can feed the presenter; a short NR plus XeFG
+integration run is recorded below. This is not an executable multi-stage video plan. The native
 module owns its presentation child; the host continues to own media and the
 transparent control overlay.
 
@@ -97,12 +97,14 @@ The module resizes its swapchain/resources on its render thread without recreati
 the XeFG context or changing GPU. Increasing the opening capacity requires a new
 attachment. These are implemented mechanics, not a passed host paused-resize test.
 
-`frameRateLimit` is optional, finite, and 1..120. With it, the host appends an owned
-FFmpeg `fps` filter using the lower of the limit and known post-filter/source FPS.
-It limits frames reaching the presenter without changing audio speed, but may
-repeat frames and does not reduce work already done by upstream NR filters.
-Omitting it adds no rate filter. It is not a generated-output FPS guarantee.
-The host removes its rate filter on restoration while retaining upstream filters.
+`frameRateLimit` is optional, finite, and 1..120. The presenter applies a drop-only
+cap against mpv presentation timestamps, without inserting an `fps` filter or
+duplicating slow upstream frames. Skipped frames still acknowledge mpv's render
+contract; audio speed is unchanged. Frame durations follow actual selected
+timestamps rather than an initially estimated filter FPS. Redraws bypass the cap.
+Omitting the limit preserves upstream cadence. This does not reduce work already
+done by NR and is not a generated-output FPS guarantee. Upstream filters remain
+owned by their original adapters.
 
 The TypeScript `NativeVideoAttachOptions` interface types `inputConversion`,
 `frameRateLimit`, `settings`, `width`, and `height`. Its string index signature
@@ -126,11 +128,23 @@ Closing while `frames.open` initialization held the media guard also completed
 normal exit in [`presentation-smoke-init-close.log`](../../target/presentation-smoke-init-close.log).
 These local build logs record the tested harness paths, not a shipped XeFG product.
 
-NR composition, long-duration A/V behavior, real React UI integration and user
-image-quality acceptance remain unverified. `refreshPaused` and resize while
-paused were not independently tested. OSD pixel hashes do not establish subtitle
-fidelity, full color equivalence or physical display quality. An installable XeFG
-product is not complete, and no desktop readback is required for this contract.
+The real XeFG `.opplugin` and accepted DLSSNR 0.4.0 package were also tested on
+GPU 1, with NR capped at 15 FPS and the presenter capped at 30 FPS. In 12.224
+seconds, NR processed 184 frames, the presenter received 183 source frames and
+generated 182 frames. Media advanced 12.200 seconds; maximum sampled mpv A/V
+error was 0.032 ms. No input upsampling was used. A paused NR intensity update
+changed downstream pixels without advancing playback. Detach/crash recovery
+retained the NR worker, and application close stopped both process trees.
+Evidence: [`nr-xefg-drop-only.log`](../../target/nr-xefg-drop-only.log).
+The current drop-only source also passed actual Alt+F4 and initialization-close
+in `target/xefg-drop-only-alt-f4.log` and `target/xefg-drop-only-init-close.log`.
+
+An installable XeFG 0.1.0 candidate and theme-aware UI are available in the sibling
+`openplayer-xefg` repository. Its browser tests use simulated native replies;
+real React UI integration, long-duration A/V behavior, paused resize and user
+image-quality acceptance remain pending. Counters and mpv A/V diagnostics do not
+establish physical display FPS, perceived lip-sync, subtitle fidelity or color
+equivalence. No desktop pixel readback is required for this contract.
 
 ## VapourSynth filter adapter
 

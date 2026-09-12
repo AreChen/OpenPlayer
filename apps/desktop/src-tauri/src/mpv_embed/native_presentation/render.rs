@@ -73,15 +73,18 @@ pub(super) struct Worker {
     observer: Option<thread::JoinHandle<()>>,
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct Output {
+    pub width: u32,
+    pub height: u32,
+    pub fps: f64,
+    pub window: isize,
+    pub limit: Option<f64>,
+}
+
 impl Worker {
-    pub fn start(
-        mpv: &Mpv,
-        producer: Producer,
-        width: u32,
-        height: u32,
-        fps: f64,
-        window: isize,
-    ) -> Result<Self, String> {
+    pub fn start(mpv: &Mpv, producer: Producer, output: Output) -> Result<Self, String> {
+        let fps = output.fps;
         let render_client = mpv.create_client(None).map_err(|e| e.to_string())?;
         let observer_client = mpv.create_client(None).map_err(|e| e.to_string())?;
         let event = unsafe { CreateEventW(ptr::null(), 0, 0, ptr::null()) };
@@ -107,15 +110,7 @@ impl Worker {
         let render = thread::Builder::new()
             .name("native-present-source".into())
             .spawn(move || {
-                let result = render_loop(
-                    render_client,
-                    producer,
-                    (width, height),
-                    window,
-                    &state,
-                    &signal,
-                    tx,
-                );
+                let result = render_loop(render_client, producer, output, &state, &signal, tx);
                 if let Err(error) = result {
                     state.fail(error);
                 }
@@ -206,12 +201,14 @@ fn checked(result: i32, operation: &str) -> Result<(), String> {
 fn render_loop(
     mpv: Mpv,
     mut producer: Producer,
-    limits: (u32, u32),
-    window: isize,
+    output: Output,
     state: &Shared,
     wake: &Wake,
     ready: std::sync::mpsc::SyncSender<Result<(), String>>,
 ) -> Result<(), String> {
+    let limits = (output.width, output.height);
+    let window = output.window;
+    let mut cadence = super::cadence::Cadence::new(output.limit);
     let mut advanced: i32 = 1;
     let mut params = [
         param(
@@ -302,6 +299,26 @@ fn render_loop(
         let mut size = [dimensions.0 as i32, dimensions.1 as i32];
         let mut stride = dimensions.0 as usize * 4;
         let mut timed: i32 = 1;
+        let present_requested =
+            info.flags & sys::mpv_render_frame_info_flag_MPV_RENDER_FRAME_INFO_PRESENT as u64 != 0;
+        let temporal = info.flags
+            & (sys::mpv_render_frame_info_flag_MPV_RENDER_FRAME_INFO_REDRAW
+                | sys::mpv_render_frame_info_flag_MPV_RENDER_FRAME_INFO_REPEAT)
+                as u64
+            == 0
+            && !paused
+            && !resized
+            && present_requested;
+        let duration = if temporal {
+            cadence.select(
+                epoch,
+                info.target_time,
+                state.duration_ns.load(Ordering::Acquire),
+            )
+        } else {
+            Some(state.duration_ns.load(Ordering::Acquire))
+        };
+        let mut skip: i32 = i32::from(duration.is_none());
         let mut output = [
             param(
                 sys::mpv_render_param_type_MPV_RENDER_PARAM_SW_SIZE,
@@ -323,20 +340,26 @@ fn render_loop(
                 sys::mpv_render_param_type_MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME,
                 (&mut timed as *mut i32).cast(),
             ),
+            param(
+                sys::mpv_render_param_type_MPV_RENDER_PARAM_SKIP_RENDERING,
+                (&mut skip as *mut i32).cast(),
+            ),
             param(0, ptr::null_mut()),
         ];
         checked(
             unsafe { sys::mpv_render_context_render(context.0, output.as_mut_ptr()) },
             "render native frame",
         )?;
-        let present_requested =
-            info.flags & sys::mpv_render_frame_info_flag_MPV_RENDER_FRAME_INFO_PRESENT as u64 != 0;
         if !present_requested && !resized && !retry_redraw {
             continue;
         }
         // Always acknowledge a requested present, including old epochs and busy
         // consumers. The external GPU never controls mpv's audio/media clock.
         let result = (|| {
+            let Some(duration_ns) = duration else {
+                state.dropped.fetch_add(1, Ordering::Relaxed);
+                return Ok(());
+            };
             if !state.active.load(Ordering::Acquire) || !state.control.is_current(epoch) {
                 return Ok(());
             }
@@ -371,7 +394,7 @@ fn render_loop(
                 sequence,
                 epoch,
                 target_qpc: target,
-                duration_ns: state.duration_ns.load(Ordering::Acquire),
+                duration_ns,
                 width,
                 height,
                 stride: width * 4,

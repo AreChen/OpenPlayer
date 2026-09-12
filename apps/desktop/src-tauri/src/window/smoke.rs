@@ -37,6 +37,8 @@ pub fn run() {
         let seconds =
             if std::env::var_os("OPENPLAYER_SMOKE_CLOSE_DURING_PRESENTATION_INIT").is_some() {
                 10
+            } else if std::env::var_os("OPENPLAYER_SMOKE_NR_PACKAGE").is_some() {
+                120
             } else {
                 45
             };

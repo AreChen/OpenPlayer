@@ -12,19 +12,31 @@ pub(crate) struct Package {
 
 impl Package {
     pub(crate) fn import(source: &Path, directory: &Path, app: &AppHandle) -> Result<Self, String> {
-        let manifest: serde_json::Value = serde_json::from_slice(
-            &std::fs::read(source.join("manifest.json")).map_err(|e| e.to_string())?,
-        )
-        .map_err(|e| e.to_string())?;
+        let state = AppearanceStoreState::for_test(directory.join("settings.redb"));
+        if !app.manage(state) {
+            return Err("smoke store already registered".into());
+        }
+        Self::install(source, app)
+    }
+
+    pub(crate) fn install(source: &Path, app: &AppHandle) -> Result<Self, String> {
+        let json = if source.is_dir() {
+            std::fs::read_to_string(source.join("manifest.json")).map_err(|e| e.to_string())?
+        } else {
+            super::package::read_manifest_from_plugin_package(source)?
+        };
+        let manifest: serde_json::Value = serde_json::from_str(&json).map_err(|e| e.to_string())?;
         let id = manifest["id"]
             .as_str()
             .ok_or("fixture plugin id missing")?
             .to_owned();
-        let state = AppearanceStoreState::for_test(directory.join("settings.redb"));
-        state.with_store(|store| store.import_plugin_directory_path(source))?;
-        if !app.manage(state) {
-            return Err("smoke store already registered".into());
-        }
+        app.state::<AppearanceStoreState>().with_store(|store| {
+            if source.is_dir() {
+                store.import_plugin_directory_path(source)
+            } else {
+                store.import_plugin_package_path(source)
+            }
+        })?;
         Ok(Self {
             app: app.clone(),
             source: source.into(),
@@ -43,7 +55,11 @@ impl Package {
             .state::<AppearanceStoreState>()
             .with_store(|store| match action {
                 "disable" => store.set_plugin_enabled(&self.id, false).map(|_| ()),
-                "upgrade" => store.import_plugin_directory_path(&self.source).map(|_| ()),
+                "upgrade" if self.source.is_dir() => {
+                    store.import_plugin_directory_path(&self.source).map(|_| ())
+                }
+                "upgrade" => store.import_plugin_package_path(&self.source).map(|_| ()),
+                "enable" => store.set_plugin_enabled(&self.id, true).map(|_| ()),
                 "uninstall" => store.uninstall_plugin(&self.id).map(|_| ()),
                 _ => Err("unknown package smoke action".into()),
             })

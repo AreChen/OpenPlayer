@@ -1,4 +1,5 @@
 //! Generic out-of-process presentation. The vendor SDK never enters this process.
+mod cadence;
 mod render;
 mod transaction;
 use super::{MpvEmbedPlayer, MpvEmbedState, with_player};
@@ -29,8 +30,6 @@ pub(crate) struct Presentation {
     id: u64,
     worker: render::Worker,
     saved: transaction::SavedOutput,
-    rate_label: String,
-    rate_installed: bool,
     restored: bool,
     control_client: libmpv2::Mpv,
 }
@@ -127,29 +126,22 @@ impl Prepared {
             let worker = render::Worker::start(
                 &player.mpv,
                 producer,
-                self.width,
-                self.height,
-                self.fps,
-                player.host.wid() as isize,
+                render::Output {
+                    width: self.width,
+                    height: self.height,
+                    fps: self.fps,
+                    window: player.host.wid() as isize,
+                    limit: self.rate,
+                },
             )?;
             player.presentation = Some(Presentation {
                 id: self.id,
                 worker,
                 saved,
-                rate_label: format!("native-present-rate-{}", self.id),
-                rate_installed: false,
                 restored: false,
                 control_client,
             });
             let presentation = player.presentation.as_mut().unwrap();
-            if self.rate.is_some() {
-                let filter = format!("@{}:lavfi=[fps=fps={}]", presentation.rate_label, self.fps);
-                presentation.rate_installed = true;
-                player
-                    .mpv
-                    .command("vf", &["add", &filter])
-                    .map_err(|e| e.to_string())?;
-            }
             presentation
                 .worker
                 .shared
@@ -202,14 +194,6 @@ impl Presentation {
         if !self.restored {
             self.worker.shared.active.store(false, Ordering::Release);
             self.worker.shared.invalidate();
-            if self.rate_installed {
-                let filters = super::native_video_filter::status::filters(mpv)?;
-                if filters.iter().any(|(label, _)| label == &self.rate_label) {
-                    mpv.command("vf", &["remove", &format!("@{}", self.rate_label)])
-                        .map_err(|e| e.to_string())?;
-                }
-                self.rate_installed = false;
-            }
             transaction::switch(mpv, &self.saved.vo, &self.saved.hwdec, &self.worker.shared)?;
             self.restored = true;
         }

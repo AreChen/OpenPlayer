@@ -2,6 +2,8 @@ mod attachment;
 #[cfg(all(windows, feature = "window-smoke"))]
 pub(crate) mod attachment_smoke;
 mod commands;
+#[cfg(all(windows, feature = "window-smoke"))]
+mod composition_smoke;
 #[cfg(all(windows, feature = "mpv-embed"))]
 mod presentation;
 #[cfg(all(windows, feature = "window-smoke"))]
