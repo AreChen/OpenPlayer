@@ -10,6 +10,11 @@ on:
         description: "Release tag to publish, for example v1.0.0"
         required: true
         type: string
+      skip_macos:
+        description: "Skip macOS packages for this release run"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -202,6 +207,7 @@ jobs:
 
   macos-packages:
     name: macOS unsigned packages (${{ matrix.arch }})
+    if: ${{ !inputs.skip_macos }}
     runs-on: ${{ matrix.runner }}
     needs: windows-installer
     env:
