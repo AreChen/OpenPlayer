@@ -13,7 +13,7 @@ on:
       skip_macos:
         description: "Skip macOS packages for this release run"
         required: false
-        default: false
+        default: true
         type: boolean
 
 permissions:
@@ -207,7 +207,8 @@ jobs:
 
   macos-packages:
     name: macOS unsigned packages (${{ matrix.arch }})
-    if: ${{ !inputs.skip_macos }}
+    # macOS release validation is deferred; opt in through a manual run.
+    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.skip_macos }}
     runs-on: ${{ matrix.runner }}
     needs: windows-installer
     env:

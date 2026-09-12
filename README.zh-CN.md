@@ -19,7 +19,7 @@
 [![Rust](https://img.shields.io/badge/Rust-native-CE412B?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/github/license/AreChen/OpenPlayer?style=for-the-badge)](LICENSE)
 
-[下载安装包](https://github.com/AreChen/OpenPlayer/releases/latest) · [发布说明](docs/releases/v1.6.0.md) · [插件 SDK](docs/plugins/sdk-1.6-developer-guide.md) · [许可证](LICENSE)
+[下载安装包](https://github.com/AreChen/OpenPlayer/releases/latest) · [发布说明](docs/releases/v1.6.8.md) · [插件 SDK](docs/plugins/sdk-1.6-developer-guide.md) · [许可证](LICENSE)
 
 </div>
 
@@ -64,10 +64,10 @@ OpenPlayer 1.6.0 将插件体系扩展为面向模块化播放器扩展的文档
 
 当前版本：
 
-- 🏷️ `v1.6.0`
-- 🪟 Windows：`OpenPlayer_1.6.0_x64-setup.exe`
-- 🐧 Linux：`OpenPlayer_1.6.0_amd64.deb` 和 `OpenPlayer_1.6.0_amd64.AppImage`
-- 🍎 macOS：`OpenPlayer_1.6.0_arm64.dmg` 和 `OpenPlayer_1.6.0_x64.dmg`
+- 🏷️ `v1.6.8`
+- 🪟 Windows：`OpenPlayer_1.6.8_x64-setup.exe`
+- 🐧 Linux：`OpenPlayer_1.6.8_amd64.deb` 和 `OpenPlayer_1.6.8_amd64.AppImage`
+- 🍎 macOS：本次暂不发布，后续单独验证。
 - 🔐 校验文件：Release Assets 中提供 `.sha256`
 
 > Windows 安装包暂未配置商业代码签名，首次安装时可能出现 SmartScreen 提示。

@@ -19,7 +19,7 @@
 [![Rust](https://img.shields.io/badge/Rust-native-CE412B?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/github/license/AreChen/OpenPlayer?style=for-the-badge)](LICENSE)
 
-[Download](https://github.com/AreChen/OpenPlayer/releases/latest) · [Release Notes](docs/releases/v1.6.0.md) · [Plugin SDK](docs/plugins/sdk-1.6-developer-guide.md) · [License](LICENSE)
+[Download](https://github.com/AreChen/OpenPlayer/releases/latest) · [Release Notes](docs/releases/v1.6.8.md) · [Plugin SDK](docs/plugins/sdk-1.6-developer-guide.md) · [License](LICENSE)
 
 </div>
 
@@ -64,10 +64,10 @@ The latest release is available from GitHub Releases:
 
 Current release:
 
-- 🏷️ `v1.6.0`
-- 🪟 Windows: `OpenPlayer_1.6.0_x64-setup.exe`
-- 🐧 Linux: `OpenPlayer_1.6.0_amd64.deb` and `OpenPlayer_1.6.0_amd64.AppImage`
-- 🍎 macOS: `OpenPlayer_1.6.0_arm64.dmg` and `OpenPlayer_1.6.0_x64.dmg`
+- 🏷️ `v1.6.8`
+- 🪟 Windows: `OpenPlayer_1.6.8_x64-setup.exe`
+- 🐧 Linux: `OpenPlayer_1.6.8_amd64.deb` and `OpenPlayer_1.6.8_amd64.AppImage`
+- 🍎 macOS: deferred for this release pending separate validation.
 - 🔐 Checksums: release assets include `.sha256` files
 
 > Windows packages are not code-signed yet, so SmartScreen may show a warning on first install.
