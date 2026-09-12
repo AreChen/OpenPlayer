@@ -79,12 +79,7 @@ fn frame_options(mut options: Value) -> Result<(Value, bool, Option<f64>), Strin
         Value::Null => None,
         _ => return Err("native video options must be an object".into()),
     };
-    let normalize = match conversion.as_ref().and_then(Value::as_str) {
-        None if conversion.is_none() => false,
-        Some("none") => false,
-        Some("sdr-bt709") => true,
-        _ => return Err("inputConversion must be none or sdr-bt709".into()),
-    };
+    let normalize = crate::mpv_embed::native_video_color::conversion_requested(conversion)?;
     Ok((options, normalize, rate))
 }
 

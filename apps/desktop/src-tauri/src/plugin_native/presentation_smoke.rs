@@ -110,7 +110,7 @@ impl Run {
             package,
             session,
             before,
-            options: json!({"adapterLuid":luid,"width":960,"height":540,"frameRateLimit":30}),
+            options: json!({"adapterLuid":luid,"width":960,"height":540,"frameRateLimit":30,"inputConversion":"sdr-bt709"}),
             upstream,
         };
         if std::env::var_os("OPENPLAYER_SMOKE_CLOSE_DURING_PRESENTATION_INIT").is_some() {
@@ -246,6 +246,15 @@ impl Run {
         if state["presentationActive"] != true || state["filterEnabled"] != false {
             return Err(format!("invalid presenter attachment status: {state}"));
         }
+        let output = native_presentation::diagnostics(&self.app)?;
+        if output["matrix"] != "bt.709"
+            || !output["gamma"]
+                .as_str()
+                .is_some_and(|gamma| matches!(gamma, "bt.1886" | "bt.709" | "srgb"))
+        {
+            return Err(format!("presenter received non-SDR output: {output}"));
+        }
+        println!("TRACE: validated presentation color output {output}");
         Ok(())
     }
     fn status(&self) -> Result<Value, String> {
@@ -267,6 +276,9 @@ impl Run {
                 && state["vo"] == self.before["vo"]
                 && state["currentVo"] == self.before["currentVo"]
                 && state["hwdec"] == self.before["hwdec"]
+                && state["matrix"] == self.before["matrix"]
+                && state["gamma"] == self.before["gamma"]
+                && state["filters"] == self.before["filters"]
                 && state["presentationActive"] == false)
         })
     }

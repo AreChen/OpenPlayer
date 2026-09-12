@@ -114,10 +114,7 @@ impl OwnedFilter {
             if self.normalize {
                 // Interpret Dolby Vision RPU before RGB processing, then strip it.
                 // Fixed host-owned graph: no arbitrary filter text crosses the SDK.
-                let conversion = format!(
-                    "@{}:lavfi=[libplacebo=apply_dolbyvision=true:colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:format=yuv420p]",
-                    self.conversion_label()
-                );
+                let conversion = super::native_video_color::sdr_filter(&self.conversion_label());
                 chain.push(conversion);
             }
             chain.push(filter);

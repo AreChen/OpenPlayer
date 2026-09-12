@@ -2,6 +2,7 @@
 mod cadence;
 mod render;
 mod transaction;
+use super::native_video_color::{self, Conversion};
 use super::{MpvEmbedPlayer, MpvEmbedState, with_player};
 use openplayer_native_sdk::presentation::windows::{Control, Producer};
 use serde_json::{Value, json};
@@ -24,6 +25,7 @@ pub(crate) struct Prepared {
     height: u32,
     fps: f64,
     rate: Option<f64>,
+    normalize: bool,
 }
 
 pub(crate) struct Presentation {
@@ -32,6 +34,7 @@ pub(crate) struct Presentation {
     saved: transaction::SavedOutput,
     restored: bool,
     control_client: libmpv2::Mpv,
+    conversion: Option<Conversion>,
 }
 
 impl Prepared {
@@ -47,6 +50,8 @@ impl Prepared {
         }
         let width = dimension(options.remove("width"), 1920, 3840)?;
         let height = dimension(options.remove("height"), 1080, 2160)?;
+        let normalize =
+            native_video_color::conversion_requested(options.remove("inputConversion"))?;
         let rate = options
             .remove("frameRateLimit")
             .map(|value| {
@@ -60,7 +65,7 @@ impl Prepared {
             if player.presentation.is_some() {
                 return Err("another native presenter owns the video output".into());
             }
-            validate_media(&player.mpv)?;
+            validate_media(&player.mpv, normalize)?;
             let source = player
                 .mpv
                 .get_property::<f64>("estimated-vf-fps")
@@ -102,6 +107,7 @@ impl Prepared {
             height,
             fps,
             rate,
+            normalize,
         }))
     }
     pub(crate) fn install(&self) -> Result<(), String> {
@@ -115,6 +121,7 @@ impl Prepared {
             if self.control.is_closed() {
                 return Err("native presenter closed during initialization".into());
             }
+            let needs_conversion = validate_media(&player.mpv, self.normalize)?;
             let producer = self
                 .producer
                 .lock()
@@ -140,14 +147,22 @@ impl Prepared {
                 saved,
                 restored: false,
                 control_client,
+                conversion: needs_conversion
+                    .then(|| Conversion::new(format!("native-present-color-{}", self.id))),
             });
             let presentation = player.presentation.as_mut().unwrap();
+            if let Some(conversion) = &presentation.conversion {
+                conversion.install(&player.mpv)?;
+            }
+            transaction::switch(&player.mpv, "libmpv", "no", &presentation.worker.shared)?;
+            // Never publish HDR pixels as SDR, including a disabled/failed filter.
+            validate_media(&player.mpv, false)?;
             presentation
                 .worker
                 .shared
                 .active
                 .store(true, Ordering::Release);
-            transaction::switch(&player.mpv, "libmpv", "no", &presentation.worker.shared)?;
+            presentation.worker.shared.invalidate();
             Ok(())
         });
         schedule_resize(&self.app);
@@ -169,6 +184,9 @@ impl Prepared {
                     .active
                     .store(false, Ordering::Release);
                 player.mpv.command("stop", &[]).map_err(|e| e.to_string())?;
+                if let Some(conversion) = &presentation.conversion {
+                    conversion.remove(&player.mpv)?;
+                }
                 presentation.restored = true;
                 presentation.worker.stop()?;
             } else {
@@ -194,6 +212,9 @@ impl Presentation {
         if !self.restored {
             self.worker.shared.active.store(false, Ordering::Release);
             self.worker.shared.invalidate();
+            if let Some(conversion) = &self.conversion {
+                conversion.remove(mpv)?;
+            }
             transaction::switch(mpv, &self.saved.vo, &self.saved.hwdec, &self.worker.shared)?;
             self.restored = true;
         }
@@ -247,7 +268,7 @@ fn dimension(value: Option<Value>, default: u32, max: u32) -> Result<u32, String
         })
         .unwrap_or(Ok(default))
 }
-fn validate_media(mpv: &libmpv2::Mpv) -> Result<(), String> {
+fn validate_media(mpv: &libmpv2::Mpv, normalize: bool) -> Result<bool, String> {
     if !mpv.get_property::<bool>("seekable").unwrap_or(false) {
         return Err("native presentation currently requires seekable media".into());
     }
@@ -257,12 +278,13 @@ fn validate_media(mpv: &libmpv2::Mpv) -> Result<(), String> {
     let matrix = mpv
         .get_property::<String>("video-out-params/colormatrix")
         .unwrap_or_default();
-    if !matches!(gamma.as_str(), "bt.1886" | "bt.709" | "srgb") || matrix != "bt.709" {
+    let needs_conversion = !native_video_color::is_sdr(&matrix, &gamma);
+    if needs_conversion && !normalize {
         return Err(format!(
             "native presentation requires SDR BT.709 filter output; current: {matrix} {gamma}. Enable an SDR conversion filter before presentation."
         ));
     }
-    Ok(())
+    Ok(needs_conversion)
 }
 
 #[cfg(feature = "window-smoke")]
@@ -273,6 +295,9 @@ pub(crate) fn diagnostics(app: &AppHandle) -> Result<Value, String> {
             "vo": player.mpv.get_property::<String>("vo").ok(),
             "currentVo": player.mpv.get_property::<String>("current-vo").ok(),
             "hwdec": player.mpv.get_property::<String>("hwdec").ok(),
+            "matrix": player.mpv.get_property::<String>("video-out-params/colormatrix").ok(),
+            "gamma": player.mpv.get_property::<String>("video-out-params/gamma").ok(),
+            "filters": super::native_video_filter::status::filters(&player.mpv)?,
             "presentationActive": presentation.is_some_and(|p| p.worker.shared.active.load(Ordering::Acquire)),
             "lastHash": presentation.map(|p| p.worker.shared.last_hash.load(Ordering::Acquire)),
             "sent": presentation.map(|p| p.worker.shared.sent.load(Ordering::Acquire)),

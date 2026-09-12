@@ -25,8 +25,8 @@ settings. A hash is not a signature. Only install trusted packages.
 
 ## Shared API and status
 
-This example uses the existing `vapoursynth-rgb-v1` adapter. Its
-`inputConversion` option does not configure the experimental presentation path.
+This example uses the existing `vapoursynth-rgb-v1` adapter. Starting with host
+1.6.6, `inputConversion` is also supported by `present-rgba-v1`.
 
 ```js
 if (openplayer.capabilities.has("native.video") &&
@@ -74,10 +74,19 @@ GPU by explicit `adapterLuid`; it does not use a default-device fallback.
 
 The host currently requires seekable media with known cadence and SDR BT.709
 filter output: `colormatrix=bt.709` and gamma `bt.1886`, `bt.709`, or `srgb`.
-HDR/Dolby Vision must already have been converted upstream before attachment.
-The old adapter's `inputConversion` option does not perform conversion here.
+From host 1.6.6, `inputConversion: "sdr-bt709"` permits conversion of HDR/Dolby
+Vision before presentation, using the same fixed libplacebo graph as the filter
+adapter. It applies Dolby Vision RPU, converts to 8-bit limited-range BT.709 and
+outputs SDR. Compatible SDR (including upstream NR output) bypasses conversion.
+Omitting the option or using `"none"` retains strict SDR input validation.
+The host consumes this option instead of passing it to the native module.
+Conversion filters belong to the presenter; detach/stop removes only its own
+filters and restores the original output. Failed normalization is not reported
+as active presentation. The conversion runs at source resolution before the
+presentation size/rate caps, and its Vulkan device selection is owned by mpv,
+independent of the plugin's processing GPU. It is not a zero-copy path.
 Software rendering does not support mpv `brightness` and other GPU VO options;
-GPU shaders, tone mapping, and complete color equivalence with the normal GPU
+GPU shaders, GPU-output tone mapping settings, and complete color equivalence with the normal GPU
 output are not supported promises. CPU RGBA transport is not HDR passthrough.
 
 Only one presenter may own the output. An existing `vapoursynth-rgb-v1` NR filter

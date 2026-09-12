@@ -22,8 +22,15 @@ assert.match(video, /session\.launch\.package_root/, "video runtimes must resolv
 assert(!video.includes("OPENPLAYER_SMOKE"), "public attachment cannot use developer environment overrides");
 assert.match(video, /frame_options\(options\)/, "host conversion options must be separated from plugin controls");
 const filter = await source("src-tauri/src/mpv_embed/native_video_filter.rs");
-assert.match(filter, /self.normalize\s*\{\s*"yuv420p10"\s*\}[\s\S]*libplacebo=apply_dolbyvision=true/, "download hardware frames without discarding DV precision before color conversion");
-assert.match(filter, /-rate:lavfi=\[fps=fps=[\s\S]*libplacebo=apply_dolbyvision=true/, "limit rate before expensive color conversion and native processing");
+assert.match(filter, /self.normalize\s*\{\s*"yuv420p10"\s*\}[\s\S]*native_video_color::sdr_filter/, "download hardware frames without discarding DV precision before shared color conversion");
+assert.match(filter, /-rate:lavfi=\[fps=fps=[\s\S]*native_video_color::sdr_filter/, "limit rate before expensive color conversion and native processing");
+const color = await source("src-tauri/src/mpv_embed/native_video_color.rs");
+assert.match(color, /libplacebo=apply_dolbyvision=true:colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:format=yuv420p/, "both adapters must retain the fixed DV-aware SDR conversion graph");
+assert.match(color, /-download:format=fmt=yuv420p10,[\s\S]*sdr_filter/, "presentation conversion must preserve input precision");
+const presentation = await source("src-tauri/src/mpv_embed/native_presentation/mod.rs");
+assert.match(presentation, /conversion_requested\(options.remove\("inputConversion"\)\)/, "presentation consumes the host-owned conversion option");
+assert.match(presentation, /transaction::switch[\s\S]*validate_media\(&player.mpv, false\)\?[\s\S]*\.store\(true, Ordering::Release\)/, "validate converted pixels before publishing active presentation");
+assert.match(presentation, /fn restore[\s\S]*conversion.remove\(mpv\)\?[\s\S]*transaction::switch/, "restore original color/output after presentation");
 assert.match(filter, /native-input-/, "conversion filters require independent owned labels and cleanup");
 assert.match(await source("src-tauri/src/mpv_embed/commands/lifecycle.rs"), /media_change_guard[\s\S]*stop_existing_player_for_replacement/);
 
