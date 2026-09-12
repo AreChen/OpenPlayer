@@ -65,12 +65,33 @@ NR filter; query the NR module separately for that filter's status.
 
 `present-rgba-v1` uses mpv's software render API (`sw`, `rgb0` with opaque alpha)
 to produce tightly packed CPU RGBA after the mpv filter chain. The host switches
-to `vo=libmpv`, `hwdec=no`, retaining the same mpv core and media/audio clock.
+to `vo=libmpv`, retaining the same mpv core and media/audio clock. Software
+rendering does not require software decoding: from host 1.6.8, an explicit user
+software selection keeps `hwdec=no`; hardware selection attempts `nvdec-copy`
+on the presentation adapter and otherwise uses software decoding.
 The module receives a bounded shared-memory endpoint using
 `openplayer-present-rgba-v1`, not pixels in JSON or shared GPU textures. The host
 supplies `endpoint`, `parentWindow`, and `sourceFps` to `frames.open` and waits for
 `ready` before installing the presentation source. The XeFG module selects its
 GPU by explicit `adapterLuid`; it does not use a default-device fallback.
+
+For presentation, optional `adapterLuid` is a nonzero 16-digit hexadecimal DXGI
+LUID string, still forwarded unchanged to the module. The host maps it to a
+unique CUDA device with the same LUID before enabling hardware-copy decoding.
+Missing CUDA support, an unavailable/non-NVIDIA adapter, or an absent LUID uses
+software decoding, never a guessed/default GPU. Unsupported codecs use mpv's
+software fallback. Intel/AMD hardware-copy decoding is not implemented in this
+version; the mpv standalone D3D11 decoder cannot reliably honor this selection.
+This policy only controls decode; it does not change the separate color-conversion
+device selection described below. There is still a GPU-to-CPU readback and CPU
+RGBA rendering/upload cost, not shared GPU textures.
+
+The normal player decode control also works during presentation, including while
+paused. Its snapshot reports `hwdec-current`, not merely the requested decoder.
+Output switches stop/reset the video track, preserve pause and media position,
+and restore device/output properties on failure. Detach restores the saved CUDA
+device and original output with the user's latest decode preference. Hardware
+failure is handled at attachment/manual switching, not by a polling retry loop.
 
 The host currently requires seekable media with known cadence and SDR BT.709
 filter output: `colormatrix=bt.709` and gamma `bt.1886`, `bt.709`, or `srgb`.
@@ -116,13 +137,27 @@ done by NR and is not a generated-output FPS guarantee. Upstream filters remain
 owned by their original adapters.
 
 The TypeScript `NativeVideoAttachOptions` interface types `inputConversion`,
-`frameRateLimit`, `settings`, `width`, and `height`. Its string index signature
-accepts module-specific top-level options such as `adapterLuid` as `unknown`,
+`frameRateLimit`, `settings`, `width`, `height`, and optional `adapterLuid`.
+Its string index signature accepts other module-specific top-level options as `unknown`,
 without weakening known field types or adding vendor-specific SDK fields.
 The host and module still validate options at runtime; host-owned endpoint,
 window and cadence fields cannot be supplied by plugins.
 
 ### Host verification (2026-09-12)
+
+Host 1.6.8 additionally passed the installed XeFG 0.1.1 package with 1080p60 AV1
+on GPU 1 (`cuda-decode-device=1`, LUID `000000000002655b`): software/hardware
+attachment, live and paused decode switches, seek/resume, window transitions,
+detach/crash recovery and Alt+F4 cleanup. An unsupported raw-video codec stayed
+software. Local logs: `target/smoke-hwcopy-software-open.log`,
+`target/smoke-hwcopy-hardware-open.log`, and `target/smoke-hwcopy-codec-fallback.log`.
+The NR 0.4.0 plus XeFG 0.1.1 hardware-copy composition also passed, including
+paused NR updates and both process trees stopping; see
+`target/smoke-hwcopy-nr-composition.log` and [1.6.8 notes](../releases/v1.6.8.md).
+These checks do not establish HDR hardware-copy, cross-vendor hardware decode,
+physical display latency, full-rate 60-to-120 output or long-session stability.
+
+Earlier presentation verification:
 
 The real installed-package host harness verified generated frames, paused
 `show-text` OSD redraw with a changed pixel hash and no position/generated-count

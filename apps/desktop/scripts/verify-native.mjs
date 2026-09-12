@@ -29,10 +29,17 @@ assert.match(color, /libplacebo=apply_dolbyvision=true:colorspace=bt709:color_pr
 assert.match(color, /-download:format=fmt=yuv420p10,[\s\S]*sdr_filter/, "presentation conversion must preserve input precision");
 const presentation = await source("src-tauri/src/mpv_embed/native_presentation/mod.rs");
 assert.match(presentation, /conversion_requested\(options.remove\("inputConversion"\)\)/, "presentation consumes the host-owned conversion option");
-assert.match(presentation, /transaction::switch[\s\S]*validate_media\(&player.mpv, false\)\?[\s\S]*\.store\(true, Ordering::Release\)/, "validate converted pixels before publishing active presentation");
+assert.match(presentation, /decoder::switch[\s\S]*validate_media\(&player.mpv, false\)\?[\s\S]*\.store\(true, Ordering::Release\)/, "validate converted pixels before publishing active presentation");
 assert.match(presentation, /fn restore[\s\S]*conversion.remove\(mpv\)\?[\s\S]*transaction::switch/, "restore original color/output after presentation");
 const properties = await source("src-tauri/src/mpv_embed/commands/playback/properties.rs");
-assert.match(properties, /fn mpv_embed_set_hwdec[\s\S]*player.presentation.is_some\(\)[\s\S]*hwdec != "no"[\s\S]*return Err[\s\S]*return Ok\(player.snapshot/, "decoding commands cannot override active native presentation");
+assert.match(properties, /fn mpv_embed_set_hwdec[\s\S]*player.presentation.as_mut\(\)[\s\S]*presentation.set_hwdec\(&player.mpv, hwdec\)\?[\s\S]*return Ok\(player.snapshot/, "decoding commands must use the presentation-owned transaction");
+const decoder = await source("src-tauri/src/mpv_embed/native_presentation/decoder.rs");
+assert.match(decoder, /requested == "no"[\s\S]*return None/, "explicit software selection must bypass GPU probing");
+assert.match(decoder, /cuda::device_for_luid/, "hardware copy must match the selected adapter, never default to another GPU");
+assert.match(decoder, /transaction::switch\(mpv, &hardware[\s\S]*transaction::switch\(mpv, &software/, "a failed hardware switch must have a bounded software fallback");
+const transaction = await source("src-tauri/src/mpv_embed/native_presentation/transaction.rs");
+assert.match(transaction, /cuda_device: mpv.get_property\("cuda-decode-device"\)/, "decode device must be saved and restored with the output");
+assert.match(transaction, /set_property\("vid", "no"\)[\s\S]*set_output\(mpv, output\)[\s\S]*set_property\("vid", track\)/, "change device only while the decoder is stopped");
 assert.match(filter, /native-input-/, "conversion filters require independent owned labels and cleanup");
 assert.match(await source("src-tauri/src/mpv_embed/commands/lifecycle.rs"), /media_change_guard[\s\S]*stop_existing_player_for_replacement/);
 

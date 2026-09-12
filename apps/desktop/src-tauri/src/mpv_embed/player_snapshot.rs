@@ -72,6 +72,16 @@ impl MpvEmbedPlayer {
             .mpv
             .get_property::<String>("hwdec")
             .unwrap_or_else(|_| "auto-safe".to_string());
+        #[cfg(windows)]
+        let hwdec = if self.presentation.is_some() {
+            self.mpv
+                .get_property::<String>("hwdec-current")
+                .ok()
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "no".into())
+        } else {
+            hwdec
+        };
         let subtitle_delay = self.mpv.get_property::<f64>("sub-delay").unwrap_or(0.0);
         let tracks = read_tracks(&self.mpv);
         let percent_pos = self.mpv.get_property::<f64>("percent-pos").unwrap_or(0.0);

@@ -33,6 +33,12 @@ fn create_embed_player_with_log_subscription(
         #[cfg(all(windows, feature = "window-smoke"))]
         if std::env::var_os("OPENPLAYER_SMOKE_PRESENTATION").is_some() {
             initializer.set_option("hwdec", "no")?;
+            if std::env::var_os("OPENPLAYER_SMOKE_COPY_AT_OPEN").is_some()
+                && let Ok(device) = std::env::var("OPENPLAYER_SMOKE_COPY_DEVICE")
+            {
+                initializer.set_option("cuda-decode-device", device.as_str())?;
+                initializer.set_option("hwdec", "nvdec-copy")?;
+            }
         }
         #[cfg(target_os = "macos")]
         initializer.set_option("video-timing-offset", "0")?;

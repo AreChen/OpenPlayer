@@ -131,25 +131,25 @@ impl Run {
         }
         run.attach()?;
         run.wait_generated(20)?;
-        if tauri::async_runtime::block_on(mpv_embed::mpv_embed_set_hwdec(
-            app.clone(),
-            "hardware".into(),
-        ))
-        .is_ok()
-        {
-            return Err("hardware decoding override bypassed presentation ownership".into());
-        }
-        let decode = tauri::async_runtime::block_on(mpv_embed::mpv_embed_set_hwdec(
-            app.clone(),
-            "software".into(),
-        ))?;
-        if decode.hwdec != "no" || native_presentation::diagnostics(app)?["hwdec"] != "no" {
-            return Err("native presentation lost software decode ownership".into());
-        }
+        run.switch_decoder("software", "no")?;
+        let expected = if std::env::var_os("OPENPLAYER_SMOKE_COPY_DEVICE").is_some() {
+            "nvdec-copy"
+        } else {
+            "no"
+        };
+        run.switch_decoder("hardware", expected)?;
         run.wait_generated(25)?;
-        println!("PASS: decoding override is rejected without interrupting presentation");
+        println!("PASS: presentation-owned software/hardware decoding switch");
         println!("PASS: installed native presenter receives frames from the existing mpv core");
         let paused = tauri::async_runtime::block_on(mpv_embed::mpv_embed_pause(app.clone()))?;
+        run.switch_decoder("software", "no")?;
+        run.switch_decoder("hardware", expected)?;
+        let switched = tauri::async_runtime::block_on(mpv_embed::mpv_embed_snapshot(app.clone()))?
+            .ok_or("player missing")?;
+        if !switched.paused || (switched.position - paused.position).abs() > 0.05 {
+            return Err("decoding switch changed the paused media clock".into());
+        }
+        println!("PASS: paused decoder switches retain the media position");
         thread::sleep(Duration::from_millis(250));
         let still = run.status()?;
         let before_hash = native_presentation::diagnostics(app)?["lastHash"].clone();
@@ -195,6 +195,34 @@ impl Run {
             run.sample_composition()?;
         }
         Ok(run)
+    }
+    fn switch_decoder(&self, mode: &str, expected: &str) -> Result<(), String> {
+        let before = native_presentation::diagnostics(&self.app)?;
+        let snapshot = tauri::async_runtime::block_on(mpv_embed::mpv_embed_set_hwdec(
+            self.app.clone(),
+            mode.into(),
+        ))?;
+        let state = native_presentation::diagnostics(&self.app)?;
+        if state["core"] != before["core"]
+            || state["currentVo"] != "libmpv"
+            || state["presentationActive"] != true
+            || snapshot.hwdec != expected
+            || state["hwdecCurrent"] != expected
+        {
+            return Err(format!(
+                "unexpected {mode} decode state: {state}; snapshot={}",
+                snapshot.hwdec
+            ));
+        }
+        if expected == "nvdec-copy" {
+            let device =
+                std::env::var("OPENPLAYER_SMOKE_COPY_DEVICE").map_err(|e| e.to_string())?;
+            if state["cudaDevice"] != device {
+                return Err(format!("wrong hardware-copy device: {state}"));
+            }
+        }
+        println!("TRACE: {mode} decoder {state}");
+        Ok(())
     }
     fn sample_composition(&self) -> Result<(), String> {
         use crate::mpv_embed::native_filter_smoke::video_diagnostics;
@@ -293,6 +321,7 @@ impl Run {
                 && state["vo"] == self.before["vo"]
                 && state["currentVo"] == self.before["currentVo"]
                 && state["hwdec"] == self.before["hwdec"]
+                && state["cudaDevice"] == self.before["cudaDevice"]
                 && state["matrix"] == self.before["matrix"]
                 && state["gamma"] == self.before["gamma"]
                 && state["filters"] == self.before["filters"]
@@ -304,6 +333,10 @@ impl Run {
         self.wait_generated(count + 5)?;
         let running = native_presentation::diagnostics(&self.app)?;
         println!("TRACE: presentation after window transitions {running}");
+        // Also verify that detach retains the latest user choice, not the initial
+        // preference. Do not let auto-safe select a different GPU during tests.
+        self.switch_decoder("software", "no")?;
+        self.before["hwdec"] = json!("no");
         tauri::async_runtime::block_on(super::plugin_native_video_detach(
             self.app.clone(),
             self.session.launch.plugin_id.clone(),

@@ -1,5 +1,7 @@
 //! Generic out-of-process presentation. The vendor SDK never enters this process.
 mod cadence;
+mod cuda;
+mod decoder;
 mod render;
 mod transaction;
 use super::native_video_color::{self, Conversion};
@@ -26,6 +28,7 @@ pub(crate) struct Prepared {
     fps: f64,
     rate: Option<f64>,
     normalize: bool,
+    adapter_luid: Option<u64>,
 }
 
 pub(crate) struct Presentation {
@@ -35,6 +38,7 @@ pub(crate) struct Presentation {
     restored: bool,
     control_client: libmpv2::Mpv,
     conversion: Option<Conversion>,
+    adapter_luid: Option<u64>,
 }
 
 impl Prepared {
@@ -50,6 +54,7 @@ impl Prepared {
         }
         let width = dimension(options.remove("width"), 1920, 3840)?;
         let height = dimension(options.remove("height"), 1080, 2160)?;
+        let adapter_luid = decoder::adapter(options.get("adapterLuid"))?;
         let normalize =
             native_video_color::conversion_requested(options.remove("inputConversion"))?;
         let rate = options
@@ -108,6 +113,7 @@ impl Prepared {
             fps,
             rate,
             normalize,
+            adapter_luid,
         }))
     }
     pub(crate) fn install(&self) -> Result<(), String> {
@@ -149,12 +155,19 @@ impl Prepared {
                 control_client,
                 conversion: needs_conversion
                     .then(|| Conversion::new(format!("native-present-color-{}", self.id))),
+                adapter_luid: self.adapter_luid,
             });
             let presentation = player.presentation.as_mut().unwrap();
             if let Some(conversion) = &presentation.conversion {
                 conversion.install(&player.mpv)?;
             }
-            transaction::switch(&player.mpv, "libmpv", "no", &presentation.worker.shared)?;
+            decoder::switch(
+                &player.mpv,
+                &presentation.saved,
+                &presentation.saved.hwdec,
+                presentation.adapter_luid,
+                &presentation.worker.shared,
+            )?;
             // Never publish HDR pixels as SDR, including a disabled/failed filter.
             validate_media(&player.mpv, false)?;
             presentation
@@ -187,6 +200,7 @@ impl Prepared {
                 if let Some(conversion) = &presentation.conversion {
                     conversion.remove(&player.mpv)?;
                 }
+                transaction::set_output(&player.mpv, &presentation.saved)?;
                 presentation.restored = true;
                 presentation.worker.stop()?;
             } else {
@@ -208,6 +222,29 @@ fn schedule_resize(app: &AppHandle) {
 }
 
 impl Presentation {
+    pub(in crate::mpv_embed) fn set_hwdec(
+        &mut self,
+        mpv: &libmpv2::Mpv,
+        requested: &str,
+    ) -> Result<(), String> {
+        let active = self.worker.shared.active.swap(false, Ordering::AcqRel);
+        let result = decoder::switch(
+            mpv,
+            &self.saved,
+            requested,
+            self.adapter_luid,
+            &self.worker.shared,
+        );
+        if result.is_ok() {
+            self.saved.hwdec = requested.into();
+        }
+        if !self.worker.shared.control.is_closed() {
+            self.worker.shared.active.store(active, Ordering::Release);
+        }
+        self.worker.shared.invalidate();
+        result
+    }
+
     fn restore(&mut self, mpv: &libmpv2::Mpv) -> Result<(), String> {
         if !self.restored {
             self.worker.shared.active.store(false, Ordering::Release);
@@ -215,7 +252,7 @@ impl Presentation {
             if let Some(conversion) = &self.conversion {
                 conversion.remove(mpv)?;
             }
-            transaction::switch(mpv, &self.saved.vo, &self.saved.hwdec, &self.worker.shared)?;
+            transaction::switch(mpv, &self.saved, &self.worker.shared)?;
             self.restored = true;
         }
         self.worker.stop()
@@ -295,6 +332,8 @@ pub(crate) fn diagnostics(app: &AppHandle) -> Result<Value, String> {
             "vo": player.mpv.get_property::<String>("vo").ok(),
             "currentVo": player.mpv.get_property::<String>("current-vo").ok(),
             "hwdec": player.mpv.get_property::<String>("hwdec").ok(),
+            "hwdecCurrent": player.mpv.get_property::<String>("hwdec-current").ok(),
+            "cudaDevice": player.mpv.get_property::<String>("cuda-decode-device").ok(),
             "matrix": player.mpv.get_property::<String>("video-out-params/colormatrix").ok(),
             "gamma": player.mpv.get_property::<String>("video-out-params/gamma").ok(),
             "filters": super::native_video_filter::status::filters(&player.mpv)?,
