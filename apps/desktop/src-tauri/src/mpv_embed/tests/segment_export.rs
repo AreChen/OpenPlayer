@@ -245,7 +245,9 @@ fn exported_first_frame_average_red(path: &Path) -> f64 {
 
     let red_sum: u64 = output
         .stdout
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|pixel| u64::from(pixel[0]))
         .sum();
     red_sum as f64 / (output.stdout.len() / 3) as f64

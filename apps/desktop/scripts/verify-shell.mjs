@@ -73,6 +73,11 @@ const styles = [stylesEntrySource, stylesModuleSource].filter(Boolean).join("\n"
 const mainSource = await readFile(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
 const tauriLibSource = await readFile(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
 const tauriRuntimeSource = [tauriLibSource, await readSourceTree(new URL("../src-tauri/src/", import.meta.url), [".rs"])].filter(Boolean).join("\n");
+assert.equal(
+  [...tauriRuntimeSource.matchAll(/tauri::generate_context!\s*\(/g)].length,
+  1,
+  "App and smoke runtimes must share one context expansion to avoid duplicate macOS Info.plist symbols",
+);
 const playbackStoreUrl = new URL("../src-tauri/src/playback_store.rs", import.meta.url);
 const playbackStoreDirUrl = new URL("../src-tauri/src/playback_store/", import.meta.url);
 const playbackStoreSource = [

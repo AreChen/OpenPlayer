@@ -40,7 +40,7 @@ pub fn run() {
             std::process::exit(1);
         }
     });
-    let mut context = tauri::generate_context!();
+    let mut context = crate::bootstrap::context();
     context.config_mut().identifier = format!("dev.openplayer.smoke.p{}", std::process::id());
     context.config_mut().build.dev_url = None;
     context.config_mut().app.windows[0].url = WebviewUrl::External("about:blank".parse().unwrap());

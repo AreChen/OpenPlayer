@@ -3,6 +3,7 @@
 pub(crate) use super::native_video_filter as owned;
 use super::*;
 
+#[cfg(windows)]
 pub(crate) fn video_diagnostics(app: &AppHandle) -> Result<Value, String> {
     with_player(app.state::<MpvEmbedState>().inner(), |player| {
         let mut result = serde_json::Map::new();

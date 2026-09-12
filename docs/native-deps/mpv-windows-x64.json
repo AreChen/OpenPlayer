@@ -3,9 +3,12 @@
   "platform": "windows-x64",
   "source": "zhongfly/mpv-winbuild",
   "release": "2026-06-22-2bd9c3229f",
-  "asset": "mpv-dev-lgpl-x86_64-20260622-git-2bd9c3229f.7z",
-  "url": "https://github.com/zhongfly/mpv-winbuild/releases/download/2026-06-22-2bd9c3229f/mpv-dev-lgpl-x86_64-20260622-git-2bd9c3229f.7z",
-  "sha256": "44d3d86baa3f90277c7c91fb2a651b0894f79148cce3196dc17844f9fb4b6ac3",
+  "asset": "openplayer-mpv-lgpl-x64-20260622.7z",
+  "url": "https://github.com/AreChen/OpenPlayer/releases/download/native-deps-20260622/openplayer-mpv-lgpl-x64-20260622.7z",
+  "sha256": "6968d5e0437ea1878853de4ed1b05b9f13505e73a01e64eda564a44ad4902a7d",
+  "upstreamUrl": "https://github.com/zhongfly/mpv-winbuild/releases/download/2026-06-22-2bd9c3229f/mpv-dev-lgpl-x86_64-20260622-git-2bd9c3229f.7z",
+  "upstreamArchiveSha256": "44d3d86baa3f90277c7c91fb2a651b0894f79148cce3196dc17844f9fb4b6ac3",
+  "runtimeSha256": "391a966c84a3dc4cb4644e4e42d6fc1d3f8adbad6915deaf106fda2020628adf",
   "license": "LGPL-2.1-or-later libmpv build; see upstream mpv-winbuild package and bundled dependency notices",
   "requiredFiles": ["libmpv-2.dll", "libmpv.dll.a", "include"]
 }

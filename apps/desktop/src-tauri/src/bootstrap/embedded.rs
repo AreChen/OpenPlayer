@@ -148,7 +148,7 @@ pub fn run() {
             crate::playback_store::commands::playback_media_settings,
             crate::playback_store::commands::playback_media_settings_update
         ])
-        .build(tauri::generate_context!())
+        .build(super::context())
         .expect("failed to build OpenPlayer desktop app")
         .run(|_, event| {
             if matches!(event, tauri::RunEvent::Exit) {

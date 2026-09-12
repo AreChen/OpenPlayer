@@ -187,6 +187,7 @@ fn native_process_roundtrip_faults_and_lifecycle() {
             .request("earlyChild", Value::Null, 5000)
             .await
             .unwrap();
+        assert!(early["pid"].as_u64().unwrap() > 0);
         #[cfg(windows)]
         assert_in_job(&session, early["pid"].as_u64().unwrap() as u32);
         let value = json!({"number":42,"text":"native RPC","nested":[1,true,null]});

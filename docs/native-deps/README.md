@@ -17,10 +17,16 @@ Tracked dependency metadata:
 
 - `mpv-windows-x64.json` - Windows x64 mpv build used by release automation.
 
-The Windows release manifest intentionally points at the `mpv-dev-lgpl` artifact
-from `zhongfly/mpv-winbuild`. Upstream documents this artifact as an
-LGPLv2.1-compatible libmpv build, which is a better fit for OpenPlayer's MIT
-application code than the default GPL mpv build.
+The Windows release manifest uses the `mpv-dev-lgpl` build from
+`zhongfly/mpv-winbuild`, not the default GPL artifact. Its June 22, 2026 upstream
+release was no longer available when preparing OpenPlayer 1.6.4.
+
+The replacement download is an OpenPlayer-hosted archive containing the same
+accepted `libmpv-2.dll`, import library and headers. It does not upgrade or rebuild
+mpv. The archive hash changed because these extracted files were repackaged;
+the manifest retains the original URL/hash and the runtime DLL hash for provenance.
+The dependency is a separate prerelease, not a player update. See
+[dependency archive details](mpv-windows-x64-mirror.md).
 
 Linux packages depend on the distribution's `libmpv2` package instead of
 bundling a private copy. macOS release automation currently bundles Homebrew

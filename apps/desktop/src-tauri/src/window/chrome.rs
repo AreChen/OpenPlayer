@@ -52,13 +52,15 @@ pub(super) fn toggle_fullscreen(app: AppHandle, window_state: &WindowState) -> R
         if placement.maximized {
             main.unmaximize().map_err(|error| error.to_string())?;
         }
+        #[cfg(windows)]
         if let Err(error) = set_main_window_fullscreen(&main, true) {
-            #[cfg(windows)]
             if placement.maximized {
                 let _ = main.maximize();
             }
             return Err(error);
         }
+        #[cfg(not(windows))]
+        set_main_window_fullscreen(&main, true)?;
         *fullscreen_restore = Some(placement);
         drop(fullscreen_restore);
     }
