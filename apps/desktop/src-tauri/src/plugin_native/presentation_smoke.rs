@@ -105,12 +105,22 @@ impl Run {
         };
         let session = spawn(&package)?;
         let before = native_presentation::diagnostics(app)?;
+        let options = if let Ok(value) = std::env::var("OPENPLAYER_SMOKE_PRESENTATION_OPTIONS") {
+            let mut value: Value = serde_json::from_str(&value).map_err(|e| e.to_string())?;
+            let object = value
+                .as_object_mut()
+                .ok_or("presentation smoke options must be an object")?;
+            object.insert("adapterLuid".into(), json!(luid));
+            value
+        } else {
+            json!({"adapterLuid":luid,"width":960,"height":540,"frameRateLimit":30,"inputConversion":"sdr-bt709"})
+        };
         let run = Self {
             app: app.clone(),
             package,
             session,
             before,
-            options: json!({"adapterLuid":luid,"width":960,"height":540,"frameRateLimit":30,"inputConversion":"sdr-bt709"}),
+            options,
             upstream,
         };
         if std::env::var_os("OPENPLAYER_SMOKE_CLOSE_DURING_PRESENTATION_INIT").is_some() {
@@ -268,6 +278,18 @@ impl Run {
             "TRACE: NR plus XeFG short A/V sample {}",
             json!({"elapsedSeconds":elapsed,"mediaSeconds":progression,"maxMpvAvSyncSeconds":max_av,"nrProcessedFrames":processed,"sourceFrames":source,"generatedFrames":generated,"presenter":frames})
         );
+        if std::env::var_os("OPENPLAYER_SMOKE_OVERLOAD").is_some() {
+            if source < 30
+                || frames["latePresentedFrames"].as_u64().unwrap_or(0) < 1
+                || frames["lastSequence"] == before_frames["lastSequence"]
+            {
+                return Err("overloaded upstream starved presentation".into());
+            }
+            println!(
+                "PASS: overloaded upstream keeps displaying source frames without claiming generated frames or real-time A/V"
+            );
+            return Ok(());
+        }
         if (progression - elapsed).abs() > 1.0
             || max_av > 0.15
             || generated < 30
@@ -306,12 +328,25 @@ impl Run {
         tauri::async_runtime::block_on(self.session.request("frames.status", Value::Null, 5000))
     }
     fn wait_generated(&self, count: u64) -> Result<(), String> {
+        let mut next_trace = Instant::now();
         wait("generated native frames", || {
             let status = self.status()?;
+            if Instant::now() >= next_trace {
+                println!(
+                    "TRACE: generated progress {status}; host={}",
+                    native_presentation::diagnostics(&self.app)?
+                );
+                next_trace = Instant::now() + Duration::from_secs(1);
+            }
             if status["phase"] == "failed" || !status["error"].is_null() {
                 return Err(format!("native renderer: {status}"));
             }
-            Ok(status["generatedFrames"].as_u64().unwrap_or(0) >= count)
+            let counter = if std::env::var_os("OPENPLAYER_SMOKE_OVERLOAD").is_some() {
+                "sourceFrames"
+            } else {
+                "generatedFrames"
+            };
+            Ok(status[counter].as_u64().unwrap_or(0) >= count)
         })
     }
     fn assert_restored(&self) -> Result<(), String> {

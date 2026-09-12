@@ -397,6 +397,19 @@ fn exercise_windows(
     } else {
         None
     };
+    if let Ok(size) = std::env::var("OPENPLAYER_SMOKE_INITIAL_SIZE") {
+        let (width, height) = size
+            .split_once('x')
+            .ok_or("initial size must be WIDTHxHEIGHT")?;
+        let size = PhysicalSize::new(
+            width.parse::<u32>().map_err(|e| e.to_string())?,
+            height.parse::<u32>().map_err(|e| e.to_string())?,
+        );
+        on_main(app, move |app| {
+            main_window(app)?.set_size(size).map_err(|e| e.to_string())
+        })?;
+        wait_until(app, "initial presentation size", aligned)?;
+    }
     exercise_native_filter(app)?;
     #[cfg(windows)]
     let presentation = if std::env::var_os("OPENPLAYER_SMOKE_PRESENTATION").is_some() {

@@ -87,15 +87,23 @@ impl Upstream {
             gpu_uuid,
             worker_pid: 0,
         };
+        let mut options = if let Ok(value) = std::env::var("OPENPLAYER_SMOKE_NR_OPTIONS") {
+            serde_json::from_str::<Value>(&value).map_err(|e| e.to_string())?
+        } else {
+            json!({"inputConversion":"none", "frameRateLimit":15, "settings":{"intensity":0.5}})
+        };
+        options
+            .as_object_mut()
+            .ok_or("NR smoke options must be an object")?;
+        options["settings"]
+            .as_object_mut()
+            .ok_or("NR smoke settings must be an object")?
+            .insert("gpu_uuid".into(), json!(upstream.gpu_uuid));
         tauri::async_runtime::block_on(super::plugin_native_video_attach(
             app.clone(),
             upstream.session.launch.plugin_id.clone(),
             upstream.session.launch.module.id.clone(),
-            json!({
-                "inputConversion": "none",
-                "frameRateLimit": 15,
-                "settings": {"gpu_uuid": upstream.gpu_uuid, "intensity": 0.5}
-            }),
+            options,
         ))?;
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
