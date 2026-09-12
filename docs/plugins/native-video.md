@@ -1,6 +1,6 @@
 # Attach a native video processor
 
-**Development builds only; not included in published OpenPlayer 1.6.3.** This is
+**Requires OpenPlayer 1.6.4 or later; unavailable in 1.6.3.** This is
 a single-stage Windows x64 attachment, not executable video-plan scheduling.
 The existing mpv window and transparent React overlay remain unchanged.
 

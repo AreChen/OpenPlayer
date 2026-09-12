@@ -1,8 +1,7 @@
-# Native modules (development extension)
+# Native modules
 
-This development host can run plugin-packaged native executables through a
-bounded control protocol. Published OpenPlayer 1.6.3 binaries do not include this
-extension. The application version has not been bumped for a release.
+OpenPlayer 1.6.4 can run plugin-packaged native executables through a bounded
+control protocol. OpenPlayer 1.6.3 binaries do not include this extension.
 
 **Native modules are trusted software running with the current user's file,
 network, and environment access. They are NOT sandboxed.** The JavaScript worker
@@ -10,7 +9,7 @@ remains sandboxed; `native.process` is a separate, high-risk declared permission
 Installation grants declared permissions. There is no repeated launch prompt;
 permission, enablement, integrity and lifecycle checks still apply on every start.
 
-**Development Windows x64 builds now expose [single-stage video attachment](native-video.md).**
+**Windows x64 builds expose [single-stage video attachment](native-video.md).**
 `native.video.validatePlan()` checks a proposed format/rate chain and always
 returns `executable: false`. It does not enable DLSSNR, interpolation, upscaling,
 or rendering by itself. The existing mpv host and transparent control window are unchanged.
