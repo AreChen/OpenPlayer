@@ -184,8 +184,8 @@ jobs:
           deb="$(realpath target/release/bundle/deb/*.deb)"
           appimage="$(realpath target/release/bundle/appimage/*.AppImage)"
 
-          sha256sum "$deb" > "$deb.sha256"
-          sha256sum "$appimage" > "$appimage.sha256"
+          (cd "$(dirname "$deb")" && sha256sum "$(basename "$deb")") > "$deb.sha256"
+          (cd "$(dirname "$appimage")" && sha256sum "$(basename "$appimage")") > "$appimage.sha256"
 
           {
             echo "OPENPLAYER_LINUX_DEB=$deb"
