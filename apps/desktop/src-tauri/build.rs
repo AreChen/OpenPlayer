@@ -81,6 +81,20 @@ fn compile_macos_mpv_render_view() {
 #[cfg(not(target_os = "macos"))]
 fn compile_macos_mpv_render_view() {}
 
+#[cfg(target_os = "macos")]
+fn compile_macos_fullscreen() {
+    cc::Build::new()
+        .file("src/macos_fullscreen.m")
+        .flag("-fobjc-arc")
+        .flag("-fblocks")
+        .compile("openplayer_macos_fullscreen");
+    println!("cargo:rerun-if-changed=src/macos_fullscreen.m");
+    println!("cargo:rustc-link-lib=framework=Cocoa");
+}
+
+#[cfg(not(target_os = "macos"))]
+fn compile_macos_fullscreen() {}
+
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn unix_mpv_link_search_paths() -> Vec<std::path::PathBuf> {
     let mut paths = Vec::new();
@@ -151,6 +165,7 @@ fn pkg_config_include_paths(package: &str) -> Vec<std::path::PathBuf> {
 
 fn main() {
     configure_mpv_linking();
+    compile_macos_fullscreen();
     compile_macos_mpv_render_view();
 
     #[cfg(windows)]

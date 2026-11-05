@@ -9,7 +9,8 @@ if (process.platform === "win32") {
   const key = Object.keys(environment).find((key) => key.toLowerCase() === "path") ?? "PATH";
   environment[key] = `${path.join(root, "vendor/native/mpv/windows-x64")};${environment[key] ?? ""}`;
 }
-for (const target of ["overlay", "main"]) {
+const targets = process.platform === "darwin" ? ["overlay", "main", "overlay-fullscreen-exit"] : ["overlay", "main"];
+for (const target of targets) {
   console.log(`Native window smoke: close ${target}`);
   await new Promise((resolve, reject) => {
     const child = spawn(binary, [target], { cwd: root, env: environment, stdio: "inherit", windowsHide: true });

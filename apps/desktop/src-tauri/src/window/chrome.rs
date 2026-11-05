@@ -1,6 +1,8 @@
 #[cfg(feature = "mpv-embed")]
 use crate::mpv_embed::stop_embedded_player_for_close;
-use tauri::{AppHandle, Position, Size, WebviewWindow};
+use tauri::{AppHandle, WebviewWindow};
+#[cfg(not(target_os = "macos"))]
+use tauri::{Position, Size};
 
 use super::{
     WindowPlacement, WindowState, begin_window_close, main_window,
@@ -29,6 +31,10 @@ pub(super) fn toggle_maximize(app: AppHandle) -> Result<(), String> {
 }
 
 pub(super) fn toggle_fullscreen(app: AppHandle, window_state: &WindowState) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    if super::macos_fullscreen::queue_toggle_during_exit(window_state) {
+        return Ok(());
+    }
     let main = main_window(&app)?;
     let mut fullscreen_restore = window_state
         .fullscreen_restore
@@ -40,6 +46,15 @@ pub(super) fn toggle_fullscreen(app: AppHandle, window_state: &WindowState) -> R
     if is_fullscreen {
         if let Some(placement) = fullscreen_restore.take() {
             drop(fullscreen_restore);
+            #[cfg(target_os = "macos")]
+            if let Err(error) = super::macos_fullscreen::exit(&app, &main, window_state) {
+                *window_state
+                    .fullscreen_restore
+                    .lock()
+                    .map_err(|_| "window state lock failed".to_string())? = Some(placement);
+                return Err(error);
+            }
+            #[cfg(not(target_os = "macos"))]
             restore_window_after_fullscreen(&main, placement)?;
         } else {
             drop(fullscreen_restore);
@@ -140,6 +155,13 @@ fn set_window_always_on_top(app: &AppHandle, enabled: bool) -> Result<(), String
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
+fn capture_window_placement(window: &WebviewWindow) -> Result<WindowPlacement, String> {
+    super::macos_fullscreen::capture(window)?;
+    Ok(WindowPlacement)
+}
+
+#[cfg(not(target_os = "macos"))]
 fn capture_window_placement(window: &WebviewWindow) -> Result<WindowPlacement, String> {
     Ok(WindowPlacement {
         position: window.outer_position().map_err(|error| error.to_string())?,
@@ -150,7 +172,10 @@ fn capture_window_placement(window: &WebviewWindow) -> Result<WindowPlacement, S
 }
 
 #[cfg(target_os = "macos")]
-fn set_main_window_fullscreen(window: &WebviewWindow, fullscreen: bool) -> Result<(), String> {
+pub(super) fn set_main_window_fullscreen(
+    window: &WebviewWindow,
+    fullscreen: bool,
+) -> Result<(), String> {
     super::overlay_platform::prepare_macos_main_window_chrome(window);
     window
         .set_fullscreen(fullscreen)
@@ -164,6 +189,7 @@ fn set_main_window_fullscreen(window: &WebviewWindow, fullscreen: bool) -> Resul
         .map_err(|error| error.to_string())
 }
 
+#[cfg(not(target_os = "macos"))]
 fn restore_window_after_fullscreen(
     window: &WebviewWindow,
     placement: WindowPlacement,

@@ -18,7 +18,7 @@ pub fn run() {
     let close_target = std::env::args().nth(1).unwrap_or_else(|| "overlay".into());
     assert!(matches!(
         close_target.as_str(),
-        "main" | "overlay" | "overlay-alt-f4"
+        "main" | "overlay" | "overlay-alt-f4" | "overlay-fullscreen-exit"
     ));
     let directory =
         std::env::temp_dir().join(format!("openplayer-window-smoke-{}", std::process::id()));
@@ -96,6 +96,11 @@ pub fn run() {
                 std::process::exit(1);
             }
             let player = tauri::async_runtime::block_on(mpv_embed_snapshot(app.clone()));
+            #[cfg(target_os = "macos")]
+            if super::macos_fullscreen::pending_observers() != 0 {
+                eprintln!("window smoke exited with a fullscreen observer still registered");
+                std::process::exit(1);
+            }
             if !close_started.load(Ordering::SeqCst)
                 || !app.webview_windows().is_empty()
                 || !matches!(player, Ok(None))
@@ -154,6 +159,126 @@ fn aligned(app: &AppHandle) -> Result<bool, String> {
         == overlay.outer_size().map_err(|e| e.to_string())?
         && main.outer_position().map_err(|e| e.to_string())?
             == overlay.outer_position().map_err(|e| e.to_string())?)
+}
+
+fn window_geometry(app: &AppHandle) -> Result<String, String> {
+    let main = main_window(app)?;
+    let overlay = overlay_window(app).ok_or("overlay missing")?;
+    Ok(format!(
+        "main={:?}/{:?}, overlay={:?}/{:?}, fullscreen={:?}, maximized={:?}",
+        main.outer_position(),
+        main.outer_size(),
+        overlay.outer_position(),
+        overlay.outer_size(),
+        main.is_fullscreen(),
+        main.is_maximized()
+    ))
+}
+
+#[cfg(target_os = "macos")]
+fn fullscreen_covers_monitor(app: &AppHandle) -> Result<bool, String> {
+    let main = main_window(app)?;
+    let monitor = main
+        .current_monitor()
+        .map_err(|e| e.to_string())?
+        .ok_or("monitor missing")?;
+    Ok(main.is_fullscreen().map_err(|e| e.to_string())?
+        && main.outer_position().map_err(|e| e.to_string())? == *monitor.position()
+        && main.outer_size().map_err(|e| e.to_string())? == *monitor.size()
+        && aligned(app)?)
+}
+
+#[cfg(target_os = "macos")]
+fn macos_restore_complete(app: &AppHandle) -> bool {
+    !app.state::<WindowState>()
+        .fullscreen_exiting
+        .load(Ordering::SeqCst)
+}
+
+#[cfg(target_os = "macos")]
+fn exercise_macos_fullscreen_transitions(app: &AppHandle) -> Result<(), String> {
+    let original = on_main(app, |app| {
+        let main = main_window(app)?;
+        Ok((
+            main.outer_position().map_err(|e| e.to_string())?,
+            main.outer_size().map_err(|e| e.to_string())?,
+        ))
+    })?;
+
+    on_main(app, |app| chrome::toggle_maximize(app.clone()))?;
+    wait_until(app, "maximize and align overlay", |app| {
+        Ok(main_window(app)?
+            .is_maximized()
+            .map_err(|e| e.to_string())?
+            && aligned(app)?)
+    })?;
+    let maximized = on_main(app, |app| {
+        let main = main_window(app)?;
+        Ok((
+            main.outer_position().map_err(|e| e.to_string())?,
+            main.outer_size().map_err(|e| e.to_string())?,
+        ))
+    })?;
+
+    for _ in 0..2 {
+        on_main(app, |app| {
+            chrome::toggle_fullscreen(app.clone(), &app.state::<WindowState>())
+        })?;
+        wait_until(
+            app,
+            "maximized fullscreen covers monitor",
+            fullscreen_covers_monitor,
+        )?;
+        on_main(app, |app| {
+            chrome::toggle_fullscreen(app.clone(), &app.state::<WindowState>())
+        })?;
+        wait_until(app, "restore maximized placement", move |app| {
+            let main = main_window(app)?;
+            Ok(macos_restore_complete(app)
+                && !main.is_fullscreen().map_err(|e| e.to_string())?
+                && main.is_maximized().map_err(|e| e.to_string())?
+                && main.outer_position().map_err(|e| e.to_string())? == maximized.0
+                && main.outer_size().map_err(|e| e.to_string())? == maximized.1
+                && aligned(app)?)
+        })?;
+    }
+    on_main(app, |app| chrome::toggle_maximize(app.clone()))?;
+    wait_until(app, "unmaximize after fullscreen", move |app| {
+        let main = main_window(app)?;
+        Ok(!main.is_maximized().map_err(|e| e.to_string())?
+            && main.outer_position().map_err(|e| e.to_string())? == original.0
+            && main.outer_size().map_err(|e| e.to_string())? == original.1
+            && aligned(app)?)
+    })?;
+
+    on_main(app, |app| {
+        chrome::toggle_fullscreen(app.clone(), &app.state::<WindowState>())
+    })?;
+    wait_until(
+        app,
+        "fullscreen before queued reentry",
+        fullscreen_covers_monitor,
+    )?;
+    on_main(app, |app| {
+        chrome::toggle_fullscreen(app.clone(), &app.state::<WindowState>())?;
+        chrome::toggle_fullscreen(app.clone(), &app.state::<WindowState>())
+    })?;
+    wait_until(app, "queued fullscreen reentry", |app| {
+        Ok(macos_restore_complete(app) && fullscreen_covers_monitor(app)?)
+    })?;
+    on_main(app, |app| {
+        chrome::toggle_fullscreen(app.clone(), &app.state::<WindowState>())
+    })?;
+    wait_until(app, "restore after queued reentry", move |app| {
+        let main = main_window(app)?;
+        Ok(macos_restore_complete(app)
+            && !main.is_fullscreen().map_err(|e| e.to_string())?
+            && main.outer_position().map_err(|e| e.to_string())? == original.0
+            && main.outer_size().map_err(|e| e.to_string())? == original.1
+            && aligned(app)?)
+    })?;
+    println!("PASS: macOS maximized fullscreen, unmaximize, queued reentry");
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -435,7 +560,9 @@ fn exercise_windows(
         })?;
         thread::sleep(Duration::from_millis(16));
     }
-    wait_until(app, "resize alignment", aligned)?;
+    if let Err(error) = wait_until(app, "resize alignment", aligned) {
+        return Err(format!("{error}; {}", on_main(app, window_geometry)?));
+    }
     let placement = on_main(app, |app| {
         let main = main_window(app)?;
         Ok((
@@ -450,33 +577,55 @@ fn exercise_windows(
         main_window(app)?.is_fullscreen().map_err(|e| e.to_string())
     })?;
     wait_until(app, "fullscreen alignment", aligned)?;
+    #[cfg(target_os = "macos")]
+    wait_until(app, "fullscreen covers monitor", fullscreen_covers_monitor)?;
     on_main(app, |app| {
         chrome::toggle_fullscreen(app.clone(), &app.state::<WindowState>())
     })?;
     let restore_result = wait_until(app, "fullscreen restore", move |app| {
         let main = main_window(app)?;
         Ok(!main.is_fullscreen().map_err(|e| e.to_string())?
+            && {
+                #[cfg(target_os = "macos")]
+                {
+                    macos_restore_complete(app)
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    true
+                }
+            }
             && main.outer_position().map_err(|e| e.to_string())? == placement.0
             && main.outer_size().map_err(|e| e.to_string())? == placement.1
             && aligned(app)?)
     });
     if let Err(error) = restore_result {
-        let actual = on_main(app, |app| {
-            let main = main_window(app)?;
-            let overlay = overlay_window(app).ok_or("overlay missing")?;
-            Ok(format!(
-                "main={:?}/{:?}, overlay={:?}/{:?}, fullscreen={:?}",
-                main.outer_position(),
-                main.outer_size(),
-                overlay.outer_position(),
-                overlay.outer_size(),
-                main.is_fullscreen()
-            ))
-        })?;
+        let actual = on_main(app, window_geometry)?;
         return Err(format!("{error}; expected={placement:?}; {actual}"));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        thread::sleep(Duration::from_millis(500));
+        on_main(app, move |app| {
+            let main = main_window(app)?;
+            if !macos_restore_complete(app)
+                || main.is_fullscreen().map_err(|e| e.to_string())?
+                || main.outer_position().map_err(|e| e.to_string())? != placement.0
+                || main.outer_size().map_err(|e| e.to_string())? != placement.1
+                || !aligned(app)?
+            {
+                return Err(format!(
+                    "fullscreen placement changed after restore; {}",
+                    window_geometry(app)?
+                ));
+            }
+            Ok(())
+        })?;
     }
     #[cfg(windows)]
     exercise_maximized_fullscreen(app)?;
+    #[cfg(target_os = "macos")]
+    exercise_macos_fullscreen_transitions(app)?;
     #[cfg(windows)]
     if std::env::var_os("OPENPLAYER_SMOKE_NATIVE_FILTER").is_none()
         && attachment.is_none()
@@ -497,6 +646,21 @@ fn exercise_windows(
     #[cfg(windows)]
     if target == "main" {
         tauri::async_runtime::block_on(super::window_set_capture_mode(app.clone(), true))?;
+    }
+    #[cfg(target_os = "macos")]
+    if target == "overlay-fullscreen-exit" {
+        on_main(app, |app| {
+            chrome::toggle_fullscreen(app.clone(), &app.state::<WindowState>())
+        })?;
+        wait_until(app, "fullscreen before close", fullscreen_covers_monitor)?;
+        close_started.store(true, Ordering::SeqCst);
+        return on_main(app, |app| {
+            chrome::toggle_fullscreen(app.clone(), &app.state::<WindowState>())?;
+            overlay_window(app)
+                .ok_or("overlay missing")?
+                .close()
+                .map_err(|error| error.to_string())
+        });
     }
     println!("TRACE: requesting native window close");
     if target == "overlay-alt-f4" {

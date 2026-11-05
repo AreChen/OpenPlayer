@@ -4,11 +4,15 @@ use std::sync::{
     Mutex,
     atomic::{AtomicBool, Ordering},
 };
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, State, WebviewWindow};
+use tauri::{AppHandle, Manager, State, WebviewWindow};
+#[cfg(not(target_os = "macos"))]
+use tauri::{PhysicalPosition, PhysicalSize};
 
 mod capture_mode;
 mod chrome;
 mod file_manager;
+#[cfg(target_os = "macos")]
+mod macos_fullscreen;
 #[cfg(feature = "mpv-embed")]
 mod mpv_overlay;
 mod overlay;
@@ -27,15 +31,24 @@ pub(super) fn overlay_window(app: &AppHandle) -> Option<WebviewWindow> {
 }
 
 #[derive(Clone)]
+#[cfg(not(target_os = "macos"))]
 struct WindowPlacement {
     position: PhysicalPosition<i32>,
     size: PhysicalSize<u32>,
     maximized: bool,
 }
 
+#[cfg(target_os = "macos")]
+#[derive(Clone)]
+struct WindowPlacement;
+
 #[derive(Default)]
 pub(crate) struct WindowState {
     fullscreen_restore: Mutex<Option<WindowPlacement>>,
+    #[cfg(target_os = "macos")]
+    fullscreen_exiting: AtomicBool,
+    #[cfg(target_os = "macos")]
+    fullscreen_reenter: AtomicBool,
     always_on_top: Mutex<bool>,
     closing: AtomicBool,
     capture_mode: AtomicBool,
@@ -102,12 +115,29 @@ pub(crate) fn window_toggle_maximize(app: AppHandle) -> Result<(), String> {
     chrome::toggle_maximize(app)
 }
 
+#[cfg(not(target_os = "macos"))]
 #[tauri::command]
 pub(crate) fn window_toggle_fullscreen(
     app: AppHandle,
     window_state: State<'_, WindowState>,
 ) -> Result<(), String> {
     chrome::toggle_fullscreen(app, window_state.inner())
+}
+
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub(crate) async fn window_toggle_fullscreen(app: AppHandle) -> Result<(), String> {
+    let (sender, mut receiver) = tauri::async_runtime::channel(1);
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        let result = chrome::toggle_fullscreen(handle.clone(), &handle.state::<WindowState>());
+        let _ = sender.try_send(result);
+    })
+    .map_err(|error| error.to_string())?;
+    receiver
+        .recv()
+        .await
+        .ok_or_else(|| "fullscreen operation was interrupted".to_string())?
 }
 
 #[tauri::command]

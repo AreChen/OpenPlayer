@@ -4,9 +4,11 @@ use std::{thread, time::Duration};
 
 #[cfg(feature = "mpv-embed")]
 use crate::mpv_embed::{MpvEmbedState, stop_embedded_player_for_close};
-use tauri::{AppHandle, PhysicalPosition, PhysicalSize, Position, Size};
+use tauri::AppHandle;
 #[cfg(feature = "mpv-embed")]
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent, utils::config::Color};
+#[cfg(not(target_os = "macos"))]
+use tauri::{PhysicalPosition, PhysicalSize, Position, Size};
 
 #[cfg(feature = "mpv-embed")]
 use super::{
@@ -30,8 +32,15 @@ pub(super) fn sync_overlay_to_main_after_resize(app: &AppHandle) {
     sync_overlay_to_main_without_focus(app);
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", feature = "mpv-embed"))]
 fn sync_main_to_overlay_after_resize(app: &AppHandle) {
+    if app
+        .state::<WindowState>()
+        .fullscreen_exiting
+        .load(Ordering::SeqCst)
+    {
+        return;
+    }
     let Ok(main) = main_window(app) else {
         return;
     };
@@ -41,20 +50,7 @@ fn sync_main_to_overlay_after_resize(app: &AppHandle) {
     let Some(overlay) = overlay_window(app) else {
         return;
     };
-    let Ok(position) = overlay.outer_position() else {
-        return;
-    };
-    let Ok(size) = overlay.outer_size() else {
-        return;
-    };
-    let _ = main.set_position(Position::Physical(PhysicalPosition {
-        x: position.x,
-        y: position.y,
-    }));
-    let _ = main.set_size(Size::Physical(PhysicalSize {
-        width: size.width,
-        height: size.height,
-    }));
+    let _ = super::macos_fullscreen::align(&main, &overlay);
     #[cfg(feature = "mpv-embed")]
     schedule_mpv_video_host_sync(app);
 }
@@ -66,20 +62,27 @@ fn sync_overlay_to_main_with_focus(app: &AppHandle, focus_overlay: bool) {
     let Some(overlay) = overlay_window(app) else {
         return;
     };
-    let Ok(position) = main.outer_position() else {
-        return;
-    };
-    let Ok(size) = main.outer_size() else {
-        return;
-    };
-    let _ = overlay.set_position(Position::Physical(PhysicalPosition {
-        x: position.x,
-        y: position.y,
-    }));
-    let _ = overlay.set_size(Size::Physical(PhysicalSize {
-        width: size.width,
-        height: size.height,
-    }));
+    #[cfg(target_os = "macos")]
+    {
+        let _ = super::macos_fullscreen::align(&overlay, &main);
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let Ok(position) = main.outer_position() else {
+            return;
+        };
+        let Ok(size) = main.outer_size() else {
+            return;
+        };
+        let _ = overlay.set_position(Position::Physical(PhysicalPosition {
+            x: position.x,
+            y: position.y,
+        }));
+        let _ = overlay.set_size(Size::Physical(PhysicalSize {
+            width: size.width,
+            height: size.height,
+        }));
+    }
     if focus_overlay {
         focus_overlay_window(app);
     }
