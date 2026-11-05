@@ -61,7 +61,18 @@ fn endpoint(value: Value) -> Result<Value, String> {
     serde_json::to_value(endpoint).map_err(|e| e.to_string())
 }
 
-fn frame_options(mut options: Value) -> Result<(Value, bool, Option<f64>), String> {
+fn frame_options(mut options: Value) -> Result<(Value, bool, Option<f64>, bool), String> {
+    if options.get("frameRateProbe").is_some() {
+        return Err("frameRateProbe is host-owned".into());
+    }
+    let auto = match options
+        .as_object_mut()
+        .and_then(|object| object.remove("autoFrameRate"))
+    {
+        None => false,
+        Some(Value::Bool(value)) => value,
+        _ => return Err("autoFrameRate must be boolean".into()),
+    };
     let rate = options
         .as_object_mut()
         .and_then(|object| object.remove("frameRateLimit"));
@@ -74,13 +85,32 @@ fn frame_options(mut options: Value) -> Result<(Value, bool, Option<f64>), Strin
                 .ok_or("frameRateLimit must be a number from 1 to 120")?,
         ),
     };
+    if auto && rate.is_some() {
+        return Err("autoFrameRate cannot be combined with frameRateLimit".into());
+    }
     let conversion = match &mut options {
         Value::Object(object) => object.remove("inputConversion"),
         Value::Null => None,
         _ => return Err("native video options must be an object".into()),
     };
     let normalize = crate::mpv_embed::native_video_color::conversion_requested(conversion)?;
-    Ok((options, normalize, rate))
+    Ok((options, normalize, rate, auto))
+}
+
+fn measured_frame_rate(opened: &Value) -> Result<f64, String> {
+    opened["frameRateLimit"]
+        .as_f64()
+        .filter(|rate| rate.is_finite() && (1.0..=120.0).contains(rate))
+        .ok_or_else(|| "native module returned an invalid measured frame rate".into())
+}
+
+fn effective_auto_frame_rate(opened: &Value, source: Option<f64>) -> Result<Option<f64>, String> {
+    let rate = measured_frame_rate(opened)?;
+    Ok(if source.is_some_and(|source| rate >= source) {
+        None
+    } else {
+        Some(rate)
+    })
 }
 
 #[derive(Serialize)]
@@ -182,8 +212,17 @@ pub(crate) async fn plugin_native_video_attach(
             if is_presenter(&session) {
                 return super::presentation::attach(&app, &session, &mut slot, options);
             }
-            let (options, normalize, rate) = frame_options(options)?;
+            let (mut options, normalize, mut rate, auto) = frame_options(options)?;
             let normalize = filter::validate_media(&app, normalize)?;
+            let mut source_rate = None;
+            if auto {
+                let probe = filter::frame_rate_probe(&app)?;
+                source_rate = probe["frameRate"].as_f64();
+                options
+                    .as_object_mut()
+                    .ok_or("native video options must be an object")?
+                    .insert("frameRateProbe".into(), probe);
+            }
             let cache = app
                 .path()
                 .app_cache_dir()
@@ -195,10 +234,16 @@ pub(crate) async fn plugin_native_video_attach(
                 &session.launch.package_root,
                 &cache.join("runtimes"),
             )?;
-            let opened =
-                tauri::async_runtime::block_on(session.request("frames.open", options, 5000))?;
+            let opened = tauri::async_runtime::block_on(session.request(
+                "frames.open",
+                options,
+                if auto { 12000 } else { 5000 },
+            ))?;
             if opened["protocol"] != "openplayer-frame-experimental-v1" {
                 return Err("unsupported native frame protocol".into());
+            }
+            if auto {
+                rate = effective_auto_frame_rate(&opened, source_rate)?;
             }
             let endpoint = endpoint(opened["endpoint"].clone())?;
             if !session.running() {
@@ -296,12 +341,12 @@ mod tests {
     fn conversion_is_host_owned_and_bounded() {
         assert_eq!(
             frame_options(Value::Null).unwrap(),
-            (Value::Null, false, None)
+            (Value::Null, false, None, false)
         );
         assert_eq!(
             frame_options(json!({"inputConversion":"sdr-bt709", "settings":{"intensity":1}}))
                 .unwrap(),
-            (json!({"settings":{"intensity":1}}), true, None)
+            (json!({"settings":{"intensity":1}}), true, None, false)
         );
         for value in [
             json!(3),
@@ -312,13 +357,58 @@ mod tests {
             json!({"frameRateLimit":true}),
             json!({"frameRateLimit":"15"}),
             json!({"frameRateLimit":null}),
+            json!({"autoFrameRate":null}),
+            json!({"autoFrameRate":1}),
+            json!({"autoFrameRate":true,"frameRateLimit":30}),
+            json!({"frameRateProbe":{"width":1}}),
         ] {
             assert!(frame_options(value).is_err());
         }
         assert_eq!(
             frame_options(json!({"frameRateLimit":15,"settings":{}})).unwrap(),
-            (json!({"settings":{}}), false, Some(15.0))
+            (json!({"settings":{}}), false, Some(15.0), false)
         );
+        assert_eq!(
+            frame_options(json!({"autoFrameRate":true,"adaptive":true})).unwrap(),
+            (json!({"adaptive":true}), false, None, true)
+        );
+    }
+    #[test]
+    fn measured_frame_rate_must_be_finite_and_bounded() {
+        assert_eq!(
+            measured_frame_rate(&json!({"frameRateLimit":35})).unwrap(),
+            35.0
+        );
+        for value in [
+            json!({}),
+            json!({"frameRateLimit":0}),
+            json!({"frameRateLimit":121}),
+            json!({"frameRateLimit":true}),
+            json!({"frameRateLimit":"30"}),
+        ] {
+            assert!(measured_frame_rate(&value).is_err());
+        }
+    }
+
+    #[test]
+    fn auto_frame_rate_preserves_source_when_capacity_is_sufficient() {
+        assert_eq!(
+            effective_auto_frame_rate(&json!({"frameRateLimit":24}), Some(24.0)).unwrap(),
+            None
+        );
+        assert_eq!(
+            effective_auto_frame_rate(&json!({"frameRateLimit":30}), Some(24.0)).unwrap(),
+            None
+        );
+        assert_eq!(
+            effective_auto_frame_rate(&json!({"frameRateLimit":30}), Some(60.0)).unwrap(),
+            Some(30.0)
+        );
+        assert_eq!(
+            effective_auto_frame_rate(&json!({"frameRateLimit":30}), None).unwrap(),
+            Some(30.0)
+        );
+        assert!(effective_auto_frame_rate(&json!({"frameRateLimit":0}), Some(24.0)).is_err());
     }
     #[test]
     fn endpoint_rejects_extra_fields_invalid_ports_and_tokens() {

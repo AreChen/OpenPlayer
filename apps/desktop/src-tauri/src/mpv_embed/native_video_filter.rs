@@ -230,6 +230,26 @@ pub(crate) fn validate_media(app: &AppHandle, normalize: bool) -> Result<bool, S
     })
 }
 
+pub(crate) fn frame_rate_probe(app: &AppHandle) -> Result<Value, String> {
+    with_player(app.state::<MpvEmbedState>().inner(), |player| {
+        let mpv = &player.mpv;
+        let width = mpv.get_property::<i64>("video-params/w").unwrap_or(0);
+        let height = mpv.get_property::<i64>("video-params/h").unwrap_or(0);
+        if !(16..=3840).contains(&width) || !(16..=2160).contains(&height) {
+            return Err("native video dimensions are unavailable".into());
+        }
+        let frame_rate = mpv
+            .get_property::<f64>("container-fps")
+            .ok()
+            .filter(|fps| fps.is_finite() && *fps > 0.0 && *fps <= 1000.0);
+        let speed = mpv.get_property::<f64>("speed").unwrap_or(1.0);
+        if !speed.is_finite() || !(0.01..=100.0).contains(&speed) {
+            return Err("native video playback speed is unavailable".into());
+        }
+        Ok(serde_json::json!({"width":width,"height":height,"frameRate":frame_rate,"speed":speed}))
+    })
+}
+
 impl Drop for OwnedFilter {
     fn drop(&mut self) {
         if self.script_created {

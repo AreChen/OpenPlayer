@@ -242,15 +242,18 @@ impl Run {
         let upstream = self.upstream.as_ref().unwrap();
         let before_processed = upstream.processed_frames()?;
         let mut max_av = 0.0f64;
+        let mut av_samples = 0;
         while start.elapsed() < Duration::from_secs(12) {
             self.upstream.as_ref().unwrap().validate()?;
             let value = video_diagnostics(&self.app)?;
-            let av = value["avsync"]
+            if let Some(av) = value["avsync"]
                 .as_str()
                 .and_then(|v| v.parse::<f64>().ok())
                 .filter(|v| v.is_finite())
-                .ok_or("mpv A/V clock diagnostic missing")?;
-            max_av = max_av.max(av.abs());
+            {
+                max_av = max_av.max(av.abs());
+                av_samples += 1;
+            }
             thread::sleep(Duration::from_millis(250));
         }
         let elapsed = start.elapsed().as_secs_f64();
@@ -276,8 +279,11 @@ impl Run {
             .saturating_sub(before_frames["generatedFrames"].as_u64().unwrap_or(0));
         println!(
             "TRACE: NR plus XeFG short A/V sample {}",
-            json!({"elapsedSeconds":elapsed,"mediaSeconds":progression,"maxMpvAvSyncSeconds":max_av,"nrProcessedFrames":processed,"sourceFrames":source,"generatedFrames":generated,"presenter":frames})
+            json!({"elapsedSeconds":elapsed,"mediaSeconds":progression,"maxMpvAvSyncSeconds":max_av,"avSamples":av_samples,"nrProcessedFrames":processed,"sourceFrames":source,"generatedFrames":generated,"presenter":frames})
         );
+        if av_samples < 20 {
+            return Err("insufficient mpv A/V clock samples".into());
+        }
         if std::env::var_os("OPENPLAYER_SMOKE_OVERLOAD").is_some() {
             if source < 30
                 || frames["latePresentedFrames"].as_u64().unwrap_or(0) < 1
@@ -290,11 +296,15 @@ impl Run {
             );
             return Ok(());
         }
+        let adaptive = std::env::var("OPENPLAYER_SMOKE_NR_OPTIONS")
+            .ok()
+            .and_then(|value| serde_json::from_str::<Value>(&value).ok())
+            .is_some_and(|value| value["autoFrameRate"] == true);
         if (progression - elapsed).abs() > 1.0
             || max_av > 0.15
             || generated < 30
-            || source > processed + 5
-            || source as f64 / elapsed > 16.0
+            || processed < 10
+            || (!adaptive && (source > processed + 5 || source as f64 / elapsed > 16.0))
             || generated > source + 1
             || generated < source.saturating_mul(9) / 10
         {

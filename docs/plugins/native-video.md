@@ -137,7 +137,7 @@ done by NR and is not a generated-output FPS guarantee. Upstream filters remain
 owned by their original adapters.
 
 The TypeScript `NativeVideoAttachOptions` interface types `inputConversion`,
-`frameRateLimit`, `settings`, `width`, `height`, and optional `adapterLuid`.
+`frameRateLimit`, `autoFrameRate`, `settings`, `width`, `height`, and optional `adapterLuid`.
 Its string index signature accepts other module-specific top-level options as `unknown`,
 without weakening known field types or adding vendor-specific SDK fields.
 The host and module still validate options at runtime; host-owned endpoint,
@@ -218,12 +218,27 @@ and restores original playback. Change the limit by detaching and attaching agai
 This is a capacity control, not automatic performance detection or a guarantee
 that any GPU can sustain the selected rate.
 
+From host 1.6.9, a VapourSynth module can opt in to startup measurement with
+`autoFrameRate: true` instead of `frameRateLimit`. Check the
+`native.video.autoFrameRate` capability first. The host supplies a reserved,
+host-owned `frameRateProbe` in `frames.open`: `{width, height, frameRate, speed}`.
+Dimensions and speed describe the current media; `frameRate` is the container
+FPS or `null` if unknown. The module must return a finite `frameRateLimit` in
+1..120 within the 12-second open timeout. The host validates this response and
+applies the owned FPS filter before conversion and processing only when the
+measured limit is below the known source FPS, or the source FPS is unknown.
+Otherwise it preserves the original input cadence, including variable FPS.
+Probe values cannot be supplied by a plugin. A failed measurement stops the
+session and does not install a filter. This protocol does not monitor future
+load or playback-speed changes: any adaptive processing policy belongs to the
+module, and recalibration requires detaching and attaching again.
+
 The host batches a fixed hardware-download/10-bit format, libplacebo conversion,
 and VapourSynth attachment into one filter-list update. libplacebo applies DV RPU
 metadata and removes it from the converted output. Each filter has an owned label;
 detach/stop/exit remove the entire owned chain while preserving unrelated filters.
 If conversion fails, status must not report a healthy enabled attachment. The
-plugin receives only its settings in `frames.open`; the host consumes the reserved
+plugin receives its remaining module options in `frames.open`; the host consumes the reserved
 `inputConversion` option. Plugins cannot supply arbitrary conversion filter text.
 
 This requires the bundled libmpv's FFmpeg/libplacebo filter support. It is not a

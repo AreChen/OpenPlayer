@@ -1,6 +1,6 @@
 export const supportedPluginLoadOptionKeys = new Set(["demuxer", "demuxer-lavf-format"]);
-export const PLUGIN_SDK_VERSION = "1.6.8";
-export const OPENPLAYER_HOST_VERSION = "1.6.8";
+export const PLUGIN_SDK_VERSION = "1.6.9";
+export const OPENPLAYER_HOST_VERSION = "1.6.9";
 export const OPENPLAYER_API_COMPATIBILITY = Object.freeze({
   sdkVersion: PLUGIN_SDK_VERSION,
   hostVersion: OPENPLAYER_HOST_VERSION,
@@ -21,6 +21,7 @@ export const OPENPLAYER_HOST_CAPABILITIES = Object.freeze([
   "native.process",
   "native.videoPlan",
   "native.video",
+  "native.video.autoFrameRate",
   "player.playback",
   "player.tracks",
   "player.snapshot",
