@@ -1,5 +1,6 @@
-import { useRef, type MutableRefObject } from "react";
+import { useEffect, useRef, type MutableRefObject } from "react";
 import { applyMpvSnapshotToPlaybackState, openMpvPathForPlaybackSession } from "../app/mpvSession";
+import { createSeekScheduler } from "../app/mpvSessionCommands/seekScheduler";
 import {
   commitMpvSeek,
   previewMpvSeek,
@@ -101,6 +102,8 @@ export function usePlayerMpvSession({
   loadPlaybackSettings,
   onError,
 }: UsePlayerMpvSessionOptions) {
+  const seekScheduler = useRef(createSeekScheduler()).current;
+  useEffect(() => () => seekScheduler.cancel(), [media?.id, seekScheduler]);
   const handlersRef = useRef<PlayerMpvSessionHandlers>({
     applyStoredPluginMpvSettings: async (snapshot) => snapshot,
     broadcastPluginRuntimeEvent: () => undefined,
@@ -187,6 +190,7 @@ export function usePlayerMpvSession({
   }
 
   async function openMpvPath(path: string, loadOptions: MpvLoadOptions = {}) {
+    seekScheduler.cancel();
     await openMpvPathForPlaybackSession({
       path,
       loadOptions,
@@ -208,6 +212,7 @@ export function usePlayerMpvSession({
   }
 
   function stopPlayback() {
+    seekScheduler.cancel();
     stopMpvPlaybackSession({
       media,
       pendingSeekRef,
@@ -229,6 +234,7 @@ export function usePlayerMpvSession({
   }
 
   function restartPlayback(autoplay = false) {
+    seekScheduler.cancel();
     restartMpvPlaybackSession({
       media,
       autoplay,
@@ -256,6 +262,7 @@ export function usePlayerMpvSession({
   }
 
   function seekTo(value: number) {
+    seekScheduler.cancel();
     previewMpvSeek({
       value,
       duration,
@@ -266,7 +273,7 @@ export function usePlayerMpvSession({
   }
 
   function commitSeekTo(value: number) {
-    commitMpvSeek({
+    const options = {
       value,
       duration,
       pendingSeekRef,
@@ -275,10 +282,13 @@ export function usePlayerMpvSession({
       invalidatePendingSnapshots,
       applyCommandSnapshot,
       onError,
-    });
+    };
+    previewMpvSeek(options);
+    seekScheduler.enqueue(() => commitMpvSeek(options));
   }
 
   function clearPendingSeek() {
+    seekScheduler.cancel();
     pendingSeekRef.current = null;
   }
 

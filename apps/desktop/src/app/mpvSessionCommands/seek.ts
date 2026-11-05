@@ -54,13 +54,17 @@ export function commitMpvSeek({
   onError,
 }: CommitSeekOptions) {
   const target = seekTargetForDuration(value, duration);
-  pendingSeekRef.current = { target, startedAt: performance.now() };
+  const request = { target, startedAt: performance.now() };
+  pendingSeekRef.current = request;
   setCurrentTime(target);
   anchorDisplayClock(target, false);
   invalidatePendingSnapshots();
-  invoke<MpvSnapshot>("mpv_embed_seek", { position: target })
-    .then(applyCommandSnapshot)
+  return invoke<MpvSnapshot>("mpv_embed_seek", { position: target })
+    .then((snapshot) => {
+      if (pendingSeekRef.current === request) applyCommandSnapshot(snapshot);
+    })
     .catch((error: unknown) => {
+      if (pendingSeekRef.current !== request) return;
       pendingSeekRef.current = null;
       onError(error);
     });
