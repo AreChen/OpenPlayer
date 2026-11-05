@@ -219,6 +219,7 @@ fn exercise_macos_fullscreen_transitions(app: &AppHandle) -> Result<(), String> 
             main.outer_size().map_err(|e| e.to_string())?,
         ))
     })?;
+    println!("TRACE: pre-maximize={original:?}; maximized={maximized:?}");
 
     for _ in 0..2 {
         on_main(app, |app| {
@@ -243,13 +244,19 @@ fn exercise_macos_fullscreen_transitions(app: &AppHandle) -> Result<(), String> 
         })?;
     }
     on_main(app, |app| chrome::toggle_maximize(app.clone()))?;
-    wait_until(app, "unmaximize after fullscreen", move |app| {
+    let unmaximize = wait_until(app, "unmaximize after fullscreen", move |app| {
         let main = main_window(app)?;
         Ok(!main.is_maximized().map_err(|e| e.to_string())?
             && main.outer_position().map_err(|e| e.to_string())? == original.0
             && main.outer_size().map_err(|e| e.to_string())? == original.1
             && aligned(app)?)
-    })?;
+    });
+    if let Err(error) = unmaximize {
+        return Err(format!(
+            "{error}; expected={original:?}; {}",
+            on_main(app, window_geometry)?
+        ));
+    }
 
     on_main(app, |app| {
         chrome::toggle_fullscreen(app.clone(), &app.state::<WindowState>())
@@ -562,6 +569,47 @@ fn exercise_windows(
     }
     if let Err(error) = wait_until(app, "resize alignment", aligned) {
         return Err(format!("{error}; {}", on_main(app, window_geometry)?));
+    }
+    #[cfg(target_os = "macos")]
+    if std::env::var_os("OPENPLAYER_SMOKE_OVERSIZED_WINDOW").is_some() {
+        let (size, position) = on_main(app, |app| {
+            let main = main_window(app)?;
+            let monitor = main
+                .current_monitor()
+                .map_err(|e| e.to_string())?
+                .ok_or("monitor missing")?;
+            Ok((
+                PhysicalSize::new(monitor.size().width + 256, monitor.size().height - 92),
+                tauri::PhysicalPosition::new(monitor.position().x - 128, monitor.position().y + 50),
+            ))
+        })?;
+        on_main(app, move |app| {
+            overlay_window(app)
+                .ok_or("overlay missing")?
+                .set_size(size)
+                .map_err(|e| e.to_string())
+        })?;
+        wait_until(app, "oversized resize", move |app| {
+            Ok(main_window(app)?.outer_size().map_err(|e| e.to_string())? == size && aligned(app)?)
+        })?;
+        on_main(app, move |app| {
+            overlay_window(app)
+                .ok_or("overlay missing")?
+                .set_position(position)
+                .map_err(|e| e.to_string())
+        })?;
+        if let Err(error) = wait_until(app, "oversized position", move |app| {
+            Ok(main_window(app)?
+                .outer_position()
+                .map_err(|e| e.to_string())?
+                == position
+                && aligned(app)?)
+        }) {
+            return Err(format!(
+                "{error}; expected={position:?}; {}",
+                on_main(app, window_geometry)?
+            ));
+        }
     }
     let placement = on_main(app, |app| {
         let main = main_window(app)?;
