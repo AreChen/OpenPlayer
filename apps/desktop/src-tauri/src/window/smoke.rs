@@ -191,12 +191,15 @@ fn fullscreen_covers_monitor(app: &AppHandle) -> Result<bool, String> {
 #[cfg(target_os = "macos")]
 fn macos_restore_complete(app: &AppHandle) -> bool {
     !app.state::<WindowState>()
-        .fullscreen_exiting
+        .placement_restoring
         .load(Ordering::SeqCst)
 }
 
 #[cfg(target_os = "macos")]
-fn exercise_macos_fullscreen_transitions(app: &AppHandle) -> Result<(), String> {
+fn exercise_macos_fullscreen_transitions(
+    app: &AppHandle,
+    maximize_in_fullscreen: bool,
+) -> Result<(), String> {
     let original = on_main(app, |app| {
         let main = main_window(app)?;
         Ok((
@@ -230,6 +233,12 @@ fn exercise_macos_fullscreen_transitions(app: &AppHandle) -> Result<(), String> 
             "maximized fullscreen covers monitor",
             fullscreen_covers_monitor,
         )?;
+        if maximize_in_fullscreen {
+            on_main(app, |app| {
+                main_window(app)?.maximize().map_err(|e| e.to_string())
+            })?;
+            thread::sleep(Duration::from_millis(200));
+        }
         on_main(app, |app| {
             chrome::toggle_fullscreen(app.clone(), &app.state::<WindowState>())
         })?;
@@ -246,7 +255,8 @@ fn exercise_macos_fullscreen_transitions(app: &AppHandle) -> Result<(), String> 
     on_main(app, |app| chrome::toggle_maximize(app.clone()))?;
     let unmaximize = wait_until(app, "unmaximize after fullscreen", move |app| {
         let main = main_window(app)?;
-        Ok(!main.is_maximized().map_err(|e| e.to_string())?
+        Ok(macos_restore_complete(app)
+            && !main.is_maximized().map_err(|e| e.to_string())?
             && main.outer_position().map_err(|e| e.to_string())? == original.0
             && main.outer_size().map_err(|e| e.to_string())? == original.1
             && aligned(app)?)
@@ -257,6 +267,22 @@ fn exercise_macos_fullscreen_transitions(app: &AppHandle) -> Result<(), String> 
             on_main(app, window_geometry)?
         ));
     }
+    thread::sleep(Duration::from_millis(500));
+    on_main(app, move |app| {
+        let main = main_window(app)?;
+        if !macos_restore_complete(app)
+            || main.is_maximized().map_err(|e| e.to_string())?
+            || main.outer_position().map_err(|e| e.to_string())? != original.0
+            || main.outer_size().map_err(|e| e.to_string())? != original.1
+            || !aligned(app)?
+        {
+            return Err(format!(
+                "unmaximized placement changed after restore; {}",
+                window_geometry(app)?
+            ));
+        }
+        Ok(())
+    })?;
 
     on_main(app, |app| {
         chrome::toggle_fullscreen(app.clone(), &app.state::<WindowState>())
@@ -673,7 +699,7 @@ fn exercise_windows(
     #[cfg(windows)]
     exercise_maximized_fullscreen(app)?;
     #[cfg(target_os = "macos")]
-    exercise_macos_fullscreen_transitions(app)?;
+    exercise_macos_fullscreen_transitions(app, target == "overlay-fullscreen-exit")?;
     #[cfg(windows)]
     if std::env::var_os("OPENPLAYER_SMOKE_NATIVE_FILTER").is_none()
         && attachment.is_none()

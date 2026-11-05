@@ -402,7 +402,7 @@ assert.match(mpvEmbedRuntimeSource, /\.visible\(false\)[\s\S]*sync_overlay_to_ma
 assert.match(mpvEmbedRuntimeSource, /WindowEvent::Resized[\s\S]*schedule_mpv_video_host_sync/, "main-window resize events must schedule delayed mpv host resyncs after WebView relayout");
 assert.match(mpvEmbedRuntimeSource, /#\[cfg\(all\(target_os = "macos", feature = "mpv-embed"\)\)\]\s*fn\s+sync_main_to_overlay_after_resize/, "overlay resize events must only drive the main video window on macOS where the overlay itself is user-resizable");
 assert.match(macosFullscreenSource, /NSWindowDidExitFullScreenNotification/, "macOS fullscreen geometry must be restored after the native exit notification");
-assert.match(mpvEmbedRuntimeSource, /fullscreen_exiting[\s\S]*sync_main_to_overlay_after_resize|sync_main_to_overlay_after_resize[\s\S]*fullscreen_exiting/, "macOS fullscreen restoration must guard against overlay-to-main resize feedback");
+assert.match(mpvEmbedRuntimeSource, /placement_restoring[\s\S]*sync_main_to_overlay_after_resize|sync_main_to_overlay_after_resize[\s\S]*placement_restoring/, "macOS window restoration must guard against overlay-to-main resize feedback");
 assert.match(tauriRuntimeSource, /#\[cfg\(all\(feature = "mpv-embed", windows\)\)\][\s\S]*SetWindowLongPtrW/, "overlay HWND ownership must be isolated to Windows mpv-embed builds");
 assert.match(tauriRuntimeSource, /#\[cfg\(all\(feature = "mpv-embed", not\(windows\), not\(target_os = "macos"\)\)\)\][\s\S]*fn set_overlay_owner/, "non-Windows non-macOS mpv-embed builds must not call Windows overlay ownership APIs");
 assert.doesNotMatch(mpvEmbedRuntimeSource, /OPENPLAYER_MPV_EMBED_FILE/, "normal embed overlay runtime must not auto-play the old Abbott embed smoke file");

@@ -1,5 +1,7 @@
 #[cfg(feature = "mpv-embed")]
 use crate::mpv_embed::stop_embedded_player_for_close;
+#[cfg(target_os = "macos")]
+use tauri::Manager;
 use tauri::{AppHandle, WebviewWindow};
 #[cfg(not(target_os = "macos"))]
 use tauri::{Position, Size};
@@ -21,9 +23,25 @@ pub(super) fn minimize(app: AppHandle) -> Result<(), String> {
 
 pub(super) fn toggle_maximize(app: AppHandle) -> Result<(), String> {
     let main = main_window(&app)?;
+    #[cfg(target_os = "macos")]
+    let state = app.state::<WindowState>();
+    #[cfg(target_os = "macos")]
+    if state
+        .placement_restoring
+        .load(std::sync::atomic::Ordering::SeqCst)
+    {
+        return Ok(());
+    }
     if main.is_maximized().map_err(|error| error.to_string())? {
+        #[cfg(target_os = "macos")]
+        super::macos_fullscreen::unmaximize(&app, &main, state.inner())?;
+        #[cfg(not(target_os = "macos"))]
         main.unmaximize().map_err(|error| error.to_string())?
     } else {
+        #[cfg(target_os = "macos")]
+        if !main.is_fullscreen().map_err(|error| error.to_string())? {
+            super::macos_fullscreen::capture_standard_frame(&main)?;
+        }
         main.maximize().map_err(|error| error.to_string())?
     }
     schedule_overlay_sync_to_main(&app);
@@ -32,7 +50,7 @@ pub(super) fn toggle_maximize(app: AppHandle) -> Result<(), String> {
 
 pub(super) fn toggle_fullscreen(app: AppHandle, window_state: &WindowState) -> Result<(), String> {
     #[cfg(target_os = "macos")]
-    if super::macos_fullscreen::queue_toggle_during_exit(window_state) {
+    if super::macos_fullscreen::queue_toggle_during_restoration(window_state) {
         return Ok(());
     }
     let main = main_window(&app)?;

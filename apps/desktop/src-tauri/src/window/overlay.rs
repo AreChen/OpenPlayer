@@ -36,7 +36,7 @@ pub(super) fn sync_overlay_to_main_after_resize(app: &AppHandle) {
 fn sync_main_to_overlay_after_resize(app: &AppHandle) {
     if app
         .state::<WindowState>()
-        .fullscreen_exiting
+        .placement_restoring
         .load(Ordering::SeqCst)
     {
         return;

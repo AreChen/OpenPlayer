@@ -46,7 +46,7 @@ struct WindowPlacement;
 pub(crate) struct WindowState {
     fullscreen_restore: Mutex<Option<WindowPlacement>>,
     #[cfg(target_os = "macos")]
-    fullscreen_exiting: AtomicBool,
+    placement_restoring: AtomicBool,
     #[cfg(target_os = "macos")]
     fullscreen_reenter: AtomicBool,
     always_on_top: Mutex<bool>,
@@ -110,9 +110,25 @@ pub(crate) fn window_minimize(app: AppHandle) -> Result<(), String> {
     chrome::minimize(app)
 }
 
+#[cfg(not(target_os = "macos"))]
 #[tauri::command]
 pub(crate) fn window_toggle_maximize(app: AppHandle) -> Result<(), String> {
     chrome::toggle_maximize(app)
+}
+
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub(crate) async fn window_toggle_maximize(app: AppHandle) -> Result<(), String> {
+    let (sender, mut receiver) = tauri::async_runtime::channel(1);
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        let _ = sender.try_send(chrome::toggle_maximize(handle));
+    })
+    .map_err(|error| error.to_string())?;
+    receiver
+        .recv()
+        .await
+        .ok_or_else(|| "maximize operation was interrupted".to_string())?
 }
 
 #[cfg(not(target_os = "macos"))]
