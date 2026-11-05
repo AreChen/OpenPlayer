@@ -300,13 +300,16 @@ impl Run {
             .ok()
             .and_then(|value| serde_json::from_str::<Value>(&value).ok())
             .is_some_and(|value| value["autoFrameRate"] == true);
+        let factor = frames["factor"]
+            .as_u64()
+            .or_else(|| self.options["factor"].as_u64())
+            .unwrap_or(2);
         if (progression - elapsed).abs() > 1.0
             || max_av > 0.15
             || generated < 30
             || processed < 10
             || (!adaptive && (source > processed + 5 || source as f64 / elapsed > 16.0))
-            || generated > source + 1
-            || generated < source.saturating_mul(9) / 10
+            || !generated_count_matches_input(source, generated, factor)
         {
             return Err("NR plus XeFG short A/V/cadence sample failed".into());
         }
@@ -434,6 +437,13 @@ fn spawn(package: &Package) -> Result<Arc<Session>, String> {
         Ok(session)
     })
 }
+fn generated_count_matches_input(source: u64, generated: u64, factor: u64) -> bool {
+    let Some(per_source) = factor.checked_sub(1).filter(|value| *value > 0) else {
+        return false;
+    };
+    generated <= source.saturating_add(1).saturating_mul(per_source)
+        && generated >= source.saturating_mul(per_source).saturating_mul(9) / 10
+}
 fn wait(label: &str, mut check: impl FnMut() -> Result<bool, String>) -> Result<(), String> {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
@@ -444,5 +454,19 @@ fn wait(label: &str, mut check: impl FnMut() -> Result<bool, String>) -> Result<
             return Err(format!("presentation fixture timed out: {label}"));
         }
         thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::generated_count_matches_input;
+
+    #[test]
+    fn composition_counts_follow_the_requested_multiplier() {
+        assert!(generated_count_matches_input(100, 99, 2));
+        assert!(generated_count_matches_input(100, 198, 3));
+        assert!(generated_count_matches_input(100, 495, 6));
+        assert!(!generated_count_matches_input(100, 99, 3));
+        assert!(!generated_count_matches_input(100, 601, 6));
     }
 }
