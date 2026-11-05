@@ -69,9 +69,23 @@ pub(super) fn is_supported_plugin_action_icon(icon: &str) -> bool {
             | "pin"
             | "plugin"
             | "camera"
+            | "sparkles"
+            | "frames"
             | "record"
             | "stream"
             | "tv"
             | "info"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_supported_plugin_action_icon;
+
+    #[test]
+    fn supports_enhancement_and_frame_generation_icons() {
+        assert!(is_supported_plugin_action_icon("sparkles"));
+        assert!(is_supported_plugin_action_icon("frames"));
+        assert!(!is_supported_plugin_action_icon("unrecognized"));
+    }
 }

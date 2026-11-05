@@ -836,7 +836,8 @@ Custom views are best for rich plugin-owned UI. Keep these rules:
 
 For action icons, use `tv` for TV-like channel browsers, IPTV surfaces, and
 other television-oriented plugins. Keep `stream` for generic network stream
-entry points.
+entry points. OpenPlayer 1.6.10 adds `sparkles` for image enhancement and
+`frames` for frame generation or other multi-frame actions.
 
 ## Official Plugin Improvement Checklist
 
