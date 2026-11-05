@@ -337,6 +337,8 @@ impl Run {
             .ok_or("missing processed frame counter")?;
         let mut peak = 0.0_f64;
         let mut samples = 0;
+        let mut first_dropped = None;
+        let mut last_dropped = 0;
         while started.elapsed() < Duration::from_secs(20) {
             thread::sleep(Duration::from_millis(250));
             let diagnostic = native_filter_smoke::video_diagnostics(&self.app)?;
@@ -348,6 +350,12 @@ impl Run {
                     .filter(|s| s.is_finite())
                     .ok_or("audio/video sync measurement unavailable")?;
                 peak = peak.max(sync.abs());
+                let dropped = diagnostic["frame-drop-count"]
+                    .as_str()
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .ok_or("video output drop count unavailable")?;
+                first_dropped.get_or_insert(dropped);
+                last_dropped = dropped;
                 samples += 1;
             }
         }
@@ -357,14 +365,22 @@ impl Run {
             .as_u64()
             .ok_or("missing processed frame counter")?
             - processed_before;
+        let dropped = last_dropped.saturating_sub(first_dropped.unwrap_or(last_dropped));
         println!(
             "REALTIME_RESULT {}",
-            json!({"peakAvsync":peak,"samples":samples,"elapsed":elapsed,"advanced":advanced,"processedFrames":processed})
+            json!({"peakAvsync":peak,"samples":samples,"elapsed":elapsed,"advanced":advanced,"processedFrames":processed,"voDroppedFrames":dropped})
         );
         if peak > 0.25 || samples < 40 || (advanced - elapsed).abs() > 0.5 || processed < 180 {
             return Err("real-time playback exceeded 250ms sync/500ms clock budget".into());
         }
-        println!("PASS: real-time playback stayed within audio/video sync budget");
+        if std::env::var_os("OPENPLAYER_SMOKE_REQUIRE_SMOOTH").is_some()
+            && dropped > (processed / 20).max(10)
+        {
+            return Err(format!(
+                "video output dropped {dropped} frames during the sample"
+            ));
+        }
+        println!("PASS: real-time playback stayed within configured sync and video output budgets");
         Ok(())
     }
 

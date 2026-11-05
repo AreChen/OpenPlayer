@@ -39,6 +39,8 @@ pub fn run() {
                 10
             } else if std::env::var_os("OPENPLAYER_SMOKE_NR_PACKAGE").is_some() {
                 120
+            } else if std::env::var_os("OPENPLAYER_SMOKE_REALTIME").is_some() {
+                60
             } else {
                 45
             };
