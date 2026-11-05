@@ -34,7 +34,8 @@ export type ShortcutAction =
   | "volumeUp"
   | "toggleFullscreen"
   | "toggleAlwaysOnTop"
-  | "openSettings";
+  | "openSettings"
+  | `plugin:${string}`;
 
 export type ShortcutBindings = Record<ShortcutAction, string | null>;
 

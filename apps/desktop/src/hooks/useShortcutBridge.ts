@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
-  isShortcutAction,
+  activeShortcutBindings,
   isTextEntryShortcutTarget,
   keyboardEventToChord,
   releaseShortcutFocusTarget,
@@ -43,7 +43,8 @@ export function useShortcutBridge({
   onCloseNetworkStreamDialog,
 }: UseShortcutBridgeOptions) {
   const shortcutKeyDownRef = useRef<(event: KeyboardEvent) => void>(() => undefined);
-  const nativeShortcutActionRef = useRef<(action: ShortcutAction) => void>(() => undefined);
+  const nativeShortcutActionRef = useRef<(action: string) => void>(() => undefined);
+  const activeBindingsJson = JSON.stringify(activeShortcutBindings(shortcutBindings, shortcutDefinitions));
 
   shortcutKeyDownRef.current = (event: KeyboardEvent) => {
     if (recordingShortcutAction) {
@@ -107,13 +108,15 @@ export function useShortcutBridge({
     onPerformShortcutAction(shortcut.action);
   };
 
-  nativeShortcutActionRef.current = (action: ShortcutAction) => {
+  nativeShortcutActionRef.current = (action: string) => {
     if (contextMenu || isSettingsOpen || isNetworkStreamDialogOpen || recordingShortcutAction) {
       return;
     }
 
-    onRecordShortcutActivity(action);
-    onPerformShortcutAction(action);
+    const definition = shortcutDefinitions.find((item) => item.action === action);
+    if (!definition || !shortcutBindings[definition.action]) return;
+    onRecordShortcutActivity(definition.action);
+    onPerformShortcutAction(definition.action);
   };
 
   useEffect(() => {
@@ -130,9 +133,7 @@ export function useShortcutBridge({
     let disposed = false;
 
     listen<string>("openplayer-native-shortcut", (event) => {
-      if (isShortcutAction(event.payload)) {
-        nativeShortcutActionRef.current(event.payload);
-      }
+      nativeShortcutActionRef.current(event.payload);
     })
       .then((unlisten) => {
         if (disposed) {
@@ -152,10 +153,10 @@ export function useShortcutBridge({
   }, []);
 
   useEffect(() => {
-    invoke("window_update_shortcuts", { bindings: shortcutBindings }).catch((error: unknown) => {
+    invoke("window_update_shortcuts", { bindings: JSON.parse(activeBindingsJson) }).catch((error: unknown) => {
       console.warn("Native shortcut update failed", error);
     });
-  }, [shortcutBindings]);
+  }, [activeBindingsJson]);
 
   useEffect(() => {
     const enabled = !contextMenu && !isSettingsOpen && !isNetworkStreamDialogOpen && !recordingShortcutAction;

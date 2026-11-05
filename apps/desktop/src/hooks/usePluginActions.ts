@@ -3,6 +3,7 @@ import {
   pluginActionCommandRequiresMedia,
   pluginActionStringArg,
 } from "../app/pluginRuntime";
+import { pluginShortcutId } from "../app/shortcuts";
 import type {
   AppearanceState,
   MediaItem,
@@ -155,5 +156,9 @@ export function usePluginActions({
     pluginPlaylistActions: actionsForPlacement("playlist.actions"),
     isPluginActionDisabled,
     executePluginAction,
+    executePluginShortcut: (shortcut: string) => {
+      const instance = pluginActionInstances.find(({ plugin, action }) => pluginShortcutId(plugin.id, action.id) === shortcut);
+      if (instance) executePluginAction(instance);
+    },
   };
 }

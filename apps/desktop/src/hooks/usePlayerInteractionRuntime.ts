@@ -211,7 +211,10 @@ export function usePlayerInteractionRuntime({
     shortcutDefinitions: foundation.shortcutDefinitions,
     recordUserActivity: chrome.recordUserActivity,
     recordShortcutActivity: chrome.recordShortcutActivity,
-    performShortcutAction: shortcutActions.performShortcutAction,
+    performShortcutAction: (action) => {
+      if (action.startsWith("plugin:")) pluginRuntime.executePluginShortcut(action);
+      else shortcutActions.performShortcutAction(action);
+    },
     assignShortcut: foundation.assignShortcut,
     setRecordingShortcutAction: foundation.setRecordingShortcutAction,
     setContextMenu: foundation.setContextMenu,

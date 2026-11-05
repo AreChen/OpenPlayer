@@ -124,6 +124,13 @@ openplayer.commands.register("plugin.open-example-stream", async () => {
   `openplayer.api.compatibility` before relying on optional features.
 - Plugin-owned commands must use the `plugin.*` prefix. The host routes them
   only to the runtime for the same plugin that declared the action.
+- In OpenPlayer 1.6.10 and later, every action from an enabled plugin is also
+  available in the player's shortcut settings. Bindings are optional and
+  unassigned by default; users can change or clear them. The host checks the
+  action's media requirement and plugin enablement before dispatching it to the
+  same command handler as its normal UI action. Register toggle handlers in the
+  worker, not only inside a view, so they work while the view is closed. Shortcut
+  bindings are player UI preferences and follow its local shortcut storage.
 - Runtime event delivery is opt-in. Declare allowed event names in
   `runtime.events`, then subscribe with `openplayer.events.subscribe(event)`.
 - Use `openplayer.log.info`, `openplayer.log.warn`, and

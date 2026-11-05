@@ -1,9 +1,10 @@
-import type { MutableRefObject } from "react";
+import { useMemo, type MutableRefObject } from "react";
 import { loopModeOptionsFor } from "../app/playback";
-import { shortcutDefinitionsFor } from "../app/shortcuts";
+import { pluginShortcutDefinitionsFor, shortcutDefinitionsFor } from "../app/shortcuts";
 import { browserLanguages } from "../app/theme";
 import type {
   HardwareDecodingMode,
+  AppearanceState,
   LoopMode,
   PlatformSupport,
   PlayerPreferences,
@@ -18,6 +19,7 @@ import { usePlayerFeedback } from "./usePlayerFeedback";
 import { useShortcutSettings } from "./useShortcutSettings";
 
 type UsePlayerOverlayFoundationOptions = {
+  appearanceState: AppearanceState | null;
   playerPreferences: PlayerPreferences;
   platformSupport: PlatformSupport | null;
   previousAudibleVolumeRef: MutableRefObject<number>;
@@ -31,6 +33,7 @@ type UsePlayerOverlayFoundationOptions = {
 };
 
 export function usePlayerOverlayFoundation({
+  appearanceState,
   playerPreferences,
   platformSupport,
   previousAudibleVolumeRef,
@@ -45,8 +48,11 @@ export function usePlayerOverlayFoundation({
   const locale = resolveLocale(playerPreferences.languageMode, browserLanguages());
   const t = translations[locale];
   const loopModeOptions = loopModeOptionsFor(t);
-  const shortcutDefinitions = shortcutDefinitionsFor(t);
-  const shortcutSettings = useShortcutSettings(shortcutDefinitions);
+  const shortcutDefinitions = useMemo(() => [
+    ...shortcutDefinitionsFor(t),
+    ...pluginShortcutDefinitionsFor(appearanceState?.plugins ?? [], locale),
+  ], [appearanceState?.plugins, locale, t]);
+  const shortcutSettings = useShortcutSettings();
   const playbackPanels = usePlaybackPanelState();
   const contextMenuState = useContextMenuState();
   const feedback = usePlayerFeedback();

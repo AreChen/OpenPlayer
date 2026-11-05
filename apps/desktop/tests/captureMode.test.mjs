@@ -5,6 +5,7 @@ import { loadSource, settle } from "./sourceHarness.mjs";
 test("capture menu entry requires host support and loaded media", () => {
   const { buildContextMenuItems } = loadSource("src/app/contextMenu.ts", {
     "./pluginRuntime": { localizedPluginText: (text) => text },
+    "./shortcuts": { pluginShortcutId: (plugin, action) => `plugin:${plugin}:${action}` },
   });
   const options = {
     t: { contextMenu: { externalCapture: "External Enhancement Mode" } },

@@ -1,6 +1,7 @@
 import type { ContextMenuEntry } from "../components/ContextMenu";
 import type { AppLocale, AppStrings } from "../i18n";
 import { localizedPluginText } from "./pluginRuntime";
+import { pluginShortcutId } from "./shortcuts";
 import type { PluginActionInstance, ShortcutBindings } from "./types";
 
 type ContextMenuItemsOptions = {
@@ -75,6 +76,7 @@ export function buildContextMenuItems({
       id: `plugin:${instance.plugin.id}:${instance.action.id}`,
       label: localizedPluginText(instance.action.label, instance.action.labelI18n, locale),
       icon: instance.action.icon ?? "plugin",
+      shortcut: shortcutBindings[pluginShortcutId(instance.plugin.id, instance.action.id)] ?? null,
       disabled: isPluginActionDisabled(instance.action),
       onSelect: () => onExecutePluginAction(instance),
     })),

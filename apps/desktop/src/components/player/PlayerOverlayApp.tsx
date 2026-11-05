@@ -12,6 +12,7 @@ export function PlayerOverlayApp() {
   const playerState = usePlayerOverlayState();
   const media = playerState.currentIndex === null ? null : (playerState.queue[playerState.currentIndex] ?? null);
   const foundation = usePlayerOverlayFoundation({
+    appearanceState: playerState.appearanceState,
     playerPreferences: playerState.playerPreferences,
     platformSupport: playerState.platformSupport,
     previousAudibleVolumeRef: playerState.previousAudibleVolumeRef,

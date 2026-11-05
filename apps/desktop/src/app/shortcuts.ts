@@ -1,6 +1,35 @@
-import type { AppStrings } from "../i18n";
+import type { AppLocale, AppStrings } from "../i18n";
 import { OPENPLAYER_SHORTCUTS_STORAGE_KEY, TEXT_ENTRY_INPUT_TYPES, defaultShortcutBindings, shortcutActions } from "./constants";
-import type { ShortcutAction, ShortcutBindings, ShortcutDefinition } from "./types";
+import { localizedPluginText } from "./pluginRuntime";
+import type { ShortcutAction, ShortcutBindings, ShortcutDefinition, ThemePluginSummary } from "./types";
+
+export function pluginShortcutId(pluginId: string, actionId: string): ShortcutAction {
+  return `plugin:${encodeURIComponent(pluginId)}:${encodeURIComponent(actionId)}`;
+}
+
+export function pluginShortcutDefinitionsFor(plugins: ThemePluginSummary[], locale: AppLocale): ShortcutDefinition[] {
+  return plugins.filter((plugin) => plugin.enabled).flatMap((plugin) => plugin.actions.map((action) => ({
+    action: pluginShortcutId(plugin.id, action.id),
+    label: localizedPluginText(action.label, action.labelI18n, locale),
+    group: plugin.name,
+  })));
+}
+
+export function activeShortcutBindings(bindings: ShortcutBindings, definitions: ShortcutDefinition[]): ShortcutBindings {
+  return Object.fromEntries(definitions.map(({ action }) => [action, bindings[action] ?? null])) as ShortcutBindings;
+}
+
+export function assignShortcutBinding(bindings: ShortcutBindings, action: ShortcutAction, chord: string | null): ShortcutBindings {
+  const next: ShortcutBindings = { ...bindings, [action]: chord };
+  if (chord) {
+    for (const [otherAction, binding] of Object.entries(next)) {
+      if (otherAction !== action && binding === chord) {
+        next[otherAction as ShortcutAction] = null;
+      }
+    }
+  }
+  return next;
+}
 
 export function normalizeShortcutKey(key: string) {
   const aliases: Record<string, string> = {
@@ -98,6 +127,12 @@ export function readShortcutBindings() {
       const value = parsed[action];
       if (typeof value === "string" || value === null) {
         merged[action] = value;
+      }
+    }
+
+    for (const [action, value] of Object.entries(parsed)) {
+      if (/^plugin:[^:]+:[^:]+$/.test(action) && (typeof value === "string" || value === null)) {
+        merged[action as ShortcutAction] = value;
       }
     }
 
