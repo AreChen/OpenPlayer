@@ -98,11 +98,13 @@ impl Run {
             .map_err(|e| e.to_string())?;
             Package::import(&source, &directory.join("store"), app)?
         };
-        let upstream = if std::env::var_os("OPENPLAYER_SMOKE_NR_PACKAGE").is_some() {
-            Some(super::composition_smoke::Upstream::start(app)?)
-        } else {
-            None
-        };
+        let reverse_order = std::env::var_os("OPENPLAYER_SMOKE_REVERSE_ORDER").is_some();
+        let upstream =
+            if std::env::var_os("OPENPLAYER_SMOKE_NR_PACKAGE").is_some() && !reverse_order {
+                Some(super::composition_smoke::Upstream::start(app)?)
+            } else {
+                None
+            };
         let session = spawn(&package)?;
         let before = native_presentation::diagnostics(app)?;
         let options = if let Ok(value) = std::env::var("OPENPLAYER_SMOKE_PRESENTATION_OPTIONS") {
@@ -115,7 +117,7 @@ impl Run {
         } else {
             json!({"adapterLuid":luid,"width":960,"height":540,"frameRateLimit":30,"inputConversion":"sdr-bt709"})
         };
-        let run = Self {
+        let mut run = Self {
             app: app.clone(),
             package,
             session,
@@ -140,6 +142,14 @@ impl Run {
             return Err("application did not exit after close during initialization".into());
         }
         run.attach()?;
+        if reverse_order {
+            run.upstream = Some(super::composition_smoke::Upstream::start(app)?);
+            let state = native_presentation::diagnostics(app)?;
+            for key in ["filters", "matrix", "gamma"] {
+                run.before[key] = state[key].clone();
+            }
+            println!("PASS: NR attached after the native presenter");
+        }
         run.wait_generated(20)?;
         run.switch_decoder("software", "no")?;
         let expected = if std::env::var_os("OPENPLAYER_SMOKE_COPY_DEVICE").is_some() {
@@ -203,6 +213,9 @@ impl Run {
         println!("PASS: paused redraw, seek, resume and temporal-history invalidation");
         if run.upstream.is_some() {
             run.sample_composition()?;
+            if std::env::var_os("OPENPLAYER_SMOKE_SPEED").is_some() {
+                run.sample_speed_and_seeks()?;
+            }
         }
         Ok(run)
     }
@@ -299,7 +312,7 @@ impl Run {
         let adaptive = std::env::var("OPENPLAYER_SMOKE_NR_OPTIONS")
             .ok()
             .and_then(|value| serde_json::from_str::<Value>(&value).ok())
-            .is_some_and(|value| value["autoFrameRate"] == true);
+            .is_some_and(|value| value["autoFrameRate"] == true || value["adaptive"] == true);
         let factor = frames["factor"]
             .as_u64()
             .or_else(|| self.options["factor"].as_u64())
@@ -313,6 +326,48 @@ impl Run {
         {
             return Err("NR plus XeFG short A/V/cadence sample failed".into());
         }
+        Ok(())
+    }
+    fn sample_speed_and_seeks(&self) -> Result<(), String> {
+        let upstream = self.upstream.as_ref().ok_or("NR upstream missing")?;
+        upstream.set_speed(2.0)?;
+        tauri::async_runtime::block_on(mpv_embed::mpv_embed_set_speed(self.app.clone(), 2.0))?;
+        thread::sleep(Duration::from_secs(2));
+        let before =
+            tauri::async_runtime::block_on(mpv_embed::mpv_embed_snapshot(self.app.clone()))?
+                .ok_or("player missing")?;
+        let previous = self.status()?["sourceFrames"].as_u64().unwrap_or(0);
+        let nr_previous = upstream.processed_frames()?;
+        thread::sleep(Duration::from_secs(6));
+        let after =
+            tauri::async_runtime::block_on(mpv_embed::mpv_embed_snapshot(self.app.clone()))?
+                .ok_or("player missing")?;
+        let source = self.status()?["sourceFrames"]
+            .as_u64()
+            .unwrap_or(0)
+            .saturating_sub(previous);
+        let processed = upstream.processed_frames()?.saturating_sub(nr_previous);
+        println!(
+            "TRACE: 2x playback sample {}",
+            json!({"mediaSeconds": after.position - before.position, "wallSeconds": 6, "sourceFrames": source, "nrProcessedFrames": processed})
+        );
+        if after.position - before.position < 6.0 || source < 10 || processed < 5 {
+            return Err("NR plus XeFG did not keep progressing at 2x playback".into());
+        }
+        upstream.set_speed(1.0)?;
+        tauri::async_runtime::block_on(mpv_embed::mpv_embed_set_speed(self.app.clone(), 1.0))?;
+        for offset in [1.0, 2.0, 3.0, 4.0] {
+            tauri::async_runtime::block_on(mpv_embed::mpv_embed_seek(
+                self.app.clone(),
+                after.position + offset,
+            ))?;
+        }
+        let previous = self.status()?["sourceFrames"].as_u64().unwrap_or(0);
+        wait("presentation after rapid seeks", || {
+            Ok(self.status()?["sourceFrames"].as_u64().unwrap_or(0) > previous + 5)
+        })?;
+        upstream.validate()?;
+        println!("PASS: NR and XeFG progress at 2x and recover after rapid seeks");
         Ok(())
     }
     fn attach(&self) -> Result<(), String> {

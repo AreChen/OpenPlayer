@@ -38,6 +38,15 @@ fn source_path(name: &str, extension: &str) -> Result<PathBuf, String> {
 }
 
 impl Upstream {
+    pub(crate) fn set_speed(&self, speed: f64) -> Result<(), String> {
+        tauri::async_runtime::block_on(self.session.request(
+            "frames.speed",
+            json!({"speed": speed}),
+            CALL_TIMEOUT_MS,
+        ))?;
+        Ok(())
+    }
+
     pub(crate) fn start(app: &AppHandle) -> Result<Self, String> {
         let source = source_path("OPENPLAYER_SMOKE_NR_PACKAGE", "opplugin")?;
         let library = source_path("OPENPLAYER_SMOKE_NVIDIA_RUNTIME", "dll")?;
