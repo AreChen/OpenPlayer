@@ -67,9 +67,7 @@ fn compile_macos_mpv_render_view() {
         .flag("-fblocks")
         .flag("-Wno-deprecated-declarations");
 
-    for include_path in pkg_config_include_paths("mpv") {
-        build.include(include_path);
-    }
+    build.include(macos_mpv_include_path());
 
     build.compile("openplayer_macos_mpv_gl_view");
 
@@ -144,23 +142,32 @@ fn pkg_config_link_search_paths(package: &str) -> Option<Vec<std::path::PathBuf>
 }
 
 #[cfg(target_os = "macos")]
-fn pkg_config_include_paths(package: &str) -> Vec<std::path::PathBuf> {
-    let pkg_config = std::env::var_os("PKG_CONFIG").unwrap_or_else(|| "pkg-config".into());
-    let Ok(output) = std::process::Command::new(pkg_config)
-        .args(["--cflags-only-I", package])
-        .output()
-    else {
-        return Vec::new();
-    };
-    if !output.status.success() {
-        return Vec::new();
+fn macos_mpv_include_path() -> std::path::PathBuf {
+    use std::path::PathBuf;
+
+    if let Some(prefix) = std::env::var_os("OPENPLAYER_MPV_DIR") {
+        let include = PathBuf::from(prefix).join("include");
+        assert!(
+            include.join("mpv/render.h").is_file(),
+            "OPENPLAYER_MPV_DIR must contain include/mpv/render.h: {}",
+            include.display()
+        );
+        return include;
     }
 
-    String::from_utf8_lossy(&output.stdout)
-        .split_whitespace()
-        .filter_map(|flag| flag.strip_prefix("-I"))
-        .map(std::path::PathBuf::from)
-        .collect()
+    // pkgconf can suppress the -I flag for Homebrew's system include directory.
+    // Clang does not search that directory when targeting the macOS SDK.
+    let pkg_config = std::env::var_os("PKG_CONFIG").unwrap_or_else(|| "pkg-config".into());
+    let output = std::process::Command::new(pkg_config)
+        .args(["--variable=includedir", "mpv"])
+        .output()
+        .expect("pkg-config is required to locate macOS libmpv headers");
+    let include = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+    assert!(
+        output.status.success() && include.join("mpv/render.h").is_file(),
+        "could not locate mpv/render.h; set OPENPLAYER_MPV_DIR to the libmpv prefix"
+    );
+    include
 }
 
 fn main() {

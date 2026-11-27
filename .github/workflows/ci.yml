@@ -2,9 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, codex/openplayer-2.0-release]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   rust:
@@ -13,6 +14,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 2
 
       - name: Install Tauri Linux dependencies
         run: |
@@ -34,10 +37,13 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
       - name: Run tests
-        run: cargo test --workspace
+        run: cargo test --locked --workspace
+
+      - name: Check whitespace in the changes
+        run: git diff-tree --check HEAD^ HEAD
 
   frontend:
     name: Frontend
@@ -81,7 +87,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-15]
+        os: [windows-latest, macos-15, macos-15-intel]
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v7.1.0
@@ -102,7 +108,11 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew install mpv pkg-config
-          echo "PKG_CONFIG_PATH=$(brew --prefix mpv)/lib/pkgconfig" >> "$GITHUB_ENV"
+          prefix="$(brew --prefix mpv)"
+          test -f "$prefix/include/mpv/render.h"
+          test -f "$prefix/lib/libmpv.dylib"
+          echo "OPENPLAYER_MPV_DIR=$prefix" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig" >> "$GITHUB_ENV"
       - name: Build frontend assets
         if: runner.os == 'macOS'
         working-directory: apps/desktop
@@ -111,6 +121,8 @@ jobs:
           npm run build
       - name: Run platform Rust tests
         run: cargo test -p openplayer-desktop --locked
+      - name: Run platform Clippy
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Build native smoke executable
         if: runner.os == 'macOS'
         run: cargo build -p openplayer-desktop --locked --features window-smoke --bin window-smoke
