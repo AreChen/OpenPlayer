@@ -62,9 +62,12 @@ runs:
       run: |
         brew install mpv pkg-config
         prefix="$(brew --prefix mpv)"
-        test -f "$prefix/include/mpv/render.h"
-        test -f "$prefix/lib/libmpv.dylib"
-        PKG_CONFIG_PATH="$prefix/lib/pkgconfig" pkg-config --exists mpv
+        for file in "$prefix/include/mpv/render.h" "$prefix/lib/libmpv.dylib"; do
+          if [[ ! -f "$file" ]]; then
+            echo "Missing libmpv packaging dependency: $file" >&2
+            exit 1
+          fi
+        done
         {
           echo "OPENPLAYER_MPV_DIR=$prefix"
           echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
