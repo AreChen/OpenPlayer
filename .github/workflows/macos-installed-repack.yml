@@ -1,4 +1,4 @@
-name: Verify the installed Intel macOS candidate
+name: Verify both installed macOS candidates
 
 on:
   push:
@@ -17,6 +17,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - runner: macos-15
+            arch: arm64
           - runner: macos-15-intel
             arch: x64
     env:
@@ -98,6 +100,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: installed-intel-evidence-${{ matrix.arch }}
+          name: installed-macos-evidence-${{ matrix.arch }}
           path: ${{ runner.temp }}/diagnostic-evidence/
           if-no-files-found: warn

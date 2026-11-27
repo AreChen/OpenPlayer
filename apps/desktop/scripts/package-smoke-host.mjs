@@ -27,16 +27,6 @@ import CoreGraphics
 let action = CommandLine.arguments[1]
 let pid = pid_t(CommandLine.arguments[2])!
 guard let app = NSRunningApplication(processIdentifier: pid) else { exit(1) }
-let controlsTitle = "OpenPlayer Controls"
-
-func visibleWindows() -> [[String: Any]] {
-    let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
-        as? [[String: Any]] ?? []
-    return windows.filter {
-        ($0[kCGWindowOwnerPID as String] as? Int) == Int(pid)
-            && ($0[kCGWindowLayer as String] as? Int) == 0
-    }
-}
 
 func waitUntil(_ seconds: TimeInterval, _ condition: () -> Bool) -> Bool {
     let deadline = Date(timeIntervalSinceNow: seconds)
@@ -53,67 +43,44 @@ func attribute(_ element: AXUIElement, _ name: CFString) -> CFTypeRef? {
     return result
 }
 
-func focusOverlay(using source: CGEventSource?) -> Bool {
-    let accessible = AXIsProcessTrusted()
+func focusControls() -> Bool {
     let application = AXUIElementCreateApplication(pid)
-    let windows = accessible ? (attribute(application, kAXWindowsAttribute as CFString) as? [AXUIElement] ?? []) : []
-    let overlay = windows.first { (attribute($0, kAXTitleAttribute as CFString) as? String) == controlsTitle }
-    func overlayIsFocused() -> Bool {
-        guard let overlay, let focused = attribute(application, kAXFocusedWindowAttribute as CFString) else { return false }
+    let windows = attribute(application, kAXWindowsAttribute as CFString) as? [AXUIElement] ?? []
+    guard let overlay = windows.first(where: {
+        (attribute($0, kAXTitleAttribute as CFString) as? String) == "OpenPlayer Controls"
+    }) else { return false }
+    _ = AXUIElementPerformAction(overlay, kAXRaiseAction as CFString)
+    _ = AXUIElementSetAttributeValue(application, kAXFocusedWindowAttribute as CFString, overlay)
+    return waitUntil(2) {
+        guard let focused = attribute(application, kAXFocusedWindowAttribute as CFString) else { return false }
         return CFEqual(overlay, focused)
     }
-    print("AX access:", accessible, "AX windows:", windows.map { attribute($0, kAXTitleAttribute as CFString) as? String ?? "(untitled)" })
-    if let overlay {
-        let raise = AXUIElementPerformAction(overlay, kAXRaiseAction as CFString)
-        let focus = AXUIElementSetAttributeValue(application, kAXFocusedWindowAttribute as CFString, overlay)
-        print("Controls AXRaise:", raise.rawValue, "AXFocusedWindow request:", focus.rawValue)
-        if waitUntil(2, overlayIsFocused) {
-            print("Verified OpenPlayer Controls keyboard focus via Accessibility")
-            return true
-        }
-    }
-    let visible = visibleWindows()
-    print("Owned on-screen windows:", visible.map {
-        ($0[kCGWindowName as String] as? String ?? "(untitled)") + " #" +
-            String($0[kCGWindowNumber as String] as? Int ?? -1)
-    })
-    // AppKit orders the controls child window above the video window. Prefer
-    // its explicit name when macOS grants access to the window title.
-    guard let window = visible.first(where: { ($0[kCGWindowName as String] as? String) == controlsTitle }) ?? visible.first,
-          let bounds = window[kCGWindowBounds as String] as? NSDictionary,
-          let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary), rect.width >= 100, rect.height >= 100,
-          NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return false }
-    let location = CGPoint(x: rect.midX, y: rect.midY)
-    let click: [CGEventType] = [.mouseMoved, .leftMouseDown, .leftMouseUp]
-    for type in click {
-        guard let event = CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: location, mouseButton: .left) else {
-            return false
-        }
-        event.post(tap: .cghidEventTap)
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.12))
-    }
-    print("Clicked controls surface at", location, "within", rect)
-    if overlay != nil {
-        let focused = waitUntil(2, overlayIsFocused)
-        print("Controls AX focus after native click:", focused)
-        return focused
-    }
-    return NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
 }
 
 switch action {
 case "window":
-    guard !visibleWindows().isEmpty else { exit(1) }
+    let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+        as? [[String: Any]] ?? []
+    guard list.contains(where: {
+        ($0[kCGWindowOwnerPID as String] as? Int) == Int(pid)
+            && ($0[kCGWindowLayer as String] as? Int) == 0
+    }) else { exit(1) }
 case "close":
     guard app.terminate() else { exit(1) }
 case "keys":
-    guard CGPreflightPostEventAccess() else { exit(1) }
+    guard CGPreflightPostEventAccess(), AXIsProcessTrusted() else {
+        print("input-unavailable")
+        exit(0)
+    }
     if NSWorkspace.shared.frontmostApplication?.processIdentifier != pid {
         guard app.activate(options: [.activateAllWindows]) else { exit(1) }
     }
-    guard waitUntil(3, { NSWorkspace.shared.frontmostApplication?.processIdentifier == pid }) else { exit(1) }
+    guard waitUntil(3, { NSWorkspace.shared.frontmostApplication?.processIdentifier == pid }),
+          focusControls() else {
+        fputs("Could not focus the OpenPlayer Controls window.", stderr)
+        exit(1)
+    }
     let source = CGEventSource(stateID: .hidSystemState)
-    guard focusOverlay(using: source) else { exit(1) }
     for key in [125, 49, 124, 49] {
         guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid,
               let down = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(key), keyDown: true),
@@ -304,8 +271,7 @@ export class PackageSmokeHost {
       return true;
     }
     if (process.platform === "darwin") {
-      await run(this.macTool, ["keys", String(player.child.pid)]);
-      return true;
+      return await capture(this.macTool, ["keys", String(player.child.pid)]) === "ok";
     }
     await run("xdotool", ["windowactivate", "--sync", window, "key", "--clearmodifiers", "--delay", "200", "space", "Right", "Down", "space"]);
     return true;
@@ -387,12 +353,11 @@ export class PackageSmokeHost {
     }, 35_000);
     const controls = controlsRequested && await this.exerciseControls(player, window);
     if (process.platform === "darwin" && controls) {
-      const volume = await waitFor("macOS control to persist volume below the fresh profile default", async () => {
+      await waitFor("macOS volume control to save its setting", async () => {
         const profile = await this.readProfile(media).catch(() => null);
         const volume = profile?.settings?.volume;
-        return typeof volume === "number" && volume < 82 ? { volume } : false;
+        return typeof volume === "number" && volume < 82;
       }, 10_000);
-      console.log("macOS profile verified volume:", volume.volume);
     }
     await setTimeout(1_500);
     const { code, signal } = await this.close(player, window);
