@@ -15,10 +15,14 @@ app="$bundle/macos/OpenPlayer.app"
 dmg="$bundle/dmg/OpenPlayer_${version}_${arch}.dmg"
 temporary="$(mktemp -d)"
 keychain=""
+probe=""
 mountpoint="$temporary/mounted"
 
 cleanup() {
   hdiutil detach "$mountpoint" -quiet 2>/dev/null || true
+  if [[ -n "$probe" ]]; then
+    rm -f "$probe"
+  fi
   if [[ -n "$keychain" ]]; then
     security delete-keychain "$keychain" || true
   fi
@@ -29,7 +33,6 @@ trap cleanup EXIT
 exe_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
 exe="$app/Contents/MacOS/$exe_name"
 lipo "$exe" -verify_arch "$machine_arch"
-otool -L "$exe" | grep -E '@executable_path/\.\./Frameworks/libmpv[^/]*\.dylib'
 
 identity="-"
 sign_options=(--timestamp=none)
@@ -84,11 +87,6 @@ notarize_and_staple() {
 
 while IFS= read -r -d '' binary; do
   if file -b "$binary" | grep -q 'Mach-O'; then
-    references="$(otool -L "$binary")"
-    if grep -E '[[:space:]](/opt/homebrew/|/usr/local/|[^[:space:]]*/Cellar/)' <<< "$references"; then
-      echo "Unbundled dylib reference in $binary" >&2
-      exit 1
-    fi
     lipo "$binary" -verify_arch "$machine_arch"
     sign_code "$binary"
   fi
@@ -97,6 +95,34 @@ done < <(find "$app/Contents/Frameworks" -type f \( -name '*.dylib' -o -name '*.
 while IFS= read -r -d '' framework; do
   sign_code "$framework"
 done < <(find "$app/Contents/Frameworks" -depth -type d -name '*.framework' -print0)
+
+probe="$(mktemp "$app/Contents/MacOS/.mpv-load.XXXXXX")"
+xcrun clang -x c -o "$probe" - <<'C'
+#include <dlfcn.h>
+#include <stdio.h>
+
+int main(int argc, char **argv) {
+    if (argc != 2) return 1;
+
+    void *mpv = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
+    if (!mpv || !dlsym(mpv, "mpv_client_api_version")) {
+        fprintf(stderr, "Could not load bundled libmpv: %s\n", dlerror());
+        return 1;
+    }
+
+    dlclose(mpv);
+    return 0;
+}
+C
+chmod 700 "$probe"
+frameworks="$(cd "$app/Contents/Frameworks" && pwd -P)"
+for libmpv in "$frameworks"/libmpv*.dylib; do
+  test -f "$libmpv"
+  env -i PATH=/usr/bin:/bin "$probe" "$libmpv"
+  echo "Loaded bundled libmpv at $libmpv"
+done
+rm -f "$probe"
+probe=""
 
 sign_code "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
@@ -133,6 +159,7 @@ hdiutil verify "$dmg"
 hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$mountpoint"
 test "$(readlink "$mountpoint/Applications")" == /Applications
 codesign --verify --deep --strict --verbose=2 "$mountpoint/OpenPlayer.app"
+node apps/desktop/scripts/bundle-macos-libmpv.mjs --verify "$mountpoint/OpenPlayer.app"
 if [[ "$mode" == notarized ]]; then
   xcrun stapler validate "$mountpoint/OpenPlayer.app"
   spctl --assess --type execute --verbose=2 "$mountpoint/OpenPlayer.app"
