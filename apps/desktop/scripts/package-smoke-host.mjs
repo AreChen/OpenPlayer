@@ -39,9 +39,17 @@ case "close":
     guard app.terminate() else { exit(1) }
 case "keys":
     guard CGPreflightPostEventAccess() else { exit(1) }
+    let deadline = Date(timeIntervalSinceNow: 3)
+    if NSWorkspace.shared.frontmostApplication?.processIdentifier != pid {
+        guard app.activate(options: [.activateAllWindows]) else { exit(1) }
+    }
+    while NSWorkspace.shared.frontmostApplication?.processIdentifier != pid && Date() < deadline {
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+    }
     for key in [49, 124, 125, 49] {
-        CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(key), keyDown: true)?.postToPid(pid)
-        CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(key), keyDown: false)?.postToPid(pid)
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { exit(1) }
+        CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(key), keyDown: true)?.post(tap: .cghidEventTap)
+        CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(key), keyDown: false)?.post(tap: .cghidEventTap)
         Thread.sleep(forTimeInterval: 0.2)
     }
 default:

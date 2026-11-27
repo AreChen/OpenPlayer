@@ -2,6 +2,8 @@
 
 The Windows executable and NSIS installer use one native GPUI Fast window. libmpv renders video through D3D11 and DirectComposition without a WebView dependency. GPUI Motion respects the Windows animations setting. The current video composition path targets 8-bit SDR.
 
+Playback uses the active Windows audio output when available. If Windows has no usable output device, libmpv keeps playback and its timeline running silently.
+
 ## Run and package
 
 Use rustup with the x64 MSVC host and PowerShell. Cargo selects Rust 1.100.0 from the project toolchain file. From the repository root:

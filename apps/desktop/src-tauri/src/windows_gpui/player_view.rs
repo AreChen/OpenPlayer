@@ -207,6 +207,7 @@ impl PlayerView {
         let prepared = (|| -> anyhow::Result<_> {
             let mpv = Arc::new(Mpv::with_initializer(|init| {
                 init.set_option("vo", "libmpv")?;
+                init.set_option("audio-fallback-to-null", true)?;
                 init.set_option("hwdec", "no")?;
                 init.set_option("keep-open", true)?;
                 init.set_option("input-default-bindings", false)?;
