@@ -1,4 +1,4 @@
-name: Diagnose installed macOS player
+name: Verify the installed Intel macOS candidate
 
 on:
   push:
@@ -10,20 +10,18 @@ permissions:
 
 jobs:
   installed-repack:
-    name: Install diagnostic DMG (${{ matrix.arch }})
+    name: Install exact candidate DMG (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-15
-            arch: arm64
           - runner: macos-15-intel
             arch: x64
     env:
-      SOURCE_RUN: "46053483962"
-      SOURCE_COMMIT: 1d83e7b6f7d38dca7caa849570d638a7121cf88e
+      SOURCE_RUN: "46058420694"
+      SOURCE_COMMIT: 83551458220a0dffd8fdbda8b13f2aa7666246c1
       PACKAGE_TAG: v2.0.0
       PACKAGE_ARCH: ${{ matrix.arch }}
     steps:
@@ -66,41 +64,9 @@ jobs:
       - name: Install native packaging and sample media tools
         shell: bash
         run: |
-          brew install mpv pkg-config
           if ! command -v ffmpeg; then
             brew install ffmpeg
           fi
-
-      - name: Repack the installed application with its complete Mach-O dependency graph
-        shell: bash
-        run: |
-          export CARGO_TARGET_DIR="$RUNNER_TEMP/diagnostic-target"
-          export PACKAGE_OUTPUT="$RUNNER_TEMP/diagnostic-packages"
-          version="${PACKAGE_TAG#v}"
-          dmg="$RUNNER_TEMP/source-package/OpenPlayer_${version}_${PACKAGE_ARCH}.dmg"
-          mount="$RUNNER_TEMP/source-mount"
-          app="$CARGO_TARGET_DIR/release/bundle/macos/OpenPlayer.app"
-          mkdir -p "$mount" "$(dirname "$app")"
-          trap 'hdiutil detach "$mount" -quiet 2>/dev/null || true' EXIT
-          hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$mount"
-          ditto "$mount/OpenPlayer.app" "$app"
-          hdiutil detach "$mount"
-
-          exe_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
-          exe="$app/Contents/MacOS/$exe_name"
-          old_ref="$(otool -L "$exe" | awk 'index($1, "@executable_path/../Frameworks/libmpv") == 1 && $1 ~ /\.dylib$/ { print $1 }')"
-          test -n "$old_ref"
-          brew_lib="$(brew --prefix mpv)/lib/${old_ref##*/}"
-          test -f "$brew_lib"
-          rm -rf "$app/Contents/Frameworks" "$app/Contents/_CodeSignature"
-          install_name_tool -change "$old_ref" "$brew_lib" "$exe"
-
-          node apps/desktop/scripts/bundle-macos-libmpv.mjs "$app"
-          bash apps/desktop/scripts/build-macos-dmg.sh "$version" "$PACKAGE_ARCH" false
-
-          mkdir -p "$RUNNER_TEMP/diagnostic-evidence"
-          cp "$RUNNER_TEMP/source-package/build.json" "$RUNNER_TEMP/diagnostic-evidence/input-build.json"
-          cp "$PACKAGE_OUTPUT/build.json" "$RUNNER_TEMP/diagnostic-evidence/repacked-build.json"
 
       - name: Build the standalone profile reader
         shell: bash
@@ -121,17 +87,17 @@ jobs:
           cargo generate-lockfile --manifest-path "$helper/Cargo.toml"
           cargo build --locked --manifest-path "$helper/Cargo.toml" --target-dir "$helper/target"
 
-      - name: Exercise installed diagnostic DMG and isolated player profile
+      - name: Exercise the exact installed DMG with the isolated player profile
         shell: bash
         run: |
           node apps/desktop/scripts/run-package-smoke.mjs \
-            "$RUNNER_TEMP/diagnostic-packages" "$PACKAGE_TAG" "$GITHUB_SHA" \
+            "$RUNNER_TEMP/source-package" "$PACKAGE_TAG" "$SOURCE_COMMIT" \
             "$RUNNER_TEMP/diagnostic-evidence" "$RUNNER_TEMP/package-profile-crate/target/debug/package-profile"
 
       - name: Upload diagnostic results
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: installed-repack-evidence-${{ matrix.arch }}
+          name: installed-intel-evidence-${{ matrix.arch }}
           path: ${{ runner.temp }}/diagnostic-evidence/
           if-no-files-found: warn
