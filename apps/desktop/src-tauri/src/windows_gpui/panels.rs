@@ -1,4 +1,4 @@
-use gpui::{Context, Div, FontWeight, SharedString, Window, div, prelude::*, px, rgba};
+use gpui::{Context, Div, FontWeight, Pixels, SharedString, Window, div, prelude::*, px, rgba};
 use serde_json::{Value, json};
 
 use super::{
@@ -6,7 +6,18 @@ use super::{
     theme::icon,
     ui_state::{ContextMenu, MediaPanel, StreamDialog},
     widgets::{command, heading, icon_button, item_id, row, text_button, tooltip},
+    window_layout::COMPACT_WIDTH,
 };
+
+fn panel_bottom(width: Pixels, regular: f32) -> Pixels {
+    px(if width < px(436.) {
+        136.
+    } else if width < COMPACT_WIDTH {
+        98.
+    } else {
+        regular
+    })
+}
 
 impl PlayerView {
     pub(super) fn panels(
@@ -18,16 +29,16 @@ impl PlayerView {
     ) -> Div {
         let mut surface = div().absolute().inset_0().opacity(opacity);
         if self.ui.playlist {
-            surface = surface.child(self.playlist(slide, cx));
+            surface = surface.child(self.playlist(window, slide, cx));
         }
         if let Some(panel) = self.ui.panel {
-            surface = surface.child(self.media_panel(panel, slide, cx));
+            surface = surface.child(self.media_panel(panel, window, slide, cx));
         }
         if let Some(section) = self.ui.settings.as_deref() {
             surface = surface.child(self.settings_dialog(section, window, cx));
         }
         if let Some(stream) = self.ui.stream.as_ref() {
-            surface = surface.child(self.stream_dialog(stream, cx));
+            surface = surface.child(self.stream_dialog(stream, window, cx));
         }
         surface
     }
@@ -40,7 +51,8 @@ impl PlayerView {
     ) -> Div {
         let palette = self.palette;
         let viewport = window.viewport_size();
-        let height = px((menu.items.len() as f32 * 30. + 18.).min(440.));
+        let height = px((menu.items.len() as f32 * 30. + 18.).min(520.))
+            .min((viewport.height - px(16.)).max(px(20.)));
         let x = px(menu.position.x)
             .max(px(8.))
             .min(viewport.width - px(258.));
@@ -94,15 +106,19 @@ impl PlayerView {
                                     .child(shortcut.clone()),
                             );
                         }
-                        command(entry, "contextItem", json!(item.id), !item.disabled, cx)
+                        let enabled = !item.disabled
+                            && (item.id != "fitWindowToVideo"
+                                || (!window.is_fullscreen() && !window.is_maximized()));
+                        command(entry, "contextItem", json!(item.id), enabled, cx)
                             .into_any_element()
                     })),
             )
     }
 
-    fn playlist(&self, slide: f32, cx: &Context<Self>) -> Div {
+    fn playlist(&self, window: &Window, slide: f32, cx: &Context<Self>) -> Div {
         let ui = &self.ui;
         let palette = self.palette;
+        let width = window.viewport_size().width;
         let tip = |element, label| tooltip(element, ui.label(label), palette);
         let tab = |id, label, historical| {
             text_button(id, label, palette, historical == self.show_history)
@@ -213,10 +229,14 @@ impl PlayerView {
             };
         div()
             .absolute()
-            .right_6()
+            .right(if width < COMPACT_WIDTH {
+                px(10.)
+            } else {
+                px(24.)
+            })
             .top(px(52. + slide))
-            .bottom(px(122. - slide))
-            .w(px(396.))
+            .bottom(panel_bottom(width, 122.) - px(slide))
+            .w(px(396.).min(width - px(20.)))
             .rounded(px(14.))
             .bg(palette.strong)
             .border_1()
@@ -244,9 +264,17 @@ impl PlayerView {
             })
     }
 
-    fn media_panel(&self, panel: MediaPanel, slide: f32, cx: &Context<Self>) -> Div {
+    fn media_panel(
+        &self,
+        panel: MediaPanel,
+        window: &Window,
+        slide: f32,
+        cx: &Context<Self>,
+    ) -> Div {
         let ui = &self.ui;
         let palette = self.palette;
+        let viewport = window.viewport_size();
+        let bottom = panel_bottom(viewport.width, 117.) - px(slide);
         let (title, kind, width, body) =
             match panel {
                 MediaPanel::Speed => {
@@ -308,9 +336,13 @@ impl PlayerView {
             };
         div()
             .absolute()
-            .left(px(24.))
-            .bottom(px(117. - slide))
-            .w(px(width))
+            .left(if viewport.width < COMPACT_WIDTH {
+                px(10.)
+            } else {
+                px(24.)
+            })
+            .bottom(bottom)
+            .w(px(width).min(viewport.width - px(20.)))
             .rounded(px(14.))
             .bg(palette.strong)
             .border_1()
@@ -339,7 +371,7 @@ impl PlayerView {
             .child(
                 div()
                     .id("media-options")
-                    .max_h(px(306.))
+                    .max_h(px(306.).min(viewport.height - bottom - px(56.)))
                     .overflow_y_scroll()
                     .child(body),
             )
@@ -477,7 +509,7 @@ impl PlayerView {
             ))
     }
 
-    fn stream_dialog(&self, stream: &StreamDialog, cx: &Context<Self>) -> Div {
+    fn stream_dialog(&self, stream: &StreamDialog, window: &Window, cx: &Context<Self>) -> Div {
         let palette = self.palette;
         let ui = &self.ui;
         div()
@@ -490,7 +522,7 @@ impl PlayerView {
             .justify_center()
             .child(
                 div()
-                    .w(px(540.))
+                    .w(px(540.).min(window.viewport_size().width - px(24.)))
                     .max_h(px(450.))
                     .rounded(px(16.))
                     .bg(palette.surface)

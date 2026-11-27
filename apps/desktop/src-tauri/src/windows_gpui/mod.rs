@@ -18,6 +18,7 @@ mod ui_state;
 mod updates;
 mod video;
 mod widgets;
+mod window_layout;
 
 use self::{controller::Controller, player_view::PlayerView, video::VideoRenderer};
 
@@ -91,7 +92,7 @@ fn run_player() -> Result<()> {
             let window = cx.open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
-                    window_min_size: Some(size(px(960.), px(540.))),
+                    window_min_size: Some(window_layout::minimum_size()),
                     titlebar: Some(TitlebarOptions {
                         title: Some(WINDOW_TITLE.into()),
                         appears_transparent: true,

@@ -308,6 +308,25 @@ impl Controller {
         Ok(())
     }
 
+    pub(super) fn video_aspect_ratio(&self) -> Option<f64> {
+        if !self.ui.loaded || self.ui.audio_only {
+            return None;
+        }
+        let mpv = self.mpv.as_ref()?;
+        let ratio = mpv
+            .get_property::<f64>("video-out-params/aspect")
+            .ok()
+            .filter(|ratio| ratio.is_finite() && *ratio > 0.)?;
+        let rotation = mpv
+            .get_property::<i64>("video-out-params/rotate")
+            .unwrap_or(0);
+        Some(if rotation.rem_euclid(180) == 90 {
+            ratio.recip()
+        } else {
+            ratio
+        })
+    }
+
     fn refresh(&mut self, now: Instant) -> Result<()> {
         if let Some(mpv) = self.mpv.clone() {
             self.refresh_playback(&mpv, now)?;

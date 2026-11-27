@@ -11,6 +11,7 @@ use super::{
     player_view::{EditTarget, PlayerView},
     theme::{Palette, icon, logo, parse},
     widgets::{command, heading, icon_button, item_id, row, slider, text_button, tooltip},
+    window_layout::COMPACT_WIDTH,
 };
 
 impl PlayerView {
@@ -29,6 +30,7 @@ impl PlayerView {
             ("about", "info"),
         ];
         let size = window.viewport_size();
+        let compact = size.width < COMPACT_WIDTH;
         let content = match section {
             "playback" => self.playback_settings(cx),
             "shortcuts" => self.shortcut_settings(cx),
@@ -49,7 +51,7 @@ impl PlayerView {
             )
             .child(
                 div()
-                    .w((size.width - px(56.)).min(px(760.)))
+                    .w((size.width - px(if compact { 20. } else { 56. })).min(px(760.)))
                     .h((size.height - px(56.)).min(px(640.)))
                     .flex()
                     .flex_col()
@@ -106,7 +108,7 @@ impl PlayerView {
                             .min_h_0()
                             .child(
                                 div()
-                                    .w(px(158.))
+                                    .w(px(if compact { 108. } else { 158. }))
                                     .flex_none()
                                     .p_3()
                                     .flex()
@@ -119,7 +121,9 @@ impl PlayerView {
                                         command(
                                             row(id, palette, id == section)
                                                 .gap_2()
-                                                .child(icon(glyph, palette.accent, 17.))
+                                                .when(!compact, |item| {
+                                                    item.child(icon(glyph, palette.accent, 17.))
+                                                })
                                                 .child(ui.label(&format!("settings.nav.{id}"))),
                                             "settingsSection",
                                             json!(id),
@@ -135,7 +139,7 @@ impl PlayerView {
                                     .min_w_0()
                                     .min_h_0()
                                     .overflow_y_scroll()
-                                    .p_4()
+                                    .p(px(if compact { 8. } else { 16. }))
                                     .child(content),
                             ),
                     ),
@@ -345,6 +349,7 @@ impl PlayerView {
             .flex_col()
             .gap_3()
             .child(heading(ui.label("settings.playback.title"), palette))
+            .child(self.default_app_settings(cx))
             .children(
                 options
                     .into_iter()

@@ -115,6 +115,9 @@ impl PlayerView {
         cx.observe_window_activation(window, |view, window, cx| {
             if window.is_window_active() {
                 view.focus.focus(window, cx);
+                if view.ui.settings.as_deref() == Some("playback") {
+                    view.refresh_default_app_status(cx);
+                }
             }
             cx.notify();
         })
@@ -366,7 +369,12 @@ impl PlayerView {
             _ => self.controller.dispatch(kind, value),
         }
         let state = self.controller.snapshot();
+        let entered_playback_settings = self.ui.settings.as_deref() != Some("playback")
+            && state.settings.as_deref() == Some("playback");
         self.apply(state, cx, true);
+        if entered_playback_settings {
+            self.refresh_default_app_status(cx);
+        }
         if self.ui.settings.as_deref() == Some("about")
             && matches!(self.update_status, UpdateStatus::Idle)
         {
@@ -424,6 +432,12 @@ impl PlayerView {
             Some("mediaProperties") => {
                 self.send("closeContext", Value::Null, cx);
                 self.open_active_media_properties(cx);
+            }
+            Some("fitWindowToVideo") => {
+                self.send("closeContext", Value::Null, cx);
+                if let Some(aspect) = self.controller.video_aspect_ratio() {
+                    super::window_layout::fit_window_to_video(window, aspect, cx);
+                }
             }
             Some(action @ ("openMedia" | "appendFiles" | "appendFolder" | "addSubtitle")) => {
                 self.send("closeContext", Value::Null, cx);

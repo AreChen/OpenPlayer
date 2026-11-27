@@ -38,8 +38,8 @@ VIAddVersionKey /LANG=1033 "LegalCopyright" "OpenPlayer contributors"
 
 LangString OpenPlayerFinishLaunch ${LANG_ENGLISH} "Launch OpenPlayer now"
 LangString OpenPlayerFinishLaunch ${LANG_SIMPCHINESE} "立即打开 OpenPlayer"
-LangString OpenPlayerFinishDefault ${LANG_ENGLISH} "Set as the default player"
-LangString OpenPlayerFinishDefault ${LANG_SIMPCHINESE} "设置为默认播放器"
+LangString OpenPlayerFinishDefault ${LANG_ENGLISH} "Choose default apps in Windows Settings"
+LangString OpenPlayerFinishDefault ${LANG_SIMPCHINESE} "打开 Windows 默认应用设置"
 
 !include /CHARSET=UTF8 "openplayer-process.nsh"
 !insertmacro OpenPlayerProcessFunctions "" 0x40000000
@@ -86,11 +86,14 @@ Section "OpenPlayer"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "UninstallString" '"$INSTDIR\uninstall.exe"'
   WriteRegDWORD HKCU "${UNINSTALL_KEY}" "NoModify" 1
   WriteRegDWORD HKCU "${UNINSTALL_KEY}" "NoRepair" 1
-  WriteRegStr HKCU "Software\Classes\${MEDIA_CLASS}" "" "OpenPlayer Media"
+  WriteRegStr HKCU "Software\Classes\${MEDIA_CLASS}" "" "OpenPlayer media file"
   WriteRegStr HKCU "Software\Classes\${MEDIA_CLASS}\DefaultIcon" "" "$INSTDIR\openplayer-desktop.exe,0"
+  WriteRegStr HKCU "Software\Classes\${MEDIA_CLASS}\shell" "" "open"
+  WriteRegStr HKCU "Software\Classes\${MEDIA_CLASS}\shell\open" "" "Open with OpenPlayer"
   WriteRegStr HKCU "Software\Classes\${MEDIA_CLASS}\shell\open\command" "" '"$INSTDIR\openplayer-desktop.exe" "%1"'
   WriteRegStr HKCU "${CAPABILITIES}" "ApplicationName" "${REGISTERED_APP_NAME}"
   WriteRegStr HKCU "${CAPABILITIES}" "ApplicationDescription" "OpenPlayer Media Player"
+  WriteRegStr HKCU "${CAPABILITIES}" "ApplicationIcon" "$INSTDIR\openplayer-desktop.exe,0"
   WriteRegStr HKCU "Software\RegisteredApplications" "${REGISTERED_APP_NAME}" "${CAPABILITIES}"
   !insertmacro RegisterMediaExtensions
   !insertmacro OP_REGISTER_MEDIA_SHELL_METADATA

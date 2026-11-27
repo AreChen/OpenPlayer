@@ -3,7 +3,8 @@ use std::collections::HashSet;
 use gpui::{Context, Div, ElementId, SharedString, Stateful, div, prelude::*};
 
 use crate::shell_preview::{
-    ShellPreviewFormatInfo, shell_preview_formats, shell_preview_open_default_apps_settings,
+    ShellPreviewDefaultStatus, ShellPreviewFormatInfo, shell_preview_default_status,
+    shell_preview_formats, shell_preview_open_default_apps_settings,
     shell_preview_register_formats,
 };
 
@@ -18,12 +19,14 @@ pub(in crate::windows_gpui) struct ExplorerPreview {
     selected: HashSet<&'static str>,
     registering: bool,
     status: Option<Status>,
+    defaults: Option<ShellPreviewDefaultStatus>,
+    checking_defaults: bool,
+    default_apps_error: Option<String>,
 }
 
 enum Status {
     Registered(usize),
     RegisterFailed(String),
-    DefaultAppsFailed(String),
 }
 
 #[derive(Clone, Copy)]
@@ -33,6 +36,7 @@ enum Action {
     RestoreDefaults,
     Register,
     DefaultApps,
+    RefreshDefaultApps,
 }
 
 impl ExplorerPreview {
@@ -43,6 +47,9 @@ impl ExplorerPreview {
             formats,
             registering: false,
             status: None,
+            defaults: None,
+            checking_defaults: false,
+            default_apps_error: None,
         }
     }
 
@@ -60,6 +67,98 @@ fn common_formats(formats: &[ShellPreviewFormatInfo]) -> HashSet<&'static str> {
 }
 
 impl PlayerView {
+    pub(in crate::windows_gpui) fn default_app_settings(&self, cx: &Context<Self>) -> Div {
+        let palette = self.palette;
+        let preview = &self.explorer_preview;
+        let status = if preview.checking_defaults {
+            self.explorer_label("checkingDefaults")
+        } else if let Some(defaults) = &preview.defaults {
+            self.explorer_label("defaultCoverage")
+                .replace("{active}", &defaults.openplayer_count.to_string())
+                .replace("{total}", &defaults.total_count.to_string())
+                .into()
+        } else {
+            self.explorer_label("defaultCoveragePending")
+        };
+        card(palette)
+            .child(heading(self.explorer_label("defaultPlayerTitle"), palette))
+            .child(
+                div()
+                    .text_color(palette.muted)
+                    .child(self.explorer_label("defaultPlayerDescription")),
+            )
+            .child(div().text_color(palette.text).child(status))
+            .when_some(
+                preview
+                    .defaults
+                    .as_ref()
+                    .filter(|_| !preview.checking_defaults),
+                |el, defaults| {
+                    let details = self
+                        .explorer_label("defaultCoverageDetails")
+                        .replace("{other}", &defaults.other_count.to_string())
+                        .replace("{unassigned}", &defaults.unassigned_count.to_string());
+                    el.child(div().text_color(palette.muted).child(details))
+                        .when(defaults.unknown_count != 0, |el| {
+                            el.child(
+                                div().text_color(palette.muted).child(
+                                    self.explorer_label("defaultCoverageUnknown")
+                                        .replace("{count}", &defaults.unknown_count.to_string()),
+                                ),
+                            )
+                        })
+                },
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .gap_2()
+                    .child(self.explorer_button(
+                        "explorer-default-apps",
+                        self.explorer_label("defaultApps"),
+                        true,
+                        Action::DefaultApps,
+                        cx,
+                    ))
+                    .child(self.explorer_button(
+                        "explorer-refresh-defaults",
+                        self.explorer_label("refreshDefaults"),
+                        false,
+                        Action::RefreshDefaultApps,
+                        cx,
+                    )),
+            )
+            .when_some(preview.default_apps_error.as_ref(), |el, error| {
+                el.child(
+                    div().text_color(palette.danger).child(
+                        self.explorer_label("openDefaultAppsFailed")
+                            .replace("{error}", error),
+                    ),
+                )
+            })
+    }
+
+    pub(in crate::windows_gpui) fn refresh_default_app_status(&mut self, cx: &mut Context<Self>) {
+        if self.explorer_preview.checking_defaults {
+            return;
+        }
+        self.explorer_preview.checking_defaults = true;
+        let query = cx
+            .background_executor()
+            .spawn(async { shell_preview_default_status() });
+        cx.spawn(async move |view, cx| {
+            let status = query.await;
+            let _ = view.update(cx, |view, cx| {
+                view.explorer_preview.defaults = Some(status);
+                view.explorer_preview.checking_defaults = false;
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
     pub(super) fn explorer_settings(&self, cx: &Context<Self>) -> Div {
         let preview = &self.explorer_preview;
         let palette = self.palette;
@@ -78,9 +177,6 @@ impl PlayerView {
             Status::RegisterFailed(error) => {
                 self.explorer_label("failed").replace("{error}", error)
             }
-            Status::DefaultAppsFailed(error) => self
-                .explorer_label("openDefaultAppsFailed")
-                .replace("{error}", error),
         });
         card(palette)
             .child(heading(self.explorer_label("title"), palette))
@@ -110,13 +206,6 @@ impl PlayerView {
                         self.explorer_label("defaults"),
                         false,
                         Action::RestoreDefaults,
-                        cx,
-                    ))
-                    .child(self.explorer_button(
-                        "explorer-default-apps",
-                        self.explorer_label("defaultApps"),
-                        false,
-                        Action::DefaultApps,
                         cx,
                     ))
                     .child(self.explorer_button(
@@ -169,9 +258,14 @@ impl PlayerView {
         cx: &Context<Self>,
     ) -> Stateful<Div> {
         let button = text_button(id, label, self.palette, active);
-        if self.explorer_preview.registering
-            || matches!(action, Action::Register) && self.explorer_preview.selected.is_empty()
-        {
+        let preview = &self.explorer_preview;
+        let enabled = match action {
+            Action::DefaultApps => true,
+            Action::RefreshDefaultApps => !preview.checking_defaults,
+            Action::Register => !preview.registering && !preview.selected.is_empty(),
+            _ => !preview.registering,
+        };
+        if !enabled {
             button.opacity(0.42)
         } else {
             button
@@ -182,14 +276,15 @@ impl PlayerView {
 
     fn explorer_action(&mut self, action: Action, cx: &mut Context<Self>) {
         let preview = &mut self.explorer_preview;
-        preview.status = None;
         match action {
             Action::Toggle(extension) => {
+                preview.status = None;
                 if !preview.selected.remove(extension) {
                     preview.selected.insert(extension);
                 }
             }
             Action::ToggleAll => {
+                preview.status = None;
                 if preview.all_selected() {
                     preview.selected.clear();
                 } else {
@@ -200,13 +295,16 @@ impl PlayerView {
                         .collect();
                 }
             }
-            Action::RestoreDefaults => preview.selected = common_formats(&preview.formats),
-            Action::DefaultApps => {
-                if let Err(error) = shell_preview_open_default_apps_settings() {
-                    preview.status = Some(Status::DefaultAppsFailed(error));
-                }
+            Action::RestoreDefaults => {
+                preview.status = None;
+                preview.selected = common_formats(&preview.formats);
             }
+            Action::DefaultApps => {
+                preview.default_apps_error = shell_preview_open_default_apps_settings().err();
+            }
+            Action::RefreshDefaultApps => self.refresh_default_app_status(cx),
             Action::Register => {
+                preview.status = None;
                 preview.registering = true;
                 let selected = preview
                     .selected

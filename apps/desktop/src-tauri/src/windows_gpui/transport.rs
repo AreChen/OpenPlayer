@@ -5,6 +5,7 @@ use super::{
     player_view::PlayerView,
     ui_state::MediaPanel,
     widgets::{button_feedback, command, icon_button, slider, text_button, tooltip},
+    window_layout::COMPACT_WIDTH,
 };
 
 impl PlayerView {
@@ -17,6 +18,7 @@ impl PlayerView {
     ) -> Div {
         let volume = self.volume_button(volume_allowed, window, cx);
         let decode = self.decode_button(window, cx);
+        let compact = window.viewport_size().width < COMPACT_WIDTH;
         let (fullscreen_glyph, fullscreen_label) = if window.is_fullscreen() {
             ("exitFullscreen", "controls.exitFullscreen")
         } else {
@@ -57,7 +59,7 @@ impl PlayerView {
         let timeline = div()
             .flex()
             .items_center()
-            .gap_2()
+            .gap(px(if compact { 4. } else { 8. }))
             .child(toggle_time("current-time", &current_time))
             .child(command(
                 tip(
@@ -114,7 +116,8 @@ impl PlayerView {
         let strip = div()
             .flex()
             .items_center()
-            .gap_2()
+            .gap(px(if compact { 4. } else { 8. }))
+            .when(compact, |el| el.flex_wrap())
             .child(button(
                 "openMedia",
                 "openMedia",
@@ -157,7 +160,7 @@ impl PlayerView {
                 ui.panel == Some(MediaPanel::Tracks),
                 true,
             ))
-            .child(div().flex_1())
+            .when(!compact, |el| el.child(div().flex_1()))
             .child(button(
                 "togglePlaylist",
                 "list",
@@ -179,15 +182,15 @@ impl PlayerView {
             ));
         div()
             .absolute()
-            .left(px(24.))
-            .right(px(24.))
-            .bottom(px(24. - slide))
+            .left(px(if compact { 10. } else { 24. }))
+            .right(px(if compact { 10. } else { 24. }))
+            .bottom(px(if compact { 10. } else { 24. }) - px(slide))
             .flex()
             .flex_col()
             .gap_2()
             .rounded(px(14.))
-            .px(px(14.))
-            .py(px(12.))
+            .px(px(if compact { 8. } else { 14. }))
+            .py(px(if compact { 8. } else { 12. }))
             .bg(palette.transport)
             .occlude()
             .child(timeline)

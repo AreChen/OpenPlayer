@@ -6,7 +6,7 @@ use gpui::{
 };
 
 use super::super::{PlayerView, QuickLocation, QuickOpenMode, address::address_field};
-use super::{SIDEBAR_WIDTH, quick_tooltip};
+use super::quick_tooltip;
 use crate::windows_gpui::{
     theme::icon,
     widgets::{button_feedback, icon_button, row},
@@ -298,7 +298,7 @@ impl PlayerView {
             .child(edit)
     }
 
-    pub(super) fn quick_sidebar(&self, cx: &Context<Self>) -> Stateful<Div> {
+    pub(super) fn quick_sidebar(&self, width: f32, cx: &Context<Self>) -> Stateful<Div> {
         let picker = self.quick_open.as_ref().expect("browser is open");
         let palette = self.palette;
         let section = |key| {
@@ -316,7 +316,7 @@ impl PlayerView {
         let current = (!picker.show_media_favorites).then_some(picker.directory.as_path());
         div()
             .id("quick-sidebar")
-            .w(px(SIDEBAR_WIDTH))
+            .w(px(width))
             .min_h_0()
             .flex_none()
             .flex()

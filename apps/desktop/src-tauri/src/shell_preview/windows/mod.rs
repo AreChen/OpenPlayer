@@ -1,4 +1,6 @@
 #[cfg(windows)]
+mod defaults;
+#[cfg(windows)]
 mod registration;
 #[cfg(windows)]
 mod registry;
@@ -9,9 +11,18 @@ mod settings;
 use super::formats::{ShellPreviewFormat, ShellPreviewRegistrationSummary};
 
 #[cfg(windows)]
+pub(crate) use defaults::{ShellPreviewDefaultStatus, shell_preview_default_status};
+#[cfg(windows)]
 pub(super) use registration::register_shell_previews;
 #[cfg(windows)]
 pub(super) use settings::open_default_apps_settings;
+
+#[cfg(windows)]
+const OPENPLAYER_PROG_ID: &str = "OpenPlayer.Media";
+#[cfg(windows)]
+const OPENPLAYER_REGISTERED_APP_NAME: &str = "OpenPlayer";
+#[cfg(windows)]
+const OPENPLAYER_CAPABILITIES_KEY: &str = "Software\\OpenPlayer\\Capabilities";
 
 #[cfg(not(windows))]
 pub(super) fn register_shell_previews(

@@ -20,7 +20,15 @@ Install NSIS and run the package script from the repository root:
 ./apps/desktop/scripts/build-windows.ps1
 ~~~
 
-The installer is created in `target/release/bundle/nsis/`. The finish page offers two independent options. **Launch OpenPlayer now** is selected by default. **Set as the default player** opens Windows Default Apps for the user to confirm the desired associations. During upgrade and removal, the installer closes the process that is using the files in the selected installation directory.
+The installer is created in `target/release/bundle/nsis/`. The finish page offers two independent options. **Launch OpenPlayer now** is selected by default. **Choose default apps in Windows Settings** opens the system settings page. During upgrade and removal, the installer closes the process that is using the files in the selected installation directory.
+
+## Default player
+
+Open **Settings → Playback → Default Player** to check how many supported file types currently open with OpenPlayer. Choose **Open Windows Default Apps**, then select OpenPlayer for the file types you want. The File Explorer preview controls register thumbnails and media metadata for the selected formats.
+
+## Portrait video
+
+Right-click the video and choose **Fit Window to Video** to resize the window to the visible video's aspect ratio. In fullscreen, **Fit** shows the entire image and **Fill** covers the display by cropping it.
 
 ## Updates
 

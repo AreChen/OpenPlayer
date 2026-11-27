@@ -208,6 +208,13 @@ impl Controller {
         }
 
         let loaded = self.ui.loaded;
+        let fit_window = self.video_aspect_ratio().map(|_| Row {
+            action: "fitWindowToVideo",
+            label: "fitWindowToVideo",
+            icon: "restore",
+            shortcut: None,
+            enabled: true,
+        });
         let mut items = Vec::with_capacity(18);
         let groups = [
             vec![
@@ -290,7 +297,10 @@ impl Controller {
                     shortcut: None,
                     enabled: loaded,
                 },
-            ],
+            ]
+            .into_iter()
+            .chain(fit_window)
+            .collect(),
             vec![
                 Row {
                     action: "toggleFullscreen",

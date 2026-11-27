@@ -5,13 +5,11 @@ use crate::shell_preview::formats::{
 use super::registry::{
     notify_shell_association_changed, write_reg_dword, write_reg_none, write_reg_string,
 };
+use super::{OPENPLAYER_CAPABILITIES_KEY, OPENPLAYER_PROG_ID, OPENPLAYER_REGISTERED_APP_NAME};
 
 const THUMBNAIL_HANDLER_GUID: &str = "{e357fccd-a995-4576-b01f-234630154e96}";
 const LEGACY_IMAGE_HANDLER_GUID: &str = "{BB2E617C-0920-11D1-9A0B-00C04FC2D6C1}";
 const PROPERTY_THUMBNAIL_HANDLER_CLSID: &str = "{9DBD2C50-62AD-11D0-B806-00C04FD706EC}";
-const OPENPLAYER_PROG_ID: &str = "OpenPlayer.Media";
-const OPENPLAYER_REGISTERED_APP_NAME: &str = "OpenPlayer";
-const OPENPLAYER_CAPABILITIES_KEY: &str = "Software\\OpenPlayer\\Capabilities";
 
 pub(in crate::shell_preview) fn register_shell_previews(
     formats: &[ShellPreviewFormat],

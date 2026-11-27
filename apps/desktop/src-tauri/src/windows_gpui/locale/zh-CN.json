@@ -88,7 +88,8 @@
     "settings": "设置",
     "closeWindow": "关闭窗口",
     "openNetworkStream": "打开网络流",
-    "mediaProperties": "媒体属性"
+    "mediaProperties": "媒体属性",
+    "fitWindowToVideo": "窗口适配视频"
   },
   "settings": {
     "title": "设置",
@@ -129,19 +130,27 @@
     },
     "shellPreview": {
       "title": "资源管理器预览",
-      "description": "为选中的媒体格式登记资源管理器预览，并让 OpenPlayer 出现在 Windows 默认应用选项中。",
+      "description": "为选中的格式注册资源管理器缩略图和媒体信息。",
       "selectAll": "全选",
       "clearAll": "取消全选",
-      "defaults": "默认",
-      "defaultApps": "默认应用",
-      "register": "注册 {count} 种格式",
+      "defaults": "选中常用格式",
+      "defaultApps": "打开 Windows 默认应用设置",
+      "register": "注册 {count} 种预览格式",
       "registering": "注册中",
       "video": "视频",
       "audio": "音频",
       "noSelection": "请选择至少一种格式",
-      "registered": "已注册 {count} 种格式，请在 Windows 设置中选择默认应用。",
-      "failed": "无法注册格式（{error}）",
-      "openDefaultAppsFailed": "无法打开 Windows 默认应用设置（{error}）"
+      "registered": "已为 {count} 种格式注册资源管理器预览。",
+      "failed": "无法注册资源管理器预览（{error}）",
+      "openDefaultAppsFailed": "无法打开 Windows 默认应用设置（{error}）",
+      "defaultPlayerTitle": "默认播放器",
+      "defaultPlayerDescription": "在 Windows 设置中选择文件类型，再将 OpenPlayer 设为该类型的默认应用。",
+      "refreshDefaults": "刷新状态",
+      "checkingDefaults": "正在查询 Windows 默认应用…",
+      "defaultCoveragePending": "刷新状态可查看哪些格式会由 OpenPlayer 打开。",
+      "defaultCoverage": "OpenPlayer 是 {active} / {total} 种支持格式的默认应用。",
+      "defaultCoverageDetails": "{other} 种由其他应用打开 · {unassigned} 种尚未设置",
+      "defaultCoverageUnknown": "有 {count} 种格式无法查询"
     },
     "shortcuts": {
       "title": "快捷键",

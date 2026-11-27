@@ -1,6 +1,6 @@
 use std::path::Path;
 
-const SUPPORTED_MEDIA_EXTENSIONS: &[&str] = &[
+pub(crate) const SUPPORTED_MEDIA_EXTENSIONS: &[&str] = &[
     "3g2", "3gp", "3gp2", "3gpp", "aac", "ac3", "adts", "aif", "aifc", "aiff", "alac", "amr",
     "ape", "asf", "au", "avi", "awb", "caf", "dff", "divx", "dsf", "dts", "dtshd", "dv", "dvr-ms",
     "eac3", "f4v", "flac", "flv", "gsm", "h264", "h265", "hevc", "m1v", "m2t", "m2ts", "m2v",

@@ -3,6 +3,8 @@ mod collect;
 pub(crate) mod commands;
 mod extensions;
 
+#[cfg(windows)]
+pub(crate) use extensions::SUPPORTED_MEDIA_EXTENSIONS;
 #[cfg(all(windows, feature = "windows-gpui"))]
 pub(crate) use extensions::is_supported_media_path;
 mod sort;

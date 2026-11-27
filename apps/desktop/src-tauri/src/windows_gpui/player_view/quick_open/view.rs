@@ -12,11 +12,10 @@ use super::{
 use crate::windows_gpui::{
     theme::icon,
     widgets::{icon_button, text_button, tooltip as quick_tooltip},
+    window_layout::COMPACT_WIDTH,
 };
 
 pub(super) use entry_menu::QuickEntryContext;
-
-const SIDEBAR_WIDTH: f32 = 184.;
 
 impl PlayerView {
     pub(in crate::windows_gpui::player_view) fn quick_open_view(
@@ -48,8 +47,10 @@ impl PlayerView {
         let picker = self.quick_open.as_ref().expect("browser is open");
         let palette = self.palette;
         let size = window.viewport_size();
-        let width = (size.width - px(48.)).min(px(1220.));
+        let compact = size.width < COMPACT_WIDTH;
+        let width = (size.width - px(if compact { 16. } else { 48. })).min(px(1220.));
         let height = (size.height - px(40.)).min(px(770.));
+        let sidebar_width = if compact { 109. } else { 184. };
         let title = match picker.mode {
             QuickOpenMode::Open => "media.quickOpen.title",
             QuickOpenMode::AppendFiles => "media.quickOpen.appendFiles",
@@ -139,9 +140,9 @@ impl PlayerView {
                             .flex_1()
                             .min_h_0()
                             .overflow_hidden()
-                            .child(self.quick_sidebar(cx))
+                            .child(self.quick_sidebar(sidebar_width, cx))
                             .child(self.quick_contents(
-                                f32::from(width) - SIDEBAR_WIDTH,
+                                f32::from(width) - sidebar_width,
                                 listing,
                                 cx,
                             )),

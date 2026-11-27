@@ -33,7 +33,7 @@ impl PlayerView {
         match picker.visible_entries() {
             DirectoryEntries::Ready(entries) if !entries.is_empty() => {
                 let content_width = width - CONTENT_PADDING * 2.;
-                let columns = (content_width / 178.).floor().clamp(3., 5.) as usize;
+                let columns = (content_width / 178.).floor().clamp(1., 5.) as usize;
                 let card_width = (content_width - CARD_GAP * (columns - 1) as f32) / columns as f32;
                 let preview_height = (card_width * 0.57).clamp(68., 120.);
                 root.child(

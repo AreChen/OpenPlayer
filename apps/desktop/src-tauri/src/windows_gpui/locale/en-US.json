@@ -88,7 +88,8 @@
     "settings": "Settings",
     "closeWindow": "Close Window",
     "openNetworkStream": "Open Network Stream",
-    "mediaProperties": "Media properties"
+    "mediaProperties": "Media properties",
+    "fitWindowToVideo": "Fit Window to Video"
   },
   "settings": {
     "title": "Settings",
@@ -129,19 +130,27 @@
     },
     "shellPreview": {
       "title": "Explorer Preview",
-      "description": "Register selected media formats for Explorer previews and make OpenPlayer available in Windows Default Apps.",
+      "description": "Register thumbnails and media metadata in File Explorer for the selected formats.",
       "selectAll": "Select All",
       "clearAll": "Clear All",
-      "defaults": "Defaults",
-      "defaultApps": "Default Apps",
-      "register": "Register {count}",
+      "defaults": "Select Common Formats",
+      "defaultApps": "Open Windows Default Apps",
+      "register": "Register {count} Preview Formats",
       "registering": "Registering",
       "video": "Video",
       "audio": "Audio",
       "noSelection": "Select at least one format",
-      "registered": "Registered {count} formats. Choose a default app in Windows Settings.",
-      "failed": "Unable to register formats ({error})",
-      "openDefaultAppsFailed": "Unable to open Windows Default Apps ({error})"
+      "registered": "Registered File Explorer previews for {count} formats.",
+      "failed": "Unable to register File Explorer previews ({error})",
+      "openDefaultAppsFailed": "Unable to open Windows Default Apps ({error})",
+      "defaultPlayerTitle": "Default Player",
+      "defaultPlayerDescription": "In Windows Settings, select a file type and choose OpenPlayer as its default app.",
+      "refreshDefaults": "Refresh Status",
+      "checkingDefaults": "Checking Windows defaults…",
+      "defaultCoveragePending": "Refresh to see which formats open with OpenPlayer.",
+      "defaultCoverage": "OpenPlayer is the default for {active} of {total} supported formats.",
+      "defaultCoverageDetails": "{other} assigned to other apps · {unassigned} unassigned",
+      "defaultCoverageUnknown": "Could not check {count} formats"
     },
     "shortcuts": {
       "title": "Shortcuts",
