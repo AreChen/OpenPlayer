@@ -308,11 +308,7 @@ impl Controller {
         Ok(())
     }
 
-    pub(super) fn video_aspect_ratio(&self) -> Option<f64> {
-        if !self.ui.loaded || self.ui.audio_only {
-            return None;
-        }
-        let mpv = self.mpv.as_ref()?;
+    fn video_aspect_ratio(mpv: &Mpv) -> Option<f64> {
         let ratio = mpv
             .get_property::<f64>("video-out-params/aspect")
             .ok()
@@ -386,6 +382,11 @@ impl Controller {
                 self.sample_clock(mpv, now, eof);
                 if tracks_changed {
                     self.refresh_tracks(mpv);
+                }
+                if self.ui.audio_only {
+                    self.ui.video_aspect_ratio = None;
+                } else if tracks_changed || self.ui.video_aspect_ratio.is_none() {
+                    self.ui.video_aspect_ratio = Self::video_aspect_ratio(mpv);
                 }
                 if !self.ui.incognito && now.duration_since(self.last_history) >= HISTORY_INTERVAL {
                     self.persist_history();
@@ -545,6 +546,7 @@ impl Controller {
         self.ui.duration = 0.;
         self.ui.audio_only = false;
         self.ui.audio_codec = None;
+        self.ui.video_aspect_ratio = None;
         self.ui.subtitle_delay = 0.;
         self.ui.tracks.clear();
         self.sidecar_tracks.clear();

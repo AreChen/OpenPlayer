@@ -26,9 +26,9 @@ The installer is created in `target/release/bundle/nsis/`. The finish page offer
 
 Open **Settings → Playback → Default Player** to check how many supported file types currently open with OpenPlayer. Choose **Open Windows Default Apps**, then select OpenPlayer for the file types you want. The File Explorer preview controls register thumbnails and media metadata for the selected formats.
 
-## Portrait video
+## Window fitting
 
-Right-click the video and choose **Fit Window to Video** to resize the window to the visible video's aspect ratio. In fullscreen, **Fit** shows the entire image and **Fill** covers the display by cropping it.
+In windowed mode, OpenPlayer fits the window to the video's aspect ratio within the available display area. Dragging a window edge pauses automatic fitting for the session. Press **Ctrl+H** or choose **Fit Window to Video** from the right-click menu to resume it. In narrow windows, secondary playback actions are available under **More playback controls**. In fullscreen, **Fit** shows the entire image and **Fill** covers the display by cropping it.
 
 ## Updates
 

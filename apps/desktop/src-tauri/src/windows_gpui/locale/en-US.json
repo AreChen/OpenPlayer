@@ -48,7 +48,8 @@
       "volumeUp": "Volume Up",
       "toggleFullscreen": "Fullscreen",
       "toggleAlwaysOnTop": "Keep Window on Top",
-      "openSettings": "Settings"
+      "openSettings": "Settings",
+      "fitWindowToVideo": "Fit Window to Video"
     }
   },
   "loop": {
@@ -311,7 +312,8 @@
     "maximize": "Maximize or restore window",
     "maximizeWindow": "Maximize window",
     "restore": "Restore window",
-    "close": "Close window"
+    "close": "Close window",
+    "morePlaybackControls": "More playback controls"
   },
   "streamDialog": {
     "title": "Open Network Stream",

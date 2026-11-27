@@ -48,7 +48,8 @@
       "volumeUp": "提高音量",
       "toggleFullscreen": "全屏",
       "toggleAlwaysOnTop": "窗口置顶",
-      "openSettings": "设置"
+      "openSettings": "设置",
+      "fitWindowToVideo": "窗口适配视频"
     }
   },
   "loop": {
@@ -311,7 +312,8 @@
     "maximize": "最大化或还原窗口",
     "maximizeWindow": "最大化窗口",
     "restore": "还原窗口",
-    "close": "关闭窗口"
+    "close": "关闭窗口",
+    "morePlaybackControls": "更多播放控件"
   },
   "streamDialog": {
     "title": "打开网络流",

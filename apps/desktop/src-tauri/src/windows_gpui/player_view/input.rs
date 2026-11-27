@@ -204,6 +204,7 @@ impl PlayerView {
             "volumeDown" => self.change_volume(-VOLUME_STEP, !quiet, cx),
             "volumeUp" => self.change_volume(VOLUME_STEP, !quiet, cx),
             "toggleFullscreen" => self.toggle_fullscreen(window, cx),
+            "fitWindowToVideo" => self.request_window_fit(cx),
             "toggleAlwaysOnTop" => self.toggle_topmost(window, cx),
             "openSettings" => self.send("openSettings", Value::Null, cx),
             _ => {}

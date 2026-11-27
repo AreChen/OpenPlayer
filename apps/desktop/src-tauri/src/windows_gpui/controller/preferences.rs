@@ -19,7 +19,9 @@ pub(super) const LAST_MEDIA_DIRECTORY: &str = "lastMediaBrowserDirectory";
 pub(super) const DEFAULT_TITLEBAR_OPACITY: f64 = 0.42;
 pub(super) const DEFAULT_TRANSPORT_OPACITY: f64 = 0.54;
 
-pub(super) const DEFAULT_CHORDS: [(&str, &str); 13] = [
+const FIT_WINDOW: (&str, &str) = ("fitWindowToVideo", "Ctrl+H");
+
+pub(super) const DEFAULT_CHORDS: [(&str, &str); 14] = [
     ("openMedia", "Ctrl+O"),
     ("togglePlayback", "Space"),
     ("restart", "R"),
@@ -31,6 +33,7 @@ pub(super) const DEFAULT_CHORDS: [(&str, &str); 13] = [
     ("volumeDown", "ArrowDown"),
     ("volumeUp", "ArrowUp"),
     ("toggleFullscreen", "Enter"),
+    FIT_WINDOW,
     ("toggleAlwaysOnTop", "\\"),
     ("openSettings", "Ctrl+,"),
 ];
@@ -40,6 +43,31 @@ pub(super) fn default_chords() -> BTreeMap<String, String> {
         .into_iter()
         .map(|(action, chord)| (action.to_owned(), chord.to_owned()))
         .collect()
+}
+
+fn decode_chords(value: &str) -> BTreeMap<String, String> {
+    let Ok(mut stored) = serde_json::from_str::<BTreeMap<String, Option<String>>>(value) else {
+        return default_chords();
+    };
+    let (action, chord) = FIT_WINDOW;
+    // Older native profiles have no entry for the new action. A saved null is an explicit unbind.
+    if !stored.contains_key(action) && !stored.values().any(|value| value.as_deref() == Some(chord))
+    {
+        stored.insert(action.to_owned(), Some(chord.to_owned()));
+    }
+    stored
+        .into_iter()
+        .filter_map(|(action, chord)| chord.map(|chord| (action, chord)))
+        .collect()
+}
+
+fn encode_chords(bindings: &BTreeMap<String, String>) -> serde_json::Result<String> {
+    let mut stored: BTreeMap<_, _> = bindings
+        .iter()
+        .map(|(action, chord)| (action.as_str(), Some(chord.as_str())))
+        .collect();
+    stored.entry(FIT_WINDOW.0).or_insert(None);
+    serde_json::to_string(&stored)
 }
 
 pub(super) fn storage_directory() -> PathBuf {
@@ -116,7 +144,7 @@ impl Preferences {
 
     pub(super) fn load_shortcuts(&self, stored: Option<&str>) -> BTreeMap<String, String> {
         if let Some(value) = stored {
-            return serde_json::from_str(value).unwrap_or_else(|_| default_chords());
+            return decode_chords(value);
         }
         if std::env::var_os("OPENPLAYER_WINDOWS_SMOKE_PROFILE").is_none()
             && let Some(path) = std::env::var_os("LOCALAPPDATA").map(PathBuf::from)
@@ -137,6 +165,14 @@ impl Preferences {
         default_chords()
     }
 
+    pub(super) fn save_shortcuts(
+        &mut self,
+        bindings: &BTreeMap<String, String>,
+    ) -> serde_json::Result<()> {
+        self.set(SHORTCUTS, Some(encode_chords(bindings)?));
+        Ok(())
+    }
+
     fn store_imported_shortcuts(
         &self,
         bindings: &BTreeMap<String, String>,
@@ -150,9 +186,9 @@ impl Preferences {
             let mut table = transaction.open_table(SETTINGS)?;
             let existing = table.get(SHORTCUTS)?.map(|value| value.value().to_owned());
             if let Some(value) = existing {
-                return Ok(serde_json::from_str(&value).unwrap_or_else(|_| default_chords()));
+                return Ok(decode_chords(&value));
             }
-            let serialized = serde_json::to_string(bindings)?;
+            let serialized = encode_chords(bindings)?;
             table.insert(SHORTCUTS, serialized.as_str())?;
         }
         transaction.commit()?;
@@ -181,5 +217,30 @@ impl Preferences {
         transaction.commit()?;
         self.pending.clear();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn supplies_the_new_fit_shortcut_to_existing_profiles() {
+        let chords = decode_chords(r#"{"openMedia":"Ctrl+M"}"#);
+        assert_eq!(chords["openMedia"], "Ctrl+M");
+        assert_eq!(chords[FIT_WINDOW.0], FIT_WINDOW.1);
+        assert_eq!(decode_chords("{}")[FIT_WINDOW.0], FIT_WINDOW.1);
+    }
+
+    #[test]
+    fn keeps_conflicting_and_explicitly_unbound_fit_shortcuts() {
+        let chords = decode_chords(r#"{"openMedia":"Ctrl+H"}"#);
+        assert!(!chords.contains_key(FIT_WINDOW.0));
+        assert_eq!(chords["openMedia"], FIT_WINDOW.1);
+
+        let mut chords = default_chords();
+        chords.remove(FIT_WINDOW.0);
+        let saved = encode_chords(&chords).unwrap();
+        assert_eq!(decode_chords(&saved), chords);
     }
 }

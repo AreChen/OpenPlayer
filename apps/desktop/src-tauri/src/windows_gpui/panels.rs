@@ -4,19 +4,13 @@ use serde_json::{Value, json};
 use super::{
     player_view::{EditTarget, PlayerView},
     theme::icon,
-    ui_state::{ContextMenu, MediaPanel, StreamDialog},
+    ui_state::{ContextMenu, MediaPanel, MenuPosition, StreamDialog},
     widgets::{command, heading, icon_button, item_id, row, text_button, tooltip},
     window_layout::COMPACT_WIDTH,
 };
 
 fn panel_bottom(width: Pixels, regular: f32) -> Pixels {
-    px(if width < px(436.) {
-        136.
-    } else if width < COMPACT_WIDTH {
-        98.
-    } else {
-        regular
-    })
+    px(if width < COMPACT_WIDTH { 98. } else { regular })
 }
 
 impl PlayerView {
@@ -53,12 +47,15 @@ impl PlayerView {
         let viewport = window.viewport_size();
         let height = px((menu.items.len() as f32 * 30. + 18.).min(520.))
             .min((viewport.height - px(16.)).max(px(20.)));
-        let x = px(menu.position.x)
-            .max(px(8.))
-            .min(viewport.width - px(258.));
-        let y = px(menu.position.y)
-            .max(px(8.))
-            .min(viewport.height - height - px(8.));
+        let (x, y) = match menu.position {
+            MenuPosition::Pointer { x, y } => (px(x), px(y)),
+            MenuPosition::PlaybackControls => (
+                viewport.width - px(260.),
+                viewport.height - height - panel_bottom(viewport.width, 106.),
+            ),
+        };
+        let x = x.max(px(8.)).min(viewport.width - px(258.));
+        let y = y.max(px(8.)).min(viewport.height - height - px(8.));
         div()
             .absolute()
             .left(x)

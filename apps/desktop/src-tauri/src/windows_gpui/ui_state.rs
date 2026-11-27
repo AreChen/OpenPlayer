@@ -14,6 +14,7 @@ pub(crate) struct UiState {
     pub(super) media: Option<NamedItem>,
     pub(super) audio_only: bool,
     pub(super) audio_codec: Option<String>,
+    pub(super) video_aspect_ratio: Option<f64>,
     pub(super) loaded: bool,
     pub(super) loading: bool,
     pub(super) playing: bool,
@@ -136,9 +137,9 @@ pub(super) struct ContextMenu {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(super) struct MenuPosition {
-    pub x: f32,
-    pub y: f32,
+pub(super) enum MenuPosition {
+    Pointer { x: f32, y: f32 },
+    PlaybackControls,
 }
 
 #[derive(Clone, Debug)]

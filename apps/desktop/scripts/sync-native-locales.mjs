@@ -36,6 +36,7 @@ const locales = [
       openDefaultAppsFailed: "Unable to open Windows Default Apps ({error})",
     },
     fitWindowToVideo: "Fit Window to Video",
+    morePlaybackControls: "More playback controls",
     dropToPlay: "Drop media to play",
     doubleClickOpen: "Double-click to open media",
     openingFilePicker: "Opening file picker…",
@@ -133,6 +134,7 @@ const locales = [
       openDefaultAppsFailed: "无法打开 Windows 默认应用设置（{error}）",
     },
     fitWindowToVideo: "窗口适配视频",
+    morePlaybackControls: "更多播放控件",
     dropToPlay: "松开播放媒体",
     doubleClickOpen: "双击打开媒体",
     openingFilePicker: "正在打开文件选择器…",
@@ -205,7 +207,13 @@ for (const [language, exportName, native] of locales) {
   const labels = {
     common: { ...shared.common, ...native.common },
     status: shared.status,
-    shortcuts: shared.shortcuts,
+    shortcuts: {
+      ...shared.shortcuts,
+      actions: {
+        ...shared.shortcuts.actions,
+        fitWindowToVideo: native.fitWindowToVideo,
+      },
+    },
     loop: shared.loop,
     hardware: shared.hardware,
     contextMenu: {
@@ -245,7 +253,7 @@ for (const [language, exportName, native] of locales) {
       quickOpen: native.quickOpen,
       properties: native.mediaProperties,
     },
-    controls: shared.controls,
+    controls: { ...shared.controls, morePlaybackControls: native.morePlaybackControls },
     streamDialog: shared.streamDialog,
     dialog: {
       mediaFiles: shared.dialog.mediaFiles,

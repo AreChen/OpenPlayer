@@ -3,7 +3,7 @@ use serde_json::Value;
 
 use super::{
     player_view::PlayerView,
-    ui_state::MediaPanel,
+    ui_state::{MediaPanel, MenuPosition},
     widgets::{button_feedback, command, icon_button, slider, text_button, tooltip},
     window_layout::COMPACT_WIDTH,
 };
@@ -16,9 +16,9 @@ impl PlayerView {
         window: &mut Window,
         cx: &Context<Self>,
     ) -> Div {
-        let volume = self.volume_button(volume_allowed, window, cx);
-        let decode = self.decode_button(window, cx);
         let compact = window.viewport_size().width < COMPACT_WIDTH;
+        let volume = self.volume_button(volume_allowed, window, cx);
+        let decode = (!compact).then(|| self.decode_button(window, cx));
         let (fullscreen_glyph, fullscreen_label) = if window.is_fullscreen() {
             ("exitFullscreen", "controls.exitFullscreen")
         } else {
@@ -61,34 +61,38 @@ impl PlayerView {
             .items_center()
             .gap(px(if compact { 4. } else { 8. }))
             .child(toggle_time("current-time", &current_time))
-            .child(command(
-                tip(
-                    icon_button("previous", "previous", palette, false)
-                        .w(px(26.))
-                        .h(px(22.)),
-                    "controls.previousVideo",
-                ),
-                "previous",
-                Value::Null,
-                ui.queued_previous,
-                cx,
-            ))
+            .when(!compact, |el| {
+                el.child(command(
+                    tip(
+                        icon_button("previous", "previous", palette, false)
+                            .w(px(26.))
+                            .h(px(22.)),
+                        "controls.previousVideo",
+                    ),
+                    "previous",
+                    Value::Null,
+                    ui.queued_previous,
+                    cx,
+                ))
+            })
             .child(tip(
                 slider("seek", position, ui.duration, palette, cx),
                 "controls.seek",
             ))
-            .child(command(
-                tip(
-                    icon_button("next", "next", palette, false)
-                        .w(px(26.))
-                        .h(px(22.)),
-                    "controls.nextVideo",
-                ),
-                "next",
-                Value::Null,
-                ui.queued_next,
-                cx,
-            ))
+            .when(!compact, |el| {
+                el.child(command(
+                    tip(
+                        icon_button("next", "next", palette, false)
+                            .w(px(26.))
+                            .h(px(22.)),
+                        "controls.nextVideo",
+                    ),
+                    "next",
+                    Value::Null,
+                    ui.queued_next,
+                    cx,
+                ))
+            })
             .child(toggle_time("duration", &total_time));
         let button = |kind, name, label, active, enabled| {
             command(
@@ -99,25 +103,11 @@ impl PlayerView {
                 cx,
             )
         };
-        let speed_open = ui.panel == Some(MediaPanel::Speed);
-        let speed = tip(
-            text_button("toggleSpeed", ui.speed_label.clone(), palette, speed_open)
-                .h(px(34.))
-                .min_w(px(36.))
-                .px(px(4.))
-                .when(!speed_open, |el| {
-                    el.bg(gpui::transparent_black())
-                        .border_color(gpui::transparent_black())
-                })
-                .text_color(palette.accent)
-                .font_weight(FontWeight::SEMIBOLD),
-            "controls.openPlaybackSpeed",
-        );
         let strip = div()
             .flex()
             .items_center()
             .gap(px(if compact { 4. } else { 8. }))
-            .when(compact, |el| el.flex_wrap())
+            .when(compact, |el| el.justify_between())
             .child(button(
                 "openMedia",
                 "openMedia",
@@ -125,13 +115,15 @@ impl PlayerView {
                 false,
                 !self.picker_open,
             ))
-            .child(button(
-                "stopPlayback",
-                "stop",
-                "controls.stop",
-                false,
-                ui.loaded,
-            ))
+            .when(!compact, |el| {
+                el.child(button(
+                    "stopPlayback",
+                    "stop",
+                    "controls.stop",
+                    false,
+                    ui.loaded,
+                ))
+            })
             .child(button(
                 "togglePlayback",
                 if ui.playing { "pause" } else { "play" },
@@ -143,35 +135,53 @@ impl PlayerView {
                 true,
                 !self.picker_open || ui.loaded,
             ))
-            .child(button(
-                "toggleLoop",
-                "repeat",
-                "controls.openLoopMode",
-                ui.panel == Some(MediaPanel::Loop),
-                true,
-            ))
+            .when(!compact, |el| {
+                el.child(button(
+                    "toggleLoop",
+                    "repeat",
+                    "controls.openLoopMode",
+                    ui.panel == Some(MediaPanel::Loop),
+                    true,
+                ))
+            })
             .child(volume)
-            .child(command(speed, "toggleSpeed", Value::Null, true, cx))
-            .child(decode)
-            .child(button(
-                "toggleTracks",
-                "subtitles",
-                "controls.openTracks",
-                ui.panel == Some(MediaPanel::Tracks),
-                true,
-            ))
-            .when(!compact, |el| el.child(div().flex_1()))
-            .child(button(
-                "togglePlaylist",
-                "list",
-                if ui.playlist {
-                    "controls.hidePlaylist"
-                } else {
-                    "controls.showPlaylist"
-                },
-                ui.playlist,
-                true,
-            ))
+            .when_some(decode, |el, decode| {
+                let speed_open = ui.panel == Some(MediaPanel::Speed);
+                let speed = tip(
+                    text_button("toggleSpeed", ui.speed_label.clone(), palette, speed_open)
+                        .h(px(34.))
+                        .min_w(px(36.))
+                        .px(px(4.))
+                        .when(!speed_open, |el| {
+                            el.bg(gpui::transparent_black())
+                                .border_color(gpui::transparent_black())
+                        })
+                        .text_color(palette.accent)
+                        .font_weight(FontWeight::SEMIBOLD),
+                    "controls.openPlaybackSpeed",
+                );
+                el.child(command(speed, "toggleSpeed", Value::Null, true, cx))
+                    .child(decode)
+                    .child(button(
+                        "toggleTracks",
+                        "subtitles",
+                        "controls.openTracks",
+                        ui.panel == Some(MediaPanel::Tracks),
+                        true,
+                    ))
+                    .child(div().flex_1())
+                    .child(button(
+                        "togglePlaylist",
+                        "list",
+                        if ui.playlist {
+                            "controls.hidePlaylist"
+                        } else {
+                            "controls.showPlaylist"
+                        },
+                        ui.playlist,
+                        true,
+                    ))
+            })
             .child(tip(
                 icon_button("fullscreen", fullscreen_glyph, palette, false)
                     .cursor_pointer()
@@ -179,7 +189,23 @@ impl PlayerView {
                         cx.listener(|view, _, window, cx| view.toggle_fullscreen(window, cx)),
                     ),
                 fullscreen_label,
-            ));
+            ))
+            .when(compact, |el| {
+                let menu_open = ui
+                    .context
+                    .as_ref()
+                    .is_some_and(|menu| matches!(menu.position, MenuPosition::PlaybackControls));
+                el.child(tip(
+                    command(
+                        icon_button("more-playback-controls", "more", palette, menu_open),
+                        "compactContext",
+                        Value::Null,
+                        true,
+                        cx,
+                    ),
+                    "controls.morePlaybackControls",
+                ))
+            });
         div()
             .absolute()
             .left(px(if compact { 10. } else { 24. }))

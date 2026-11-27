@@ -1,14 +1,19 @@
-use gpui::{Context, Pixels, Size, Window, px, size};
+use std::{cell::Cell, rc::Rc};
+
+use gpui::{Pixels, Size, Window, px, size};
 use windows_sys::Win32::{
-    Foundation::{HWND, RECT},
+    Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
     Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow},
-    UI::WindowsAndMessaging::{
-        GetClientRect, GetWindowRect, IsIconic, IsZoomed, SWP_NOACTIVATE, SWP_NOZORDER,
-        SetWindowPos,
+    UI::{
+        Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass},
+        WindowsAndMessaging::{
+            GetClientRect, GetWindowRect, IsIconic, IsZoomed, SWP_NOACTIVATE, SWP_NOZORDER,
+            SetWindowPos, WM_NCDESTROY, WM_SIZING,
+        },
     },
 };
 
-use super::{hwnd, player_view::PlayerView};
+use super::hwnd;
 
 const MIN_WIDTH: f32 = 340.;
 const MIN_HEIGHT: f32 = 360.;
@@ -18,16 +23,67 @@ pub(super) fn minimum_size() -> Size<Pixels> {
     size(px(MIN_WIDTH), px(MIN_HEIGHT))
 }
 
-pub(super) fn fit_window_to_video(window: &Window, aspect: f64, cx: &Context<PlayerView>) {
-    if window.is_fullscreen() || window.is_maximized() {
-        return;
+pub(super) fn observe_manual_resize(window: &Window) -> Rc<Cell<bool>> {
+    let manual = Rc::new(Cell::new(false));
+    if let Ok(handle) = hwnd(window) {
+        let data = Rc::into_raw(manual.clone());
+        // The subclass owns one reference until the native window is destroyed.
+        if unsafe { SetWindowSubclass(handle as HWND, Some(resize_subclass), 0, data as usize) }
+            == 0
+        {
+            unsafe { drop(Rc::from_raw(data)) };
+        }
     }
-    let Ok(handle) = hwnd(window) else { return };
-    let scale = window.scale_factor();
-    // Resize from the foreground executor after GPUI returns from event dispatch.
-    cx.foreground_executor()
-        .spawn(async move { fit_window(handle as HWND, aspect, scale) })
-        .detach();
+    manual
+}
+
+unsafe extern "system" fn resize_subclass(
+    handle: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+    id: usize,
+    data: usize,
+) -> LRESULT {
+    let manual = data as *const Cell<bool>;
+    unsafe {
+        match message {
+            WM_SIZING => (*manual).set(true),
+            WM_NCDESTROY => {
+                RemoveWindowSubclass(handle, Some(resize_subclass), id);
+                drop(Rc::from_raw(manual));
+            }
+            _ => {}
+        }
+        DefSubclassProc(handle, message, wparam, lparam)
+    }
+}
+
+pub(super) struct FitRequest {
+    handle: HWND,
+    aspect: f64,
+    scale: f32,
+}
+
+impl FitRequest {
+    pub(super) fn new(window: &Window, aspect: f64) -> Option<Self> {
+        if window.is_fullscreen() || window.is_maximized() {
+            return None;
+        }
+        let handle = hwnd(window).ok()? as HWND;
+        if unsafe { IsIconic(handle) } != 0 {
+            return None;
+        }
+        Some(Self {
+            handle,
+            aspect,
+            scale: window.scale_factor(),
+        })
+    }
+
+    pub(super) fn apply(self) {
+        fit_window(self.handle, self.aspect, self.scale);
+    }
 }
 
 fn fit_window(handle: HWND, aspect: f64, scale: f32) {
@@ -65,6 +121,9 @@ fn fit_window(handle: HWND, aspect: f64, scale: f32) {
         (MIN_HEIGHT * scale).ceil() as i32,
     );
     let (width, height) = fit_client(aspect, client.bottom, min, available);
+    if width == client.right && height == client.bottom {
+        return;
+    }
     let width = width + frame_width;
     let height = height + frame_height;
     let x = (current.left + (current.right - current.left - width) / 2)

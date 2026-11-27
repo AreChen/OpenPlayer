@@ -138,8 +138,8 @@ impl Controller {
     }
 
     fn save_shortcuts(&mut self) -> Result<()> {
-        let bindings = serde_json::to_string(&self.ui.shortcut_bindings)?;
-        self.preferences.set(SHORTCUTS, Some(bindings));
+        self.preferences
+            .save_shortcuts(&self.ui.shortcut_bindings)?;
         self.refresh_shortcuts();
         self.schedule_settings();
         Ok(())
@@ -208,11 +208,11 @@ impl Controller {
         }
 
         let loaded = self.ui.loaded;
-        let fit_window = self.video_aspect_ratio().map(|_| Row {
+        let fit_window = self.ui.video_aspect_ratio.map(|_| Row {
             action: "fitWindowToVideo",
             label: "fitWindowToVideo",
             icon: "restore",
-            shortcut: None,
+            shortcut: Some("fitWindowToVideo"),
             enabled: true,
         });
         let mut items = Vec::with_capacity(18);
@@ -360,6 +360,59 @@ impl Controller {
             }));
         }
         self.ui.context = Some(ContextMenu { position, items });
+    }
+
+    fn toggle_compact_context_menu(&mut self) {
+        if self
+            .ui
+            .context
+            .as_ref()
+            .is_some_and(|menu| matches!(menu.position, MenuPosition::PlaybackControls))
+        {
+            self.ui.context = None;
+            return;
+        }
+
+        let (decode_label, decode_icon) = if self.ui.software_decode {
+            ("hardware.switchToHardware", "decodeHardware")
+        } else {
+            ("hardware.switchToSoftware", "decodeSoftware")
+        };
+        let playlist_label = if self.ui.playlist {
+            "controls.hidePlaylist"
+        } else {
+            "controls.showPlaylist"
+        };
+        let items = [
+            ("stopPlayback", "controls.stop", "stop", self.ui.loaded),
+            (
+                "previous",
+                "controls.previousVideo",
+                "previous",
+                self.ui.queued_previous,
+            ),
+            ("next", "controls.nextVideo", "next", self.ui.queued_next),
+            ("toggleLoop", "controls.openLoopMode", "repeat", true),
+            ("toggleSpeed", "controls.openPlaybackSpeed", "speed", true),
+            ("toggleDecode", decode_label, decode_icon, true),
+            ("toggleTracks", "controls.openTracks", "subtitles", true),
+            ("togglePlaylist", playlist_label, "list", true),
+        ]
+        .into_iter()
+        .map(|(action, label, icon, enabled)| MenuItem {
+            id: action.into(),
+            label: Some(locale::label(&self.ui.language, label).into()),
+            icon: Some(icon.into()),
+            shortcut: self.ui.shortcut_bindings.get(action).cloned(),
+            disabled: !enabled,
+            divider: false,
+        })
+        .collect();
+
+        self.ui.context = Some(ContextMenu {
+            position: MenuPosition::PlaybackControls,
+            items,
+        });
     }
 
     pub(super) fn action(&mut self, kind: &str, value: Value) -> Result<()> {
@@ -653,12 +706,13 @@ impl Controller {
             }
             "context" => {
                 if let (Some(x), Some(y)) = (value["x"].as_f64(), value["y"].as_f64()) {
-                    self.context_menu(MenuPosition {
+                    self.context_menu(MenuPosition::Pointer {
                         x: x as f32,
                         y: y as f32,
                     });
                 }
             }
+            "compactContext" => self.toggle_compact_context_menu(),
             "closeContext" => self.ui.context = None,
             "contextItem" => {
                 self.ui.context = None;

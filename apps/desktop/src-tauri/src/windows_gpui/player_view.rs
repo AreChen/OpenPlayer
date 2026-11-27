@@ -6,6 +6,7 @@ mod timeline;
 mod volume;
 
 use std::{
+    cell::Cell,
     ffi::c_void,
     rc::Rc,
     sync::Arc,
@@ -13,10 +14,10 @@ use std::{
 };
 
 use gpui::{
-    App, Context, DispatchPhase, Div, ExternalPaths, FocusHandle, FontWeight, KeyDownEvent,
-    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PathPromptOptions, Pixels, Platform,
-    Point, Render, SharedString, Stateful, Styled, Task, Window, WindowControlArea, canvas,
-    deferred, div, prelude::*, px, rgb, transparent_black,
+    AnyWindowHandle, App, Context, DispatchPhase, Div, ExternalPaths, FocusHandle, FontWeight,
+    KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PathPromptOptions,
+    Pixels, Platform, Point, Render, SharedString, Stateful, Styled, Task, Window,
+    WindowControlArea, canvas, deferred, div, prelude::*, px, rgb, transparent_black,
 };
 use gpui_ce_motion::{Motion, MotionState, Spring, Target, Transition};
 use libmpv2::Mpv;
@@ -47,6 +48,7 @@ use super::{
     ui_state::UiState,
     updates::{self, UpdateStatus},
     widgets::{button_feedback, tooltip},
+    window_layout::{FitRequest, observe_manual_resize},
 };
 
 const CHROME_IDLE: Duration = Duration::from_secs(3);
@@ -70,6 +72,10 @@ pub(super) struct PlayerView {
     pub(super) ui: Arc<UiState>,
     pub(super) palette: Palette,
     focus: FocusHandle,
+    window_handle: AnyWindowHandle,
+    manually_resized: Rc<Cell<bool>>,
+    fit_pending: bool,
+    fit_scheduled: bool,
     last_activity: Instant,
     last_pointer: Option<Point<Pixels>>,
     was_hovered: bool,
@@ -122,6 +128,10 @@ impl PlayerView {
             cx.notify();
         })
         .detach();
+        cx.observe_window_bounds(window, |view, _, cx| view.schedule_window_fit(cx))
+            .detach();
+        cx.observe_window_visibility(window, |view, _, _, cx| view.schedule_window_fit(cx))
+            .detach();
 
         let ui = controller.snapshot();
         let now = Instant::now();
@@ -135,6 +145,10 @@ impl PlayerView {
             playback_clock: PlaybackClock::new(&ui),
             ui,
             focus,
+            window_handle: window.window_handle(),
+            manually_resized: observe_manual_resize(window),
+            fit_pending: false,
+            fit_scheduled: false,
             last_activity: now,
             last_pointer: None,
             was_hovered: false,
@@ -241,11 +255,50 @@ impl PlayerView {
         {
             self.palette = palette_for(&state);
         }
+        let aspect_changed = self.ui.video_aspect_ratio != state.video_aspect_ratio;
         self.playback_clock.update(&state);
         self.ui = state;
+        if aspect_changed {
+            self.fit_pending = self.ui.video_aspect_ratio.is_some();
+            self.schedule_window_fit(cx);
+        }
         if from_command || transition || self.chrome_visible || self.ui.audio_only {
             cx.notify();
         }
+    }
+
+    fn request_window_fit(&mut self, cx: &Context<Self>) {
+        self.manually_resized.set(false);
+        self.fit_pending = self.ui.video_aspect_ratio.is_some();
+        self.schedule_window_fit(cx);
+    }
+
+    fn schedule_window_fit(&mut self, cx: &Context<Self>) {
+        if !self.fit_pending || self.fit_scheduled || self.manually_resized.get() {
+            return;
+        }
+        self.fit_scheduled = true;
+        let handle = self.window_handle;
+        cx.spawn(async move |view, cx| {
+            let request = handle.update(cx, |_, window, cx| {
+                view.update(cx, |view, _| {
+                    view.fit_scheduled = false;
+                    if !view.fit_pending || view.manually_resized.get() {
+                        return None;
+                    }
+                    let request = FitRequest::new(window, view.ui.video_aspect_ratio?)?;
+                    view.fit_pending = false;
+                    Some(request)
+                })
+                .ok()
+                .flatten()
+            });
+            if let Ok(Some(request)) = request {
+                // SetWindowPos dispatches window messages synchronously.
+                request.apply();
+            }
+        })
+        .detach();
     }
 
     fn schedule_samples(&mut self, cx: &Context<Self>) {
@@ -435,9 +488,7 @@ impl PlayerView {
             }
             Some("fitWindowToVideo") => {
                 self.send("closeContext", Value::Null, cx);
-                if let Some(aspect) = self.controller.video_aspect_ratio() {
-                    super::window_layout::fit_window_to_video(window, aspect, cx);
-                }
+                self.request_window_fit(cx);
             }
             Some(action @ ("openMedia" | "appendFiles" | "appendFolder" | "addSubtitle")) => {
                 self.send("closeContext", Value::Null, cx);
@@ -823,9 +874,6 @@ impl Render for PlayerView {
             overlay = overlay.child(controls);
         }
         overlay = overlay
-            .when_some(self.ui.context.as_ref(), |el, menu| {
-                el.child(self.context_menu(menu, window, cx))
-            })
             .when(has_panel && panel.is_mounted(), |el| {
                 el.child(self.panels(
                     window,
@@ -833,6 +881,9 @@ impl Render for PlayerView {
                     panel.target().y_px(),
                     cx,
                 ))
+            })
+            .when_some(self.ui.context.as_ref(), |el, menu| {
+                el.child(self.context_menu(menu, window, cx))
             })
             .when_some(self.indicator.as_ref(), |el, (glyph, value)| {
                 el.child(
