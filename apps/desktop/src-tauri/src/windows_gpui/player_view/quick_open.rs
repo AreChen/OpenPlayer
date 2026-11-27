@@ -19,10 +19,13 @@ use gpui_ce_motion::MotionState;
 use serde_json::json;
 
 use super::PlayerView;
-use crate::media_paths::is_supported_media_path;
+use crate::{
+    media_paths::is_supported_media_path,
+    windows_gpui::browser_options::{BrowserOptions, Sort},
+};
 
 use address::AddressInput;
-use listing::{Entry, EntryKind, Filter, Listing, Sort, file_kind};
+use listing::{Entry, EntryKind, Filter, Listing, file_kind};
 use locations::{QuickLocation, home_directory, system_locations};
 use motion::ListingMotion;
 use preview_state::QuickPreviews;
@@ -147,12 +150,13 @@ impl PlayerView {
                 }
             });
         });
+        let options = self.controller.media_browser_options();
         self.quick_open = Some(QuickOpen {
             mode,
             directory: directory.clone(),
             entries: DirectoryEntries::Loading,
-            filter: Filter::new(mode),
-            sort: Sort::default(),
+            filter: Filter::new(mode, options),
+            sort: options.sort,
             show_media_favorites: false,
             context: None,
             toolbar_menu: None,
@@ -390,6 +394,18 @@ impl PlayerView {
         self.refresh_quick_listing(true, cx);
     }
 
+    fn save_quick_listing_options(&mut self, cx: &Context<Self>) {
+        let Some(picker) = &self.quick_open else {
+            return;
+        };
+        self.controller.set_media_browser_options(BrowserOptions {
+            sort: picker.sort,
+            category: picker.filter.category,
+            only_media: picker.filter.only_media,
+        });
+        self.schedule_samples(cx);
+    }
+
     fn refresh_quick_listing(&mut self, filter_changed: bool, cx: &mut Context<Self>) {
         let Some(picker) = &mut self.quick_open else {
             return;
@@ -537,9 +553,6 @@ impl PlayerView {
                         }
                     }
                     Ok((path, None)) => {
-                        if let Some(parent) = path.parent() {
-                            view.controller.remember_media_directory(parent);
-                        }
                         view.accept_quick_paths(mode, vec![path], cx);
                     }
                     Err(_) => {

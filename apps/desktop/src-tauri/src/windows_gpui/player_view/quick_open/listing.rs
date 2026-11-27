@@ -3,7 +3,10 @@ use std::{cmp::Reverse, fs::Metadata, path::PathBuf, time::SystemTime};
 use gpui::SharedString;
 
 use super::{QuickOpenMode, is_dot_named, is_supported_media_path, previews::is_video_file};
-use crate::media_paths::natural_name_key;
+use crate::{
+    media_paths::natural_name_key,
+    windows_gpui::browser_options::{BrowserOptions, Category, Sort, SortBy},
+};
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) enum EntryKind {
@@ -56,30 +59,6 @@ impl Entry {
     }
 }
 
-#[derive(Clone, Copy, Default, Eq, PartialEq)]
-pub(super) enum Category {
-    #[default]
-    All,
-    Video,
-    Audio,
-    Folders,
-}
-
-#[derive(Clone, Copy, Default, Eq, PartialEq)]
-pub(super) enum SortBy {
-    #[default]
-    Name,
-    Type,
-    Modified,
-    Size,
-}
-
-#[derive(Clone, Copy, Default, Eq, PartialEq)]
-pub(super) struct Sort {
-    pub(super) by: SortBy,
-    pub(super) descending: bool,
-}
-
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(super) struct Filter {
     pub(super) only_media: bool,
@@ -89,10 +68,10 @@ pub(super) struct Filter {
 }
 
 impl Filter {
-    pub(super) fn new(mode: QuickOpenMode) -> Self {
+    pub(super) fn new(mode: QuickOpenMode, options: BrowserOptions) -> Self {
         Self {
-            only_media: true,
-            category: Category::All,
+            only_media: options.only_media,
+            category: options.category,
             show_dot_folders: false,
             mode,
         }
@@ -237,10 +216,7 @@ mod tests {
 
     #[test]
     fn sorts_numbered_names_naturally_and_keeps_folders_first_in_both_directions() {
-        let filter = Filter {
-            only_media: false,
-            ..Filter::new(QuickOpenMode::Open)
-        };
+        let filter = Filter::new(QuickOpenMode::Open, BrowserOptions::default());
         let sort = Sort::default();
         let mut listing = Listing::new(
             vec![
@@ -270,7 +246,13 @@ mod tests {
 
     #[test]
     fn only_media_hides_folders_and_non_media_until_turned_off() {
-        let filter = Filter::new(QuickOpenMode::Open);
+        let filter = Filter::new(
+            QuickOpenMode::Open,
+            BrowserOptions {
+                only_media: true,
+                ..BrowserOptions::default()
+            },
+        );
         let sort = Sort::default();
         let mut listing = Listing::new(
             vec![

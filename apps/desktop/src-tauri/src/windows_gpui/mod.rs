@@ -6,6 +6,7 @@ use gpui::{
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
+mod browser_options;
 mod controller;
 mod locale;
 mod media_info;

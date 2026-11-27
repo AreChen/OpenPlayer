@@ -10,7 +10,7 @@ use super::super::{
     DirectoryEntries, Entry, EntryKind, PlayerView, motion::ListingFrame, previews,
 };
 use super::{quick_tooltip, scrollbar};
-use crate::windows_gpui::{theme::icon, widgets::button_feedback};
+use crate::windows_gpui::{browser_options::Category, theme::icon, widgets::button_feedback};
 
 const CONTENT_PADDING: f32 = 16.;
 const CARD_GAP: f32 = 12.;
@@ -80,7 +80,7 @@ impl PlayerView {
                     DirectoryEntries::Unreadable => ("info", "media.quickOpen.unreadable"),
                     DirectoryEntries::Ready(_)
                         if picker.show_media_favorites
-                            && picker.filter.category == super::super::listing::Category::All =>
+                            && picker.filter.category == Category::All =>
                     {
                         ("bookmark", "media.quickOpen.emptyMediaFavorites")
                     }

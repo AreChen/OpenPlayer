@@ -291,7 +291,10 @@ mod tests {
     };
 
     use super::*;
-    use crate::windows_gpui::player_view::quick_open::{QuickOpenMode, listing::Category};
+    use crate::windows_gpui::{
+        browser_options::{BrowserOptions, Category},
+        player_view::quick_open::QuickOpenMode,
+    };
 
     struct Fixture(PathBuf);
 
@@ -328,7 +331,13 @@ mod tests {
             let (results, truncated) = scan(
                 &root.0,
                 Sort::default(),
-                Filter::new(mode),
+                Filter::new(
+                    mode,
+                    BrowserOptions {
+                        only_media: true,
+                        ..BrowserOptions::default()
+                    },
+                ),
                 &search_tokens(query),
                 &progress,
             )
@@ -359,7 +368,7 @@ mod tests {
         let (results, truncated) = scan(
             &root.0,
             Sort::default(),
-            Filter::new(QuickOpenMode::Open),
+            Filter::new(QuickOpenMode::Open, BrowserOptions::default()),
             &search_tokens("film"),
             &progress,
         )
@@ -384,9 +393,8 @@ mod tests {
                 directory,
                 Sort::default(),
                 Filter {
-                    only_media: false,
                     show_dot_folders: show_hidden_folders,
-                    ..Filter::new(QuickOpenMode::Open)
+                    ..Filter::new(QuickOpenMode::Open, BrowserOptions::default())
                 },
                 &search_tokens("film"),
                 &SearchProgress::default(),
@@ -418,11 +426,14 @@ mod tests {
             let (results, _) = scan(
                 &root.0,
                 Sort::default(),
-                Filter {
-                    category,
-                    only_media,
-                    ..Filter::new(QuickOpenMode::Open)
-                },
+                Filter::new(
+                    QuickOpenMode::Open,
+                    BrowserOptions {
+                        category,
+                        only_media,
+                        ..BrowserOptions::default()
+                    },
+                ),
                 &search_tokens("family notes"),
                 &SearchProgress::default(),
             )

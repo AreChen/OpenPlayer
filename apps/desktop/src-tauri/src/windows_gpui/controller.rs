@@ -23,7 +23,10 @@ use crate::{
 };
 
 use self::preferences::{Preferences, storage_directory};
-use super::ui_state::{HistoryEntry, NamedItem, Track, UiState};
+use super::{
+    browser_options::BrowserOptions,
+    ui_state::{HistoryEntry, NamedItem, Track, UiState},
+};
 
 const SETTINGS_DELAY: Duration = Duration::from_millis(350);
 const SEEK_SETTLE: Duration = Duration::from_millis(450);
@@ -73,6 +76,7 @@ pub(super) struct Controller {
     preferences: Preferences,
     favorite_directories: Vec<PathBuf>,
     favorite_media: Vec<PathBuf>,
+    media_browser_options: BrowserOptions,
     last_media_directory: Option<PathBuf>,
     playback: PlaybackSettings,
     pending_settings: PlaybackSettingsUpdate,
@@ -100,6 +104,7 @@ impl Controller {
             preferences,
             favorite_directories: Vec::new(),
             favorite_media: Vec::new(),
+            media_browser_options: BrowserOptions::default(),
             last_media_directory: None,
             playback: PlaybackSettings::default(),
             pending_settings: PlaybackSettingsUpdate::default(),
@@ -180,6 +185,25 @@ impl Controller {
 
     pub(super) fn has_queue(&self) -> bool {
         !self.queue.is_empty()
+    }
+
+    pub(super) fn media_browser_options(&self) -> BrowserOptions {
+        self.media_browser_options
+    }
+
+    pub(super) fn set_media_browser_options(&mut self, options: BrowserOptions) {
+        if self.media_browser_options == options {
+            return;
+        }
+        self.media_browser_options = options;
+        match serde_json::to_string(&options) {
+            Ok(value) => {
+                self.preferences
+                    .set(preferences::MEDIA_BROWSER_OPTIONS, Some(value));
+                self.schedule_settings();
+            }
+            Err(error) => eprintln!("OpenPlayer media browser options: {error:#}"),
+        }
     }
 
     pub(super) fn media_browser_directory(&self) -> Option<PathBuf> {
@@ -566,30 +590,35 @@ impl Controller {
             return Ok(());
         }
         let paths = collect_media_files_from_paths(&input).map_err(anyhow::Error::msg)?;
-        if paths.is_empty() {
+        let Some(first) = paths.first() else {
             return Ok(());
-        }
+        };
+        let directory = local_media_directory(first);
         if !append {
             self.queue = paths.into_iter().map(Media::local).collect();
             self.ui.playlist = self.queue.len() > 1;
-            return self.open_index(0, true);
-        }
-        let previous_len = self.queue.len();
-        for path in paths {
-            if !self
-                .queue
-                .iter()
-                .any(|entry| entry.source.eq_ignore_ascii_case(&path))
-            {
-                self.queue.push(Media::local(path));
+            self.open_index(0, true)?;
+        } else {
+            let previous_len = self.queue.len();
+            for path in paths {
+                if !self
+                    .queue
+                    .iter()
+                    .any(|entry| entry.source.eq_ignore_ascii_case(&path))
+                {
+                    self.queue.push(Media::local(path));
+                }
+            }
+            if self.queue.len() != previous_len {
+                self.ui.playlist = self.queue.len() > 1;
+            }
+            self.refresh_queue();
+            if self.current.is_none() {
+                self.open_index(0, true)?;
             }
         }
-        if self.queue.len() != previous_len {
-            self.ui.playlist = self.queue.len() > 1;
-        }
-        self.refresh_queue();
-        if self.current.is_none() {
-            self.open_index(0, true)?;
+        if let Some(directory) = directory {
+            self.remember_media_directory(&directory);
         }
         Ok(())
     }
@@ -813,6 +842,13 @@ impl Controller {
         }
         self.settings_due = None;
     }
+}
+
+fn local_media_directory(path: &str) -> Option<PathBuf> {
+    std::path::absolute(path)
+        .ok()?
+        .parent()
+        .map(Path::to_path_buf)
 }
 
 impl Drop for Controller {

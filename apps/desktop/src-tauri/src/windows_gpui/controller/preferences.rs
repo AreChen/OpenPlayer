@@ -16,6 +16,7 @@ pub(super) const SHORTCUTS: &str = "nativeShortcutBindings";
 pub(super) const FAVORITE_DIRECTORIES: &str = "mediaFavoriteDirectories";
 pub(super) const FAVORITE_MEDIA: &str = "mediaFavoriteFiles";
 pub(super) const LAST_MEDIA_DIRECTORY: &str = "lastMediaBrowserDirectory";
+pub(super) const MEDIA_BROWSER_OPTIONS: &str = "mediaBrowserOptions";
 pub(super) const DEFAULT_TITLEBAR_OPACITY: f64 = 0.42;
 pub(super) const DEFAULT_TRANSPORT_OPACITY: f64 = 0.54;
 
@@ -130,6 +131,7 @@ impl Preferences {
             FAVORITE_DIRECTORIES,
             FAVORITE_MEDIA,
             LAST_MEDIA_DIRECTORY,
+            MEDIA_BROWSER_OPTIONS,
         ] {
             if let Some(value) = table.get(key)? {
                 values.insert(key, value.value().to_owned());

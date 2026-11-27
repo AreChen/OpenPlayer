@@ -15,7 +15,8 @@ use super::{
     preferences::{
         ACCENT, DEFAULT_CHORDS, DEFAULT_TITLEBAR_OPACITY, DEFAULT_TRANSPORT_OPACITY,
         FAVORITE_DIRECTORIES, FAVORITE_MEDIA, INCOGNITO, LANGUAGE, LAST_MEDIA_DIRECTORY,
-        QUIET_KEYBOARD, SHORTCUTS, TITLEBAR_OPACITY, TRANSPORT_OPACITY, default_chords,
+        MEDIA_BROWSER_OPTIONS, QUIET_KEYBOARD, SHORTCUTS, TITLEBAR_OPACITY, TRANSPORT_OPACITY,
+        default_chords,
     },
 };
 use crate::windows_gpui::{
@@ -82,6 +83,10 @@ impl Controller {
         self.favorite_media = favorites(FAVORITE_MEDIA);
         self.favorite_media
             .retain(|path| crate::media_paths::is_supported_media_path(path));
+        self.media_browser_options = stored
+            .get(MEDIA_BROWSER_OPTIONS)
+            .and_then(|value| serde_json::from_str(value).ok())
+            .unwrap_or_default();
         self.last_media_directory = stored
             .get(LAST_MEDIA_DIRECTORY)
             .map(PathBuf::from)
@@ -457,6 +462,14 @@ impl Controller {
             "queueItem" => {
                 if let Some(index) = value.as_u64().and_then(|index| index.try_into().ok()) {
                     self.open_index(index, true)?;
+                    if let Some(directory) = self
+                        .queue
+                        .get(index)
+                        .filter(|media| !media.network)
+                        .and_then(|media| super::local_media_directory(&media.source))
+                    {
+                        self.remember_media_directory(&directory);
+                    }
                 }
             }
             "historyItem" => {

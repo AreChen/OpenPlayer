@@ -4,13 +4,11 @@ use gpui::{
 };
 
 use super::{
-    super::{
-        PlayerView, QuickOpenMode,
-        listing::{Category, SortBy},
-    },
+    super::{PlayerView, QuickOpenMode},
     quick_tooltip,
 };
 use crate::windows_gpui::{
+    browser_options::{Category, SortBy},
     theme::icon,
     widgets::{icon_button_box, row},
 };
@@ -84,6 +82,7 @@ impl PlayerView {
                     if picker.filter.only_media && picker.filter.category == Category::Folders {
                         picker.filter.category = Category::All;
                     }
+                    view.save_quick_listing_options(cx);
                     view.refresh_quick_listing(true, cx);
                 }
             }));
@@ -286,6 +285,7 @@ impl PlayerView {
                 picker.filter != previous
             }
         };
+        self.save_quick_listing_options(cx);
         self.refresh_quick_listing(filter_changed, cx);
     }
 }
