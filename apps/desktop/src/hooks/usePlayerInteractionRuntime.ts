@@ -199,8 +199,6 @@ export function usePlayerInteractionRuntime({
     media,
     loadedMediaPath: state.loadedMediaPath,
     loopMode: state.loopMode,
-    appVersion: state.appVersion,
-    platformSupport: state.platformSupport,
     isChromePinned: chrome.isChromePinned,
     contextMenu: foundation.contextMenu,
     isSettingsOpen: settings.isSettingsOpen,
@@ -233,7 +231,6 @@ export function usePlayerInteractionRuntime({
     loadShellPreviewFormats: settings.loadShellPreviewFormats,
     setSystemFontFamilies: state.setSystemFontFamilies,
     replaceQueueWithMediaPaths: mediaDomain.replaceQueueWithMediaPaths,
-    openExternalUrl: windowActions.openExternalUrl,
     applySnapshot: playback.applySnapshot,
     onError: foundation.reportPlaybackError,
   });

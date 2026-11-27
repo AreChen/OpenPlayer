@@ -3,315 +3,262 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      - "v2.*"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to publish, for example v1.0.0"
+        description: "Stable 2.x tag (for example v2.0.0)"
         required: true
+        default: "v2.0.0"
         type: string
-      skip_macos:
-        description: "Skip macOS packages for this release run"
-        required: false
-        default: true
+      stage_release:
+        description: "Stage a GitHub draft from this exact source commit"
+        default: false
         type: boolean
+      publish:
+        description: "Publish a previously staged and accepted draft"
+        default: false
+        type: boolean
+      candidate_run_id:
+        description: "Actions run ID that staged and validated the exact release files"
+        type: string
+      native_verification:
+        description: "URL to the manual native acceptance record for that run and its package hashes"
+        type: string
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
-  windows-installer:
-    name: Windows installer
-    runs-on: windows-latest
-    env:
-      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  prepare:
+    name: Pin release source
+    if: github.event_name != 'workflow_dispatch' || !inputs.publish
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.source.outputs.tag }}
+      commit: ${{ steps.source.outputs.commit }}
+      stage: ${{ steps.source.outputs.stage }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
-
-      - name: Install Node
-        uses: actions/setup-node@v7.1.0
-        with:
-          node-version: 26
-
-      - name: Select the project Rust toolchain
-        run: rustc --version
-
-      - name: Restore Windows mpv runtime
-        shell: pwsh
-        run: ./apps/desktop/scripts/restore-windows-mpv.ps1
-
-      - name: Verify release metadata
-        working-directory: apps/desktop
-        shell: pwsh
-        run: npm run verify:release -- --tag=$env:RELEASE_TAG
-
-      - name: Verify shell architecture
-        working-directory: apps/desktop
-        run: npm run verify:shell
-
-      - name: Verify native translations
-        working-directory: apps/desktop
-        run: node scripts/sync-native-locales.mjs --check
-
-      - name: Build Windows installer
-        shell: pwsh
-        run: |
-          choco install nsis -y
-          ./apps/desktop/scripts/build-windows.ps1
-
-      - name: Prepare installer checksum
-        shell: pwsh
-        run: |
-          $packageJson = Get-Content -LiteralPath "apps/desktop/package.json" | ConvertFrom-Json
-          $installer = Resolve-Path "target/release/bundle/nsis/OpenPlayer_$($packageJson.version)_x64-setup.exe"
-          $checksum = "$installer.sha256"
-          $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $installer
-          "$($hash.Hash)  $([System.IO.Path]::GetFileName($installer))" | Set-Content -LiteralPath $checksum -Encoding ascii
-          "OPENPLAYER_INSTALLER=$installer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "OPENPLAYER_CHECKSUM=$checksum" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-
-      - name: Publish GitHub release assets
-        shell: pwsh
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact commit, tag, and notes
+        id: source
         env:
-          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          STAGE_RELEASE: ${{ github.event_name == 'push' || inputs.stage_release }}
         run: |
-          $version = (Get-Content -LiteralPath "apps/desktop/package.json" | ConvertFrom-Json).version
-          $notesFile = "docs/releases/$env:RELEASE_TAG.md"
-          if (-not (Test-Path -LiteralPath $notesFile)) {
-            throw "Missing release notes file: $notesFile"
-          }
-
-          $preserveLegacyLatest = $env:RELEASE_TAG -notmatch '^v1\.\d+\.\d+$'
-          $channelFlags = @()
-          if ($preserveLegacyLatest) {
-            # Shipped 1.x builds use the repository-wide /releases/latest endpoint.
-            $channelFlags += '--latest=false'
-          }
-
-          gh release view $env:RELEASE_TAG *> $null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create $env:RELEASE_TAG --title "OpenPlayer $version" --notes-file $notesFile --target $env:GITHUB_SHA @channelFlags
-            if ($LASTEXITCODE -ne 0) { throw "Could not create $env:RELEASE_TAG" }
-          } elseif ($preserveLegacyLatest) {
-            gh release edit $env:RELEASE_TAG @channelFlags
-            if ($LASTEXITCODE -ne 0) { throw "Could not remove $env:RELEASE_TAG from the 1.x update endpoint" }
-          }
-
-          if ($preserveLegacyLatest) {
-            $legacyLatest = gh api "repos/$env:GITHUB_REPOSITORY/releases/latest" --jq '.tag_name'
-            if ($LASTEXITCODE -ne 0 -or $legacyLatest -notmatch '^v1\.\d+\.\d+$') {
-              throw "The legacy update endpoint must serve a stable 1.x release. Found '$legacyLatest'."
-            }
-          }
-
-          gh release upload $env:RELEASE_TAG $env:OPENPLAYER_INSTALLER $env:OPENPLAYER_CHECKSUM --clobber
-
-  linux-packages:
-    name: Linux packages
-    runs-on: ubuntu-latest
-    needs: windows-installer
-    env:
-      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.1
-        with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
-
-      - name: Install Tauri Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            pkg-config \
-            libdbus-1-dev \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            libmpv-dev \
-            librsvg2-dev \
-            patchelf
-          sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2
-
-      - name: Install Node
-        uses: actions/setup-node@v7.1.0
-        with:
-          node-version: 26
-          cache: npm
-          cache-dependency-path: apps/desktop/package-lock.json
-
-      - name: Select the project Rust toolchain
-        run: rustc --version
-
-      - name: Install frontend dependencies
-        working-directory: apps/desktop
-        run: npm ci
-
-      - name: Verify release metadata
-        working-directory: apps/desktop
-        run: npm run verify:release -- --tag=$RELEASE_TAG
-
-      - name: Verify shell architecture
-        working-directory: apps/desktop
-        run: npm run verify:shell
-
-      - name: Build Linux packages
-        working-directory: apps/desktop
-        run: npm run tauri:build -- --config src-tauri/tauri.linux.conf.json
-
-      - name: Prepare package checksums
-        run: |
-          deb="$(realpath target/release/bundle/deb/*.deb)"
-          appimage="$(realpath target/release/bundle/appimage/*.AppImage)"
-
-          (cd "$(dirname "$deb")" && sha256sum "$(basename "$deb")") > "$deb.sha256"
-          (cd "$(dirname "$appimage")" && sha256sum "$(basename "$appimage")") > "$appimage.sha256"
-
+          if [[ ! "$RELEASE_TAG" =~ ^v2\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Expected a stable 2.x tag, got $RELEASE_TAG" >&2
+            exit 1
+          fi
+          commit="$(git rev-parse HEAD)"
+          if [[ "$STAGE_RELEASE" == true ]]; then
+            if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+              test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" == "$commit"
+            fi
+          fi
+          test -s "docs/releases/$RELEASE_TAG.md"
           {
-            echo "OPENPLAYER_LINUX_DEB=$deb"
-            echo "OPENPLAYER_LINUX_DEB_CHECKSUM=$deb.sha256"
-            echo "OPENPLAYER_LINUX_APPIMAGE=$appimage"
-            echo "OPENPLAYER_LINUX_APPIMAGE_CHECKSUM=$appimage.sha256"
-          } >> "$GITHUB_ENV"
+            echo "tag=$RELEASE_TAG"
+            echo "commit=$commit"
+            echo "stage=$STAGE_RELEASE"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Publish GitHub release assets
+  draft:
+    name: Create or verify draft
+    needs: prepare
+    if: needs.prepare.outputs.stage == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - name: Stage release notes and pin the draft target
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
         run: |
-          gh release upload "$RELEASE_TAG" \
-            "$OPENPLAYER_LINUX_DEB" \
-            "$OPENPLAYER_LINUX_DEB_CHECKSUM" \
-            "$OPENPLAYER_LINUX_APPIMAGE" \
-            "$OPENPLAYER_LINUX_APPIMAGE_CHECKSUM" \
-            --clobber
+          legacy_tag="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
+          [[ "$legacy_tag" =~ ^v1\.[0-9]+\.[0-9]+$ ]]
+          if draft="$(gh release view "$RELEASE_TAG" --json isDraft,targetCommitish)"; then
+            jq -e --arg sha "$RELEASE_COMMIT" '.isDraft and .targetCommitish == $sha' <<< "$draft"
+            gh release edit "$RELEASE_TAG" --notes-file "docs/releases/$RELEASE_TAG.md" --latest=false
+          else
+            gh release create "$RELEASE_TAG" --draft --latest=false --target "$RELEASE_COMMIT" \
+              --title "OpenPlayer ${RELEASE_TAG#v}" --notes-file "docs/releases/$RELEASE_TAG.md"
+          fi
 
-  macos-packages:
-    name: macOS unsigned packages (${{ matrix.arch }})
-    # macOS release validation is deferred; opt in through a manual run.
-    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.skip_macos }}
+  packages:
+    name: Build ${{ matrix.platform }} packages
+    needs: prepare
     runs-on: ${{ matrix.runner }}
-    needs: windows-installer
-    env:
-      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-15
-            arch: arm64
-          - runner: macos-15-intel
-            arch: x64
+          - platform: windows-x64
+            runner: windows-latest
+          - platform: linux-x64
+            runner: ubuntu-24.04
+          - platform: macos-arm64
+            runner: macos-15
+          - platform: macos-x64
+            runner: macos-15-intel
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - uses: ./.github/actions/build-desktop-packages
+        with:
+          tag: ${{ needs.prepare.outputs.tag }}
+          output: packages
+          macos-distribution: ${{ needs.prepare.outputs.stage }}
+          apple-certificate: ${{ runner.os == 'macOS' && needs.prepare.outputs.stage == 'true' && secrets.APPLE_CERTIFICATE || '' }}
+          apple-certificate-password: ${{ runner.os == 'macOS' && needs.prepare.outputs.stage == 'true' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          apple-signing-identity: ${{ runner.os == 'macOS' && needs.prepare.outputs.stage == 'true' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          apple-id: ${{ runner.os == 'macOS' && needs.prepare.outputs.stage == 'true' && secrets.APPLE_ID || '' }}
+          apple-password: ${{ runner.os == 'macOS' && needs.prepare.outputs.stage == 'true' && secrets.APPLE_PASSWORD || '' }}
+          apple-team-id: ${{ runner.os == 'macOS' && needs.prepare.outputs.stage == 'true' && secrets.APPLE_TEAM_ID || '' }}
+      - uses: actions/upload-artifact@v6
+        with:
+          name: openplayer-${{ matrix.platform }}
+          path: packages
+          if-no-files-found: error
+          overwrite: true
 
-      - name: Install Node
-        uses: actions/setup-node@v7.1.0
+  stage-assets:
+    name: Verify and upload all draft assets
+    needs: [prepare, draft, packages]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: 26
-          cache: npm
-          cache-dependency-path: apps/desktop/package-lock.json
-
-      - name: Select the project Rust toolchain
-        run: rustc --version
-
-      - name: Install macOS dependencies
-        run: |
-          brew install mpv pkg-config
-          echo "PKG_CONFIG_PATH=$(brew --prefix mpv)/lib/pkgconfig:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
-
-      - name: Install frontend dependencies
-        working-directory: apps/desktop
-        run: npm ci
-
-      - name: Verify release metadata
-        working-directory: apps/desktop
-        run: npm run verify:release -- --tag=$RELEASE_TAG
-
-      - name: Verify shell architecture
-        working-directory: apps/desktop
-        run: npm run verify:shell
-
-      - name: Build macOS app bundle
-        working-directory: apps/desktop
-        run: npm run tauri:build -- --config src-tauri/tauri.macos.conf.json --bundles app
-
-      - name: Bundle macOS libmpv dylibs
-        working-directory: apps/desktop
-        run: node scripts/bundle-macos-libmpv.mjs
-
-      - name: Verify macOS dylib references
-        run: |
-          app="target/release/bundle/macos/OpenPlayer.app"
-          unresolved=0
-          exe="$(find "$app/Contents/MacOS" -maxdepth 1 -type f | head -1)"
-          if otool -L "$exe" | grep -E "/opt/homebrew|/usr/local|/Cellar"; then
-            unresolved=1
-          fi
-          while IFS= read -r binary; do
-            if otool -L "$binary" 2>/dev/null | grep -E "/opt/homebrew|/usr/local|/Cellar"; then
-              echo "unrewritten dependency in $binary"
-              unresolved=1
-            fi
-          done < <(find "$app/Contents/Frameworks" -type f \( -name "*.dylib" -o -name "*.so" -o -perm +111 \))
-          exit "$unresolved"
-
-      - name: Ad-hoc sign macOS app
-        run: |
-          app="target/release/bundle/macos/OpenPlayer.app"
-          codesign --force --deep --sign - "$app"
-          codesign --verify --deep --strict --verbose=2 "$app"
-
-      - name: Prepare unsigned DMG checksum
-        run: |
-          version="$(node -e "const fs=require('fs'); console.log(JSON.parse(fs.readFileSync('apps/desktop/package.json','utf8')).version)")"
-          app="$(realpath target/release/bundle/macos/OpenPlayer.app)"
-          dmg_dir="target/release/bundle/dmg"
-          dmg_root="$RUNNER_TEMP/openplayer-dmg-${{ matrix.arch }}"
-          mkdir -p "$dmg_dir"
-          rm -rf "$dmg_root"
-          mkdir -p "$dmg_root"
-          cp -R "$app" "$dmg_root/OpenPlayer.app"
-          ln -s /Applications "$dmg_root/Applications"
-          dmg="$PWD/$dmg_dir/OpenPlayer_${version}_${{ matrix.arch }}.dmg"
-          rm -f "$dmg" "$dmg.sha256"
-          for attempt in 1 2 3; do
-            if hdiutil create -volname OpenPlayer -srcfolder "$dmg_root" -ov -format UDZO "$dmg"; then
-              break
-            fi
-
-            status=$?
-            if [ "$attempt" -eq 3 ]; then
-              exit "$status"
-            fi
-
-            hdiutil detach /Volumes/OpenPlayer -force || true
-            rm -rf "$dmg_root"
-            mkdir -p "$dmg_root"
-            cp -R "$app" "$dmg_root/OpenPlayer.app"
-            ln -s /Applications "$dmg_root/Applications"
-            rm -f "$dmg"
-            sleep $((attempt * 10))
-          done
-          shasum -a 256 "$dmg" > "$dmg.sha256"
-
-      - name: Upload unsigned macOS package artifact
-        uses: actions/upload-artifact@v6
+          package-manager-cache: false
+      - uses: actions/download-artifact@v7
         with:
-          name: openplayer-macos-${{ matrix.arch }}-unsigned
-          path: |
-            target/release/bundle/dmg/*.dmg
-            target/release/bundle/dmg/*.sha256
-
-      - name: Publish GitHub release assets
+          path: candidates
+          pattern: openplayer-*
+      - name: Check package checksums and provenance
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+        run: |
+          node apps/desktop/scripts/stage-release-packages.mjs assemble \
+            "$RELEASE_TAG" "$RELEASE_COMMIT" candidates release-files
+      - uses: actions/upload-artifact@v6
+        with:
+          name: openplayer-release-files
+          path: release-files
+          if-no-files-found: error
+          overwrite: true
+      - name: Upload release files to the matching draft
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
         run: |
-          gh release upload "$RELEASE_TAG" \
-            target/release/bundle/dmg/*.dmg \
-            target/release/bundle/dmg/*.sha256 \
-            --clobber
+          draft="$(gh release view "$RELEASE_TAG" --json isDraft,targetCommitish,assets)"
+          jq -e --arg sha "$RELEASE_COMMIT" '.isDraft and .targetCommitish == $sha' <<< "$draft"
+          while IFS= read -r asset; do
+            test -f "release-files/$asset"
+          done < <(jq -r '.assets[].name' <<< "$draft")
+          gh release upload "$RELEASE_TAG" release-files/* --clobber
+          draft_url="$(gh release view "$RELEASE_TAG" --json url --jq .url)"
+          printf 'Draft %s for commit `%s`\n\n%s\n' \
+            "$RELEASE_TAG" "$RELEASE_COMMIT" "$draft_url" >> "$GITHUB_STEP_SUMMARY"
+
+  package-validation:
+    name: Native installation and upgrade validation
+    needs: [prepare, packages]
+    uses: ./.github/workflows/package-validation.yml
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
+      commit: ${{ needs.prepare.outputs.commit }}
+
+  publish:
+    name: Publish the verified draft
+    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify successful staged run and native acceptance record
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          NATIVE_VERIFICATION: ${{ inputs.native_verification }}
+        run: |
+          test "$GITHUB_REF" == refs/heads/main
+          [[ "$CANDIDATE_RUN_ID" =~ ^[0-9]+$ ]]
+          if [[ ! "$NATIVE_VERIFICATION" =~ ^https://[^[:space:]]+$ ]]; then
+            echo 'Supply the native acceptance record for the exact candidate package hashes.' >&2
+            exit 1
+          fi
+          candidate_api="repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID"
+          candidate="$(gh api "$candidate_api")"
+          commit="$(jq -er 'select(.conclusion == "success" and .path == ".github/workflows/release.yml") | .head_sha' <<< "$candidate")"
+          git merge-base --is-ancestor "$commit" refs/remotes/origin/main
+          run_attempt="$(jq -er '.run_attempt' <<< "$candidate")"
+          gh api "$candidate_api/attempts/$run_attempt/jobs?per_page=100" | jq -e '
+            [.jobs[] | select(.name == "Verify and upload all draft assets") | .conclusion] == ["success"] and
+            ([.jobs[] | select(.name | startswith("Native installation and upgrade validation /")) | .conclusion]
+              | length == 4 and all(. == "success"))'
+          echo "RELEASE_COMMIT=$commit" >> "$GITHUB_ENV"
+          printf 'Native acceptance for commit `%s`, run `%s`\n\n%s\n' \
+            "$commit" "$CANDIDATE_RUN_ID" "$NATIVE_VERIFICATION" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/download-artifact@v7
+        with:
+          name: openplayer-release-files
+          path: release-files
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.candidate_run_id }}
+      - name: Verify release and preserve the 1.x Latest tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          jq -e --arg tag "$RELEASE_TAG" --arg sha "$RELEASE_COMMIT" \
+            '.tag == $tag and .commit == $sha and
+             ([.builds[] | select(.platform | startswith("macos-")) | .distribution] == ["notarized", "notarized"])' \
+            release-files/release-assets.json
+          draft="$(gh release view "$RELEASE_TAG" --json isDraft,targetCommitish)"
+          jq -e --arg sha "$RELEASE_COMMIT" '.isDraft and .targetCommitish == $sha' <<< "$draft"
+
+          tag_refs="$(git ls-remote "https://github.com/$GITHUB_REPOSITORY.git" \
+            "refs/tags/$RELEASE_TAG" "refs/tags/$RELEASE_TAG^{}")"
+          if [[ -n "$tag_refs" ]]; then
+            tag_commit="$(awk 'END { print $1 }' <<< "$tag_refs")"
+            test "$tag_commit" == "$RELEASE_COMMIT"
+          fi
+          gh release download "$RELEASE_TAG" --dir uploaded
+          diff --brief --recursive release-files uploaded
+
+          legacy_tag="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
+          [[ "$legacy_tag" =~ ^v1\.[0-9]+\.[0-9]+$ ]]
+          gh release edit "$RELEASE_TAG" --draft=false --latest=false
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)" == "$legacy_tag"

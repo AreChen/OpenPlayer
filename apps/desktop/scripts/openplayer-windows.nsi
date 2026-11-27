@@ -1,6 +1,7 @@
 ﻿Unicode true
 !include "MUI2.nsh"
 !include "WinVer.nsh"
+!include "FileFunc.nsh"
 !include "openplayer-media-shell.nsh"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\OpenPlayer"
 !define CAPABILITIES "Software\OpenPlayer\Capabilities"
@@ -20,8 +21,16 @@ VIAddVersionKey /LANG=1033 "FileVersion" "${PRODUCT_VERSION}"
 VIAddVersionKey /LANG=1033 "FileDescription" "OpenPlayer setup"
 VIAddVersionKey /LANG=1033 "LegalCopyright" "OpenPlayer contributors"
 
+Var IsUpdate
+Var SetupMutex
+
 !define MUI_ICON "${APP_ICON}"
 !define MUI_UNICON "${APP_ICON}"
+!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipRegularInstallWelcome
+!define MUI_WELCOMEPAGE_TITLE "$(OpenPlayerUpdateTitle)"
+!define MUI_WELCOMEPAGE_TEXT "$(OpenPlayerUpdateText)"
+!insertmacro MUI_PAGE_WELCOME
+!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipUpdateDirectory
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_FINISHPAGE_RUN "$INSTDIR\openplayer-desktop.exe"
@@ -40,10 +49,68 @@ LangString OpenPlayerFinishLaunch ${LANG_ENGLISH} "Launch OpenPlayer now"
 LangString OpenPlayerFinishLaunch ${LANG_SIMPCHINESE} "立即打开 OpenPlayer"
 LangString OpenPlayerFinishDefault ${LANG_ENGLISH} "Choose default apps in Windows Settings"
 LangString OpenPlayerFinishDefault ${LANG_SIMPCHINESE} "打开 Windows 默认应用设置"
+LangString OpenPlayerUpdateTitle ${LANG_ENGLISH} "Update OpenPlayer"
+LangString OpenPlayerUpdateTitle ${LANG_SIMPCHINESE} "更新 OpenPlayer"
+LangString OpenPlayerUpdateText ${LANG_ENGLISH} "Continue to install OpenPlayer ${PRODUCT_VERSION}. Setup will close the running player and keep your settings, playback history and favorites."
+LangString OpenPlayerUpdateText ${LANG_SIMPCHINESE} "继续安装 OpenPlayer ${PRODUCT_VERSION}。安装程序会关闭正在运行的播放器，并保留设置、播放历史和收藏。"
+LangString OpenPlayerUpdateNotInstalled ${LANG_ENGLISH} "Setup could not find the existing OpenPlayer installation."
+LangString OpenPlayerUpdateNotInstalled ${LANG_SIMPCHINESE} "安装程序找不到现有的 OpenPlayer 安装。"
+LangString OpenPlayerSetupRunning ${LANG_ENGLISH} "Close the other OpenPlayer Setup window and try again."
+LangString OpenPlayerSetupRunning ${LANG_SIMPCHINESE} "请关闭另一个 OpenPlayer 安装程序窗口，然后重试。"
 
 !include /CHARSET=UTF8 "openplayer-process.nsh"
 !insertmacro OpenPlayerProcessFunctions "" 0x40000000
 !insertmacro OpenPlayerProcessFunctions "un." 0x40010000
+
+!macro BeginOpenPlayerSetup
+  # Retain the mutex until this process exits so two setup windows cannot replace the same files.
+  System::Call 'kernel32::SetLastError(i 0)'
+  System::Call 'kernel32::CreateMutexW(p 0, i 0, w "Local\OpenPlayerSetup")p.r0 ?e'
+  Pop $1
+  StrCpy $SetupMutex $0
+  ${If} $SetupMutex == 0
+  ${OrIf} $1 == 183
+    MessageBox MB_OK|MB_ICONEXCLAMATION "$(OpenPlayerSetupRunning)" /SD IDOK
+    SetErrorLevel 2
+    Abort
+  ${EndIf}
+!macroend
+
+Function .onInit
+  !insertmacro BeginOpenPlayerSetup
+  SetShellVarContext current
+  SetRegView 64
+  ${GetParameters} $0
+  ClearErrors
+  ${GetOptions} $0 "/UPDATE" $1
+  ${IfNot} ${Errors}
+    StrCpy $IsUpdate 1
+    ReadRegStr $INSTDIR HKCU "${UNINSTALL_KEY}" "InstallLocation"
+    ${If} $INSTDIR != ""
+      IfFileExists "$INSTDIR\openplayer-desktop.exe" update_target_found
+    ${EndIf}
+    MessageBox MB_OK|MB_ICONSTOP "$(OpenPlayerUpdateNotInstalled)" /SD IDOK
+    SetErrorLevel 2
+    Abort
+  ${EndIf}
+update_target_found:
+FunctionEnd
+
+Function un.onInit
+  !insertmacro BeginOpenPlayerSetup
+FunctionEnd
+
+Function SkipRegularInstallWelcome
+  ${If} $IsUpdate != 1
+    Abort
+  ${EndIf}
+FunctionEnd
+
+Function SkipUpdateDirectory
+  ${If} $IsUpdate == 1
+    Abort
+  ${EndIf}
+FunctionEnd
 
 Function OpenDefaultPlayerSettings
   ${If} ${AtLeastBuild} 22000

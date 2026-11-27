@@ -9,6 +9,7 @@ use crate::window;
 pub fn run() {
     prepare_platform_runtime();
     tauri::Builder::default()
+        .manage(crate::unix_updates::DesktopUpdater::default())
         .manage(window::WindowState::default())
         .manage(StartupMediaState::from_args(std::env::args_os()))
         .plugin(tauri_plugin_dialog::init())
@@ -21,6 +22,10 @@ pub fn run() {
             crate::native_shortcuts::window_update_shortcuts,
             crate::native_shortcuts::window_set_shortcuts_enabled,
             crate::app_info::app_version,
+            crate::unix_updates::app_update_check,
+            crate::unix_updates::app_update_download,
+            crate::unix_updates::app_update_install,
+            crate::unix_updates::app_update_restart,
             crate::system_fonts::system_font_families,
             crate::external_open::app_open_url,
             crate::window::window_minimize,

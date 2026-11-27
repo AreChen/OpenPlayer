@@ -55,7 +55,7 @@ export function SettingsDialogContent({
   onStartRecordingShortcut,
   onAssignShortcut,
   onCheckForUpdates,
-  onOpenUpdateDownload,
+  onRunUpdateAction,
 }: SettingsDialogContentProps) {
   if (settingsSection === "appearance") {
     return (
@@ -139,7 +139,7 @@ export function SettingsDialogContent({
       appVersion={appVersion}
       updateState={updateState}
       onCheckForUpdates={onCheckForUpdates}
-      onOpenUpdateDownload={onOpenUpdateDownload}
+      onRunUpdateAction={onRunUpdateAction}
       onOpenExternalUrl={onOpenExternalUrl}
     />
   );

@@ -26,7 +26,7 @@ wait_for_release:
 
 files_unavailable:
   MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "$(OpenPlayerFilesUnavailable)" /SD IDCANCEL IDRETRY retry
-  SetErrorLevel 1
+  SetErrorLevel 2
   Abort
 FunctionEnd
 

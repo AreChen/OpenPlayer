@@ -168,5 +168,5 @@ export type PlayerAppViewPropsContext = {
   setRecordingShortcutAction: SettingsDialogProps["onStartRecordingShortcut"];
   assignShortcut: SettingsDialogProps["onAssignShortcut"];
   checkForUpdates: SettingsDialogProps["onCheckForUpdates"];
-  openUpdateDownload: SettingsDialogProps["onOpenUpdateDownload"];
+  runUpdateAction: SettingsDialogProps["onRunUpdateAction"];
 };

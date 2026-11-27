@@ -10,7 +10,7 @@ OpenPlayer 是基于 Rust 和 libmpv 的桌面媒体播放器。`main` 是 2.x �
 | --- | --- | --- |
 | Windows x64 | GPUI Fast 原生窗口、D3D11 视频合成与 GPUI Motion | 自带 libmpv 的 NSIS 安装包 |
 | Linux | Tauri 和 React 界面，libmpv 原生播放 | `.deb` 和 AppImage |
-| macOS | Tauri 和 React 界面，libmpv 原生播放 | 手动启用发布时生成未签名 DMG |
+| macOS Apple Silicon 和 Intel | Tauri 和 React 界面，libmpv 原生播放 | 自带 libmpv 的 DMG |
 
 ## Windows 播放器
 
@@ -24,7 +24,7 @@ OpenPlayer 是基于 Rust 和 libmpv 的桌面媒体播放器。`main` 是 2.x �
 
 ## 安装与更新
 
-在发布列表中选择版本和平台，并用配套的校验文件验证安装包。OpenPlayer 2.x 可在「设置 → 关于」检查更新。已发布的 1.x 安装使用独立更新渠道。[GitHub 发布列表](https://github.com/AreChen/OpenPlayer/releases)
+在发布列表中选择平台和架构，并用配套的 SHA-256 文件验证安装包。OpenPlayer 2.x 会在后台检查稳定版更新，也可以在「设置 → 关于」检查、下载并发起当前安装包类型的升级。现有 1.x 安装继续使用 GitHub 的「Latest」发行版。[GitHub 发布列表](https://github.com/AreChen/OpenPlayer/releases)
 
 Windows 安装包未签名，SmartScreen 可能提示。Linux 包使用系统提供的 libmpv。[原生依赖与许可证](docs/native-deps/README.md)
 

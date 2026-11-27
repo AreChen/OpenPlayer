@@ -11,6 +11,7 @@ pub fn run() {
     prepare_platform_runtime();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .manage(crate::unix_updates::DesktopUpdater::default())
         .manage(window::WindowState::default())
         .manage(MpvEmbedState::default())
         .manage(MpvWallState::default())
@@ -20,12 +21,17 @@ pub fn run() {
             app.manage(PlaybackStoreState::open(app.handle()));
             native_shortcuts::install_native_shortcut_hook(app.handle().clone());
             window::setup_overlay_window(app)?;
+            crate::unix_updates::start_fixture_test(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             crate::native_shortcuts::window_update_shortcuts,
             crate::native_shortcuts::window_set_shortcuts_enabled,
             crate::app_info::app_version,
+            crate::unix_updates::app_update_check,
+            crate::unix_updates::app_update_download,
+            crate::unix_updates::app_update_install,
+            crate::unix_updates::app_update_restart,
             crate::system_fonts::system_font_families,
             crate::external_open::app_open_url,
             crate::window::window_minimize,

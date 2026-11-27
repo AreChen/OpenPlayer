@@ -38,6 +38,6 @@ In windowed mode, OpenPlayer fits the window to the video's aspect ratio within 
 
 ## Updates
 
-From **Settings → About → Check for Updates**, OpenPlayer 2.x checks the GitHub release list. It offers a newer stable Windows installer for the installed major version when the asset is available.
+OpenPlayer 2.x checks the GitHub release list in the background. To check immediately, open **Settings → About → Check for Updates**. When a newer stable 2.x installer and its SHA-256 checksum are available for Windows x64, choose **Download Installer**. After verification, choose **Install Update** and confirm in OpenPlayer Setup. Setup closes the running player, updates the registered per-user installation and offers to launch OpenPlayer again. Settings, playback history and favorites are stored outside the installation directory.
 
-Published 1.x builds use GitHub's repository-wide `/releases/latest` endpoint, so keep a stable 1.x release marked **Latest**. The release workflow publishes 2.x with `--latest=false` and checks the 1.x endpoint before uploading the new installer. This setting applies to the GitHub release. `main` is the 2.x development branch. [Release workflow](../.github/workflows/release.yml)
+Published 1.x builds use GitHub's repository-wide `/releases/latest` endpoint, so keep a stable 1.x release marked **Latest**. Publish 2.x with `--latest=false` and verify the legacy endpoint before and after publishing. [Release workflow](../.github/workflows/release.yml)

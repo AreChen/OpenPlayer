@@ -177,6 +177,16 @@
       "updateAvailableUnknown": "发现新的 OpenPlayer 版本。",
       "updateCheckFailed": "检测更新失败：{message}",
       "downloadUpdate": "下载安装包",
+      "downloadingUpdate": "正在下载安装包并校验完整性…",
+      "updateReady": "OpenPlayer {version} 已校验，可以安装。确认后，安装程序会关闭播放器。",
+      "installUpdate": "安装更新",
+      "installingUpdate": "请按 OpenPlayer 安装程序中的提示安装更新。",
+      "updateUnsupported": "使用支持的安装包安装 OpenPlayer 后，即可使用自动更新。",
+      "updateDownloadFailed": "下载更新失败：{message}",
+      "updateInstallFailed": "安装更新失败：{message}",
+      "restartUpdate": "重启 OpenPlayer",
+      "openInstaller": "打开安装程序",
+      "updateInstallerOpened": "请退出 OpenPlayer，将磁盘映像中的应用复制到「应用程序」并替换旧版，然后重新打开。",
       "openReleasePage": "打开发布页"
     }
   },

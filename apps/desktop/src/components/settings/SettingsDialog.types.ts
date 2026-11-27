@@ -72,7 +72,7 @@ export type SettingsDialogProps = {
   onStartRecordingShortcut: (action: ShortcutAction | null) => void;
   onAssignShortcut: (action: ShortcutAction, shortcut: string | null) => void;
   onCheckForUpdates: () => void;
-  onOpenUpdateDownload: () => void;
+  onRunUpdateAction: () => void;
 };
 
 export type SettingsDialogContentProps = Omit<

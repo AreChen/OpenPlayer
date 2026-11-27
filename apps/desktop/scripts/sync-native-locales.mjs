@@ -17,6 +17,8 @@ const locales = [
       updateIdle: "Check GitHub for a newer installer in this release series.",
       upToDate: "No newer installer in this release series was found.",
       downloadUpdate: "Download Installer",
+      updateReady: "OpenPlayer {version} is ready to install. Setup will close the player when you confirm.",
+      installingUpdate: "Follow the instructions in OpenPlayer Setup to install the update.",
     },
     shellPreview: {
       description: "Register thumbnails and media metadata in File Explorer for the selected formats.",
@@ -129,6 +131,8 @@ const locales = [
       updateIdle: "在 GitHub 检查当前版本系列的新安装包。",
       upToDate: "当前版本系列没有更新的安装包。",
       downloadUpdate: "下载安装包",
+      updateReady: "OpenPlayer {version} 已校验，可以安装。确认后，安装程序会关闭播放器。",
+      installingUpdate: "请按 OpenPlayer 安装程序中的提示安装更新。",
     },
     shellPreview: {
       description: "为选中的格式注册资源管理器缩略图和媒体信息。",
@@ -271,6 +275,8 @@ for (const [language, exportName, native] of locales) {
         description: native.about,
         updateAvailable: shared.settings.about.updateAvailable("{version}"),
         updateCheckFailed: shared.settings.about.updateCheckFailed("{message}"),
+        updateDownloadFailed: shared.settings.about.updateDownloadFailed("{message}"),
+        updateInstallFailed: shared.settings.about.updateInstallFailed("{message}"),
       },
     },
     media: {

@@ -10,7 +10,7 @@ OpenPlayer is a desktop media player built with Rust and libmpv. The `main` bran
 | --- | --- | --- |
 | Windows x64 | Native GPUI Fast window, D3D11 video composition and GPUI Motion | NSIS installer with libmpv |
 | Linux | Tauri and React with a native libmpv video host | `.deb` and AppImage |
-| macOS | Tauri and React with a native libmpv video host | Unsigned DMG in opt-in release builds |
+| macOS Apple Silicon and Intel | Tauri and React with a native libmpv video host | DMG with bundled libmpv |
 
 ## Windows player
 
@@ -24,7 +24,7 @@ Common shortcuts are `Ctrl+O` to open media, `Space` to play or pause, `←` / `
 
 ## Install and update
 
-Choose your version and platform in the release list and use the corresponding checksum file to verify the download. OpenPlayer 2.x can check for updates in **Settings → About**. Published 1.x installations follow their own update channel. [GitHub Releases](https://github.com/AreChen/OpenPlayer/releases)
+Choose your platform and architecture in the release list and use the corresponding SHA-256 file to verify the download. OpenPlayer 2.x checks for stable updates in the background. **Settings → About** also lets you check, download and start installing the update for your package type. Existing 1.x installations keep using GitHub's **Latest** release. [GitHub Releases](https://github.com/AreChen/OpenPlayer/releases)
 
 The Windows installer is unsigned, so SmartScreen may show a prompt. Linux requires the system libmpv runtime. [Native runtime and licenses](docs/native-deps/README.md)
 

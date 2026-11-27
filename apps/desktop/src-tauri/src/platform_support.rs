@@ -20,9 +20,32 @@ struct PlatformEnvironment<'a> {
     gdk_backend: Option<&'a str>,
 }
 
+#[cfg(not(all(target_os = "linux", feature = "mpv-embed")))]
 #[tauri::command]
 pub fn platform_support() -> PlatformSupport {
     PlatformSupport::current()
+}
+
+#[cfg(all(target_os = "linux", feature = "mpv-embed"))]
+#[tauri::command]
+pub fn platform_support(window: tauri::WebviewWindow) -> PlatformSupport {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+    let mut support = PlatformSupport::current();
+    if let Ok(handle) = window.window_handle() {
+        match handle.as_raw() {
+            RawWindowHandle::Xlib(_) | RawWindowHandle::Xcb(_) => {
+                support.display_server = "x11";
+                support.mpv_embed_video = true;
+            }
+            RawWindowHandle::Wayland(_) => {
+                support.display_server = "wayland";
+                support.mpv_embed_video = false;
+            }
+            _ => {}
+        }
+    }
+    support
 }
 
 pub fn prepare_platform_runtime() {

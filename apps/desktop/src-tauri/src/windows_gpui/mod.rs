@@ -29,6 +29,7 @@ const WINDOW_TITLE: &str = "OpenPlayer";
 struct Options {
     media: Vec<PathBuf>,
     adapter: Option<u32>,
+    update_smoke: Option<updates::UpdateSmoke>,
 }
 
 impl Options {
@@ -50,9 +51,20 @@ impl Options {
                             .context("invalid DXGI index")?,
                     );
                 }
+                Some("--smoke-update") => {
+                    let action = args.next().context("missing smoke update action")?;
+                    let status = args.next().context("missing smoke update status path")?;
+                    options.update_smoke = Some(updates::UpdateSmoke::new(
+                        action.to_str(),
+                        PathBuf::from(status),
+                    )?);
+                }
                 Some(flag) if flag.starts_with('-') => bail!("unknown option {flag}"),
                 _ => options.media.push(PathBuf::from(arg)),
             }
+        }
+        if let Some(smoke) = &mut options.update_smoke {
+            smoke.wait_for_playback = !options.media.is_empty();
         }
         Ok(Some(options))
     }
@@ -103,7 +115,16 @@ fn run_player() -> Result<()> {
                 },
                 move |window, cx| {
                     let controller = Controller::new(options.media);
-                    cx.new(|cx| PlayerView::new(options.adapter, controller, platform, window, cx))
+                    cx.new(|cx| {
+                        PlayerView::new(
+                            options.adapter,
+                            controller,
+                            platform,
+                            options.update_smoke,
+                            window,
+                            cx,
+                        )
+                    })
                 },
             );
             if let Err(error) = window {

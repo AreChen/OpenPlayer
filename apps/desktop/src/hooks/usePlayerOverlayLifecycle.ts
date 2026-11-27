@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import { focusOverlayWindow } from "../app/windowControls";
 import type {
   AppVersionInfo,
   AppearanceState,
@@ -28,8 +27,6 @@ type UsePlayerOverlayLifecycleOptions = {
   media: MediaItem | null;
   loadedMediaPath: string | null;
   loopMode: LoopMode;
-  appVersion: AppVersionInfo | null;
-  platformSupport: PlatformSupport | null;
   isChromePinned: boolean;
   contextMenu: ContextMenuPosition | null;
   isSettingsOpen: boolean;
@@ -59,7 +56,6 @@ type UsePlayerOverlayLifecycleOptions = {
   loadShellPreviewFormats: (formats: ShellPreviewFormatInfo[], selectedExtensions: string[]) => void;
   setSystemFontFamilies: (fonts: string[]) => void;
   replaceQueueWithMediaPaths: (paths: string[]) => Promise<void>;
-  openExternalUrl: (url: string) => void;
   applySnapshot: (snapshot: MpvSnapshot) => void;
   onError: (error: unknown) => void;
 };
@@ -68,8 +64,6 @@ export function usePlayerOverlayLifecycle({
   media,
   loadedMediaPath,
   loopMode,
-  appVersion,
-  platformSupport,
   isChromePinned,
   contextMenu,
   isSettingsOpen,
@@ -99,7 +93,6 @@ export function usePlayerOverlayLifecycle({
   loadShellPreviewFormats,
   setSystemFontFamilies,
   replaceQueueWithMediaPaths,
-  openExternalUrl,
   applySnapshot,
   onError,
 }: UsePlayerOverlayLifecycleOptions) {
@@ -139,13 +132,7 @@ export function usePlayerOverlayLifecycle({
       replaceQueueWithMediaPaths(paths).catch(onError);
     },
   });
-  const { updateState, checkForUpdates, openUpdateDownload } = useReleaseUpdates({
-    appVersion,
-    platformSupport,
-    onSetAppVersion: setAppVersion,
-    onOpenExternalUrl: openExternalUrl,
-    onCheckSettled: focusOverlayWindow,
-  });
+  const { updateState, checkForUpdates, runUpdateAction } = useReleaseUpdates();
   useLoopModeSync({
     media,
     loadedMediaPath,
@@ -170,6 +157,6 @@ export function usePlayerOverlayLifecycle({
     isDropActive,
     updateState,
     checkForUpdates,
-    openUpdateDownload,
+    runUpdateAction,
   };
 }

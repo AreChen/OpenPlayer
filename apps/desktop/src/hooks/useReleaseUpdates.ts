@@ -1,84 +1,82 @@
-import { useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { DEFAULT_UPDATE_STATE, OPENPLAYER_RELEASES_API_URL, OPENPLAYER_RELEASES_URL } from "../app/constants";
-import { compareVersionParts, latestInstallableRelease } from "../app/updates";
-import type { AppVersionInfo, PlatformSupport, UpdateState } from "../app/types";
+import { canCheckForUpdates } from "../app/updates";
+import type { UpdateOffer, UpdateState } from "../app/types";
 
-type UseReleaseUpdatesOptions = {
-  appVersion: AppVersionInfo | null;
-  platformSupport: PlatformSupport | null;
-  onSetAppVersion: (version: AppVersionInfo) => void;
-  onOpenExternalUrl: (url: string) => void;
-  onCheckSettled: () => void;
-};
+type CheckResult =
+  | { status: "current" | "unsupported" }
+  | { status: "available" | "installed"; update: UpdateOffer };
 
-export function useReleaseUpdates({ appVersion, platformSupport, onSetAppVersion, onOpenExternalUrl, onCheckSettled }: UseReleaseUpdatesOptions) {
-  const [updateState, setUpdateState] = useState<UpdateState>(DEFAULT_UPDATE_STATE);
+const FIRST_UPDATE_CHECK_DELAY_MS = 15_000;
+const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1_000;
+
+export function useReleaseUpdates() {
+  const [updateState, setUpdateState] = useState<UpdateState>({ status: "idle" });
+  const pending = useRef(false);
 
   async function checkForUpdates() {
-    if (updateState.status === "checking") {
-      return;
-    }
+    if (pending.current || !canCheckForUpdates(updateState)) return;
 
-    setUpdateState((state) => ({ ...state, status: "checking", error: null }));
-    const timeout = new AbortController();
-    const timer = window.setTimeout(() => timeout.abort(), 20_000);
+    pending.current = true;
+    setUpdateState({ status: "checking" });
     try {
-      const versionInfo = appVersion ?? (await invoke<AppVersionInfo>("app_version"));
-      if (!appVersion) {
-        onSetAppVersion(versionInfo);
-      }
-
-      const pageSize = 100;
-      let update: ReturnType<typeof latestInstallableRelease> = null;
-      for (let page = 1; ; page += 1) {
-        const response = await fetch(`${OPENPLAYER_RELEASES_API_URL}?per_page=${pageSize}&page=${page}`, {
-          headers: { Accept: "application/vnd.github+json" },
-          signal: timeout.signal,
-        });
-        if (!response.ok) throw new Error(`GitHub ${response.status}`);
-        const releases: unknown = await response.json();
-        if (!Array.isArray(releases)) throw new Error("invalid release list");
-        const candidate = latestInstallableRelease(releases, versionInfo.version, platformSupport);
-        if (candidate && (!update || compareVersionParts(update.latest.version, candidate.latest.version) < 0)) update = candidate;
-        if (releases.length < pageSize) break;
-      }
-      setUpdateState({
-        status: update ? "available" : "current",
-        latest: update?.latest ?? null,
-        asset: update?.asset ?? null,
-        error: null,
-      });
+      setUpdateState(await invoke<CheckResult>("app_update_check"));
     } catch (error) {
-      setUpdateState({
-        status: "failed",
-        latest: null,
-        asset: null,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      setUpdateState({ status: "checkFailed", message: String(error) });
     } finally {
-      window.clearTimeout(timer);
-      onCheckSettled();
+      pending.current = false;
     }
   }
 
-  function openUpdateDownload() {
-    if (updateState.status === "available" && updateState.asset) {
-      onOpenExternalUrl(updateState.asset.browserDownloadUrl);
-      return;
-    }
+  async function runUpdateAction() {
+    if (pending.current || !("update" in updateState)) return;
 
-    if (updateState.latest) {
-      onOpenExternalUrl(updateState.latest.htmlUrl);
-      return;
+    const { status, update } = updateState;
+    pending.current = true;
+    try {
+      switch (status) {
+        case "available":
+        case "downloadFailed":
+        case "installFailed":
+          setUpdateState({ status: "downloading", update });
+          await invoke("app_update_download", { version: update.version });
+          setUpdateState({ status: "ready", update });
+          break;
+        case "ready":
+        case "installerOpened": {
+          setUpdateState({ status: "installing", update });
+          const result = await invoke<{ status: "installed" | "installerOpened" }>(
+            "app_update_install", { version: update.version },
+          );
+          setUpdateState({ status: result.status, update });
+          break;
+        }
+        case "installed":
+        case "restartFailed":
+          await invoke("app_update_restart");
+          break;
+      }
+    } catch (error) {
+      const failure = status === "ready" || status === "installerOpened" ? "installFailed"
+        : status === "installed" || status === "restartFailed" ? "restartFailed" : "downloadFailed";
+      setUpdateState({ status: failure, update, message: String(error) });
+    } finally {
+      pending.current = false;
     }
-
-    onOpenExternalUrl(appVersion?.releasesUrl ?? OPENPLAYER_RELEASES_URL);
   }
 
-  return {
-    updateState,
-    checkForUpdates,
-    openUpdateDownload,
-  };
+  const checkInBackground = useEffectEvent(() => {
+    void checkForUpdates();
+  });
+
+  useEffect(() => {
+    const initial = window.setTimeout(checkInBackground, FIRST_UPDATE_CHECK_DELAY_MS);
+    const daily = window.setInterval(checkInBackground, UPDATE_CHECK_INTERVAL_MS);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(daily);
+    };
+  }, []);
+
+  return { updateState, checkForUpdates, runUpdateAction };
 }

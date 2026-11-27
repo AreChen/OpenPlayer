@@ -532,15 +532,28 @@ impl PlayerView {
         let ui = &self.ui;
         let status = &self.update_status;
         let checking = matches!(status, UpdateStatus::Checking);
-        let available = matches!(status, UpdateStatus::Available(_));
         let message = match status {
             UpdateStatus::Idle => ui.label("settings.about.updateIdle"),
             UpdateStatus::Checking => ui.label("settings.about.checkingUpdates"),
             UpdateStatus::Current => ui.label("settings.about.upToDate"),
-            UpdateStatus::Available(update) => ui
+            UpdateStatus::Available(update, None) => ui
                 .label("settings.about.updateAvailable")
                 .replace("{version}", &update.version)
                 .into(),
+            UpdateStatus::Available(_, Some(error)) => ui
+                .label("settings.about.updateDownloadFailed")
+                .replace("{message}", error)
+                .into(),
+            UpdateStatus::Downloading => ui.label("settings.about.downloadingUpdate"),
+            UpdateStatus::Ready(version, _, None) => ui
+                .label("settings.about.updateReady")
+                .replace("{version}", version)
+                .into(),
+            UpdateStatus::Ready(_, _, Some(error)) => ui
+                .label("settings.about.updateInstallFailed")
+                .replace("{message}", error)
+                .into(),
+            UpdateStatus::Installing => ui.label("settings.about.installingUpdate"),
             UpdateStatus::Failed(error) => ui
                 .label("settings.about.updateCheckFailed")
                 .replace("{message}", error)
@@ -552,6 +565,7 @@ impl PlayerView {
             .child(
                 div()
                     .flex()
+                    .flex_wrap()
                     .gap_2()
                     .child(self.setting_button(
                         "check-for-updates",
@@ -562,14 +576,24 @@ impl PlayerView {
                         },
                         "checkForUpdates",
                         Value::Null,
-                        !checking,
+                        status.can_check(),
                         cx,
                     ))
-                    .when(available, |row| {
+                    .when(matches!(status, UpdateStatus::Available(..)), |row| {
                         row.child(self.setting_button(
                             "download-update",
                             "settings.about.downloadUpdate",
                             "downloadUpdate",
+                            Value::Null,
+                            true,
+                            cx,
+                        ))
+                    })
+                    .when(matches!(status, UpdateStatus::Ready(..)), |row| {
+                        row.child(self.setting_button(
+                            "install-update",
+                            "settings.about.installUpdate",
+                            "installUpdate",
                             Value::Null,
                             true,
                             cx,

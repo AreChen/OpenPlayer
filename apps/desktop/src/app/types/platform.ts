@@ -27,23 +27,15 @@ export type AppVersionInfo = {
   releasesUrl: string;
 };
 
-export type ReleaseAsset = {
-  name: string;
-  browserDownloadUrl: string;
-};
-
-export type LatestRelease = {
+export type UpdateOffer = {
   version: string;
-  tagName: string;
-  htmlUrl: string;
-  assets: ReleaseAsset[];
+  package: "dmg" | "deb" | "appImage";
 };
 
-export type UpdateState = {
-  status: "idle" | "checking" | "current" | "available" | "failed";
-  latest: LatestRelease | null;
-  asset: ReleaseAsset | null;
-  error: string | null;
-};
+export type UpdateState =
+  | { status: "idle" | "checking" | "current" | "unsupported" }
+  | { status: "available" | "downloading" | "ready" | "installing" | "installed" | "installerOpened"; update: UpdateOffer }
+  | { status: "checkFailed"; message: string }
+  | { status: "downloadFailed" | "installFailed" | "restartFailed"; update: UpdateOffer; message: string };
 
 export type WindowCommand = "window_minimize" | "window_toggle_maximize" | "window_toggle_fullscreen" | "window_close";

@@ -4,7 +4,7 @@
 | --- | --- |
 | Windows x64 | Official LGPLv3 build, restored from [the pinned artifact metadata](mpv-windows-x64.json). |
 | Linux | The distribution provides the `libmpv2` runtime. |
-| macOS | The opt-in release workflow bundles the Homebrew libmpv dylibs. |
+| macOS | Both architecture-specific DMGs bundle Homebrew libmpv and its dependency dylibs. |
 
 From the repository root on Windows, run `./apps/desktop/scripts/restore-windows-mpv.ps1` to restore libmpv, the import library, headers and the license. The script verifies the archive and DLL SHA256 hashes. CI uses the same restore script. The NSIS installer includes the DLL and license. [Windows build instructions](../windows-gpui.md)
 

@@ -1,0 +1,147 @@
+name: Build desktop packages
+description: Build the OpenPlayer installers and checksums on a native runner
+inputs:
+  tag:
+    description: Stable version tag matching the workspace version
+    required: true
+  output:
+    description: Directory for packages, checksums, and the build manifest
+    required: true
+  install-dependencies:
+    description: Install the native build dependencies and toolchain prerequisites
+    default: "true"
+  macos-distribution:
+    description: Sign and notarize macOS packages when the Apple credentials are available
+    default: "false"
+  apple-certificate:
+    description: Base64-encoded Developer ID Application PKCS#12 certificate
+  apple-certificate-password:
+    description: PKCS#12 certificate password
+  apple-signing-identity:
+    description: Developer ID Application signing identity
+  apple-id:
+    description: Apple ID used by notarytool
+  apple-password:
+    description: App-specific password for the Apple ID
+  apple-team-id:
+    description: Apple Developer team ID
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v7.1.0
+      if: inputs.install-dependencies == 'true'
+      with:
+        node-version: 26
+        package-manager-cache: false
+
+    - name: Select Rust toolchain
+      if: inputs.install-dependencies == 'true'
+      shell: bash
+      run: rustc --version
+
+    - name: Install Windows packaging dependencies
+      if: runner.os == 'Windows' && inputs.install-dependencies == 'true'
+      shell: pwsh
+      run: |
+        ./apps/desktop/scripts/restore-windows-mpv.ps1
+        choco install nsis -y
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    - name: Install Linux packaging dependencies
+      if: runner.os == 'Linux' && inputs.install-dependencies == 'true'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y pkg-config libdbus-1-dev libwebkit2gtk-4.1-dev \
+          libgtk-3-dev libayatana-appindicator3-dev libmpv-dev librsvg2-dev patchelf
+        sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2
+
+    - name: Install macOS packaging dependencies
+      if: runner.os == 'macOS' && inputs.install-dependencies == 'true'
+      shell: bash
+      run: |
+        brew install mpv pkg-config
+        prefix="$(brew --prefix mpv)"
+        test -f "$prefix/include/mpv/render.h"
+        test -f "$prefix/lib/libmpv.dylib"
+        PKG_CONFIG_PATH="$prefix/lib/pkgconfig" pkg-config --exists mpv
+        {
+          echo "OPENPLAYER_MPV_DIR=$prefix"
+          echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+        } >> "$GITHUB_ENV"
+
+    - name: Verify workspace metadata
+      shell: bash
+      env:
+        RELEASE_TAG: ${{ inputs.tag }}
+      run: |
+        npm --prefix apps/desktop run verify:release -- --tag="$RELEASE_TAG"
+        npm --prefix apps/desktop run verify:shell
+        node apps/desktop/scripts/sync-native-locales.mjs --check
+
+    - name: Install frontend dependencies
+      if: runner.os != 'Windows' && inputs.install-dependencies == 'true'
+      working-directory: apps/desktop
+      shell: bash
+      run: npm ci
+
+    - name: Build native Windows installer
+      if: runner.os == 'Windows'
+      shell: pwsh
+      env:
+        RELEASE_TAG: ${{ inputs.tag }}
+        PACKAGE_OUTPUT: ${{ inputs.output }}
+      run: |
+        if ($env:RUNNER_ARCH -ne 'X64') { throw 'Expected an x64 Windows runner' }
+        $deps = cargo tree -p openplayer-desktop --locked --target x86_64-pc-windows-msvc -e normal,build --prefix none
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        if ($deps -match '^(tauri|tao|wry|webview2)[ -]') { throw 'Unexpected web runtime dependency' }
+        ./apps/desktop/scripts/build-windows.ps1
+        node apps/desktop/scripts/stage-release-packages.mjs stage $env:RELEASE_TAG windows-x64 $env:PACKAGE_OUTPUT native
+
+    - name: Build Linux deb and AppImage
+      if: runner.os == 'Linux'
+      working-directory: apps/desktop
+      shell: bash
+      run: |
+        test "$RUNNER_ARCH" == X64
+        npm run tauri:build -- --config src-tauri/tauri.linux.conf.json -- --locked
+
+    - name: Stage Linux packages
+      if: runner.os == 'Linux'
+      shell: bash
+      env:
+        RELEASE_TAG: ${{ inputs.tag }}
+        PACKAGE_OUTPUT: ${{ inputs.output }}
+      run: node apps/desktop/scripts/stage-release-packages.mjs stage "$RELEASE_TAG" linux-x64 "$PACKAGE_OUTPUT" native
+
+    - name: Build macOS app bundle
+      if: runner.os == 'macOS'
+      working-directory: apps/desktop
+      shell: bash
+      run: |
+        export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Wl,-headerpad_max_install_names"
+        npm run tauri:build -- --config src-tauri/tauri.macos.conf.json --bundles app -- --locked
+
+    - name: Build and validate macOS DMG
+      if: runner.os == 'macOS'
+      shell: bash
+      env:
+        RELEASE_TAG: ${{ inputs.tag }}
+        PACKAGE_OUTPUT: ${{ inputs.output }}
+        MACOS_DISTRIBUTION: ${{ inputs.macos-distribution }}
+        OPENPLAYER_APPLE_CERTIFICATE: ${{ inputs.apple-certificate }}
+        OPENPLAYER_APPLE_CERTIFICATE_PASSWORD: ${{ inputs.apple-certificate-password }}
+        OPENPLAYER_APPLE_SIGNING_IDENTITY: ${{ inputs.apple-signing-identity }}
+        OPENPLAYER_APPLE_ID: ${{ inputs.apple-id }}
+        OPENPLAYER_APPLE_PASSWORD: ${{ inputs.apple-password }}
+        OPENPLAYER_APPLE_TEAM_ID: ${{ inputs.apple-team-id }}
+      run: |
+        bundle="${CARGO_TARGET_DIR:-target}/release/bundle/macos/OpenPlayer.app"
+        node apps/desktop/scripts/bundle-macos-libmpv.mjs "$bundle"
+        case "$RUNNER_ARCH" in
+          ARM64) arch=arm64 ;;
+          X64) arch=x64 ;;
+          *) echo "Unexpected macOS runner architecture: $RUNNER_ARCH" >&2; exit 1 ;;
+        esac
+        bash apps/desktop/scripts/build-macos-dmg.sh "${RELEASE_TAG#v}" "$arch" "$MACOS_DISTRIBUTION"

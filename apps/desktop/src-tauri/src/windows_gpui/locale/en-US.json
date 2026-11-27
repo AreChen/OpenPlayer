@@ -177,6 +177,16 @@
       "updateAvailableUnknown": "A newer OpenPlayer release is available.",
       "updateCheckFailed": "Update check failed: {message}",
       "downloadUpdate": "Download Installer",
+      "downloadingUpdate": "Downloading and verifying the installer…",
+      "updateReady": "OpenPlayer {version} is ready to install. Setup will close the player when you confirm.",
+      "installUpdate": "Install Update",
+      "installingUpdate": "Follow the instructions in OpenPlayer Setup to install the update.",
+      "updateUnsupported": "Automatic updates are available when OpenPlayer is installed from a supported package.",
+      "updateDownloadFailed": "Update download failed: {message}",
+      "updateInstallFailed": "Update installation failed: {message}",
+      "restartUpdate": "Restart OpenPlayer",
+      "openInstaller": "Open Installer",
+      "updateInstallerOpened": "Quit OpenPlayer, replace it in Applications from the disk image, then reopen it.",
       "openReleasePage": "Open Release Page"
     }
   },

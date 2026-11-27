@@ -18,7 +18,8 @@
           "libgtk-3-0 | libgtk-3-0t64",
           "libayatana-appindicator3-1",
           "libmpv2",
-          "librsvg2-2"
+          "librsvg2-2",
+          "pkexec"
         ],
         "section": "video",
         "priority": "optional"

@@ -69,7 +69,7 @@ export function buildDialogViewProps({
   setRecordingShortcutAction,
   assignShortcut,
   checkForUpdates,
-  openUpdateDownload,
+  runUpdateAction,
 }: PlayerAppViewPropsContext): Pick<
   PlayerAppViewProps,
   "contextMenuProps" | "pluginViewShellProps" | "networkStreamDialogProps" | "settingsDialogProps"
@@ -160,7 +160,7 @@ export function buildDialogViewProps({
           onStartRecordingShortcut: setRecordingShortcutAction,
           onAssignShortcut: assignShortcut,
           onCheckForUpdates: checkForUpdates,
-          onOpenUpdateDownload: openUpdateDownload,
+          onRunUpdateAction: runUpdateAction,
         }
       : null,
   };

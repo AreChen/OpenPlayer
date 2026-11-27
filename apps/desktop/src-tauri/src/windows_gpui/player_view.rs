@@ -3,6 +3,7 @@ mod input;
 mod media_properties;
 mod quick_open;
 mod timeline;
+mod update_flow;
 mod volume;
 
 use std::{
@@ -46,7 +47,7 @@ use super::{
     settings::ExplorerPreview,
     theme::{Palette, icon, logo},
     ui_state::UiState,
-    updates::{self, UpdateStatus},
+    updates::{UpdateSmoke, UpdateStatus},
     widgets::{button_feedback, tooltip},
     window_layout::{FitRequest, observe_manual_resize},
 };
@@ -105,6 +106,8 @@ pub(super) struct PlayerView {
     pub(super) edit: Option<(EditTarget, String)>,
     pub(super) show_history: bool,
     pub(super) update_status: UpdateStatus,
+    update_smoke: Option<UpdateSmoke>,
+    smoke_playing: bool,
     pub(super) explorer_preview: ExplorerPreview,
 }
 
@@ -113,6 +116,7 @@ impl PlayerView {
         video_adapter: Option<u32>,
         mut controller: Controller,
         platform: Rc<dyn Platform>,
+        update_smoke: Option<UpdateSmoke>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -177,10 +181,13 @@ impl PlayerView {
             edit: None,
             show_history: false,
             update_status: UpdateStatus::default(),
+            update_smoke,
+            smoke_playing: false,
             explorer_preview: ExplorerPreview::new(),
         };
         view.schedule_samples(cx);
         view.arm_idle(cx);
+        view.start_update_checks(cx);
         view
     }
 
@@ -258,6 +265,7 @@ impl PlayerView {
         let aspect_changed = self.ui.video_aspect_ratio != state.video_aspect_ratio;
         self.playback_clock.update(&state);
         self.ui = state;
+        self.report_smoke_playback(cx);
         if aspect_changed {
             self.fit_pending = self.ui.video_aspect_ratio.is_some();
             self.schedule_window_fit(cx);
@@ -397,9 +405,11 @@ impl PlayerView {
                 return;
             }
             "downloadUpdate" => {
-                if let UpdateStatus::Available(update) = &self.update_status {
-                    cx.open_url(&update.url);
-                }
+                self.download_update(cx);
+                return;
+            }
+            "installUpdate" => {
+                self.install_update(cx);
                 return;
             }
             "togglePlayback" if self.ui.media.is_none() && !self.controller.has_queue() => {
@@ -438,27 +448,6 @@ impl PlayerView {
         if kind == "toggleMute" {
             self.show_volume(cx);
         }
-    }
-
-    fn check_for_updates(&mut self, cx: &mut Context<Self>) {
-        if matches!(self.update_status, UpdateStatus::Checking) {
-            return;
-        }
-        self.update_status = UpdateStatus::Checking;
-        cx.notify();
-        let check = cx.background_executor().spawn(async { updates::check() });
-        cx.spawn(async move |view, cx| {
-            let result = check.await;
-            let _ = view.update(cx, |view, cx| {
-                view.update_status = match result {
-                    Ok(Some(update)) => UpdateStatus::Available(update),
-                    Ok(None) => UpdateStatus::Current,
-                    Err(error) => UpdateStatus::Failed(format!("{error:#}")),
-                };
-                cx.notify();
-            });
-        })
-        .detach();
     }
 
     pub(super) fn send_in_window(

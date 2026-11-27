@@ -1,5 +1,5 @@
 import { OPENPLAYER_RELEASES_URL, OPENPLAYER_REPOSITORY_URL } from "../../app/constants";
-import { updateStatusText } from "../../app/updates";
+import { canCheckForUpdates, updateActionLabel, updateStatusText } from "../../app/updates";
 import type { AppVersionInfo, UpdateState } from "../../app/types";
 import type { AppStrings } from "../../i18n";
 
@@ -8,11 +8,11 @@ type AboutSettingsPanelProps = {
   appVersion: AppVersionInfo | null;
   updateState: UpdateState;
   onCheckForUpdates: () => void;
-  onOpenUpdateDownload: () => void;
+  onRunUpdateAction: () => void;
   onOpenExternalUrl: (url: string | null | undefined) => void;
 };
 
-export function AboutSettingsPanel({ t, appVersion, updateState, onCheckForUpdates, onOpenUpdateDownload, onOpenExternalUrl }: AboutSettingsPanelProps) {
+export function AboutSettingsPanel({ t, appVersion, updateState, onCheckForUpdates, onRunUpdateAction, onOpenExternalUrl }: AboutSettingsPanelProps) {
   const versionInfo = appVersion ?? {
     name: t.common.appName,
     version: t.common.loading,
@@ -20,8 +20,9 @@ export function AboutSettingsPanel({ t, appVersion, updateState, onCheckForUpdat
     repository: OPENPLAYER_REPOSITORY_URL,
     releasesUrl: OPENPLAYER_RELEASES_URL,
   };
-  const latestVersion = updateState.latest?.version ?? (updateState.status === "current" ? versionInfo.version : t.common.none);
-  const downloadLabel = updateState.status === "available" && updateState.asset ? t.settings.about.downloadUpdate : t.settings.about.openReleasePage;
+  const latestVersion = "update" in updateState ? updateState.update.version
+    : updateState.status === "current" ? versionInfo.version : t.common.none;
+  const updateAction = updateActionLabel(updateState, t);
 
   return (
     <section className="settings-panel" aria-labelledby="about-settings-title">
@@ -59,15 +60,17 @@ export function AboutSettingsPanel({ t, appVersion, updateState, onCheckForUpdat
         <section className="about-update-card" aria-label={t.settings.about.update}>
           <div>
             <strong>{t.settings.about.update}</strong>
-            <small>{updateStatusText(updateState, t)}</small>
+            <small aria-live="polite">{updateStatusText(updateState, t)}</small>
           </div>
           <div className="about-actions">
-            <button className="settings-reset" type="button" onClick={onCheckForUpdates} disabled={updateState.status === "checking"}>
+            <button className="settings-reset" type="button" onClick={onCheckForUpdates} disabled={!canCheckForUpdates(updateState)}>
               {updateState.status === "checking" ? t.settings.about.checkingShort : t.settings.about.checkForUpdates}
             </button>
-            <button className="settings-reset" type="button" onClick={onOpenUpdateDownload} disabled={updateState.status !== "available" && !updateState.latest}>
-              {downloadLabel}
-            </button>
+            {updateAction && (
+              <button className="settings-reset" type="button" onClick={onRunUpdateAction}>
+                {updateAction}
+              </button>
+            )}
           </div>
         </section>
 

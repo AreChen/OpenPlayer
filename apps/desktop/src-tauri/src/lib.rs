@@ -29,6 +29,9 @@ mod store_schema;
 #[cfg(not(windows))]
 mod system_fonts;
 #[cfg(not(windows))]
+mod unix_updates;
+mod updater;
+#[cfg(not(windows))]
 mod window;
 #[cfg(all(windows, feature = "windows-gpui"))]
 mod windows_gpui;

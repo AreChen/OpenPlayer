@@ -1,25 +1,21 @@
 use std::{
-    ffi::c_void,
-    io,
-    ptr::{null, null_mut},
-    time::{Duration, Instant},
+    fs::OpenOptions,
+    io::{self, Write},
+    os::windows::ffi::OsStringExt,
+    path::PathBuf,
+    process::{Child, Command},
+    ptr::null_mut,
 };
 
 use anyhow::{Context, Result, ensure};
-use serde::Deserialize;
-use windows_sys::Win32::Networking::WinHttp::{
-    WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_FLAG_SECURE, WINHTTP_QUERY_FLAG_NUMBER,
-    WINHTTP_QUERY_STATUS_CODE, WinHttpCloseHandle, WinHttpConnect, WinHttpOpen, WinHttpOpenRequest,
-    WinHttpQueryHeaders, WinHttpReadData, WinHttpReceiveResponse, WinHttpSendRequest,
-    WinHttpSetTimeouts,
+use windows_sys::Win32::System::Registry::{
+    HKEY_CURRENT_USER, RRF_RT_REG_SZ, RRF_SUBKEY_WOW6464KEY, RegGetValueW,
 };
 
-const RELEASE_PATH: &str = "/repos/AreChen/OpenPlayer/releases";
-const RELEASE_DOWNLOADS: &str = "https://github.com/AreChen/OpenPlayer/releases/download";
-const PAGE_SIZE: usize = 100;
-const RESPONSE_LIMIT: usize = 16 * 1024 * 1024;
-const REQUEST_TIMEOUT_MS: i32 = 8_000;
-const CHECK_TIMEOUT: Duration = Duration::from_secs(20);
+use crate::updater::{self, DownloadedUpdate, Target, Update};
+
+const UNINSTALL_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\OpenPlayer";
+const PLAYER_EXE: &str = "openplayer-desktop.exe";
 
 #[derive(Default)]
 pub(super) enum UpdateStatus {
@@ -27,223 +23,138 @@ pub(super) enum UpdateStatus {
     Idle,
     Checking,
     Current,
-    Available(ReleaseUpdate),
+    Available(Update, Option<String>),
+    Downloading,
+    Ready(String, DownloadedUpdate, Option<String>),
+    Installing,
     Failed(String),
 }
 
-pub(super) struct ReleaseUpdate {
-    pub(super) version: String,
-    pub(super) url: String,
-}
-
-#[derive(Deserialize)]
-struct Release {
-    tag_name: String,
-    draft: bool,
-    prerelease: bool,
-    assets: Vec<Asset>,
-}
-
-#[derive(Deserialize)]
-struct Asset {
-    name: String,
-    state: String,
-}
-
-type Version = [u32; 3];
-
-pub(super) fn check() -> Result<Option<ReleaseUpdate>> {
-    let current = stable_version(env!("CARGO_PKG_VERSION")).context("unsupported app version")?;
-    let http = GitHub::new()?;
-    let deadline = Instant::now() + CHECK_TIMEOUT;
-    let mut newest = None;
-    for page in 1.. {
-        ensure!(Instant::now() < deadline, "GitHub release check timed out");
-        let releases = http.releases(page, deadline)?;
-        let last_page = releases.len() < PAGE_SIZE;
-        if let Some(candidate) = latest_update(releases, current)
-            && newest
-                .as_ref()
-                .is_none_or(|(version, _)| candidate.0 > *version)
-        {
-            newest = Some(candidate);
-        }
-        if last_page {
-            break;
-        }
+impl UpdateStatus {
+    pub(super) fn can_check(&self) -> bool {
+        matches!(
+            self,
+            Self::Idle | Self::Current | Self::Available(..) | Self::Failed(_)
+        )
     }
-    Ok(newest.map(|(_, update)| update))
 }
 
-fn latest_update(
-    releases: impl IntoIterator<Item = Release>,
-    current: Version,
-) -> Option<(Version, ReleaseUpdate)> {
-    releases
-        .into_iter()
-        .filter(|release| !release.draft && !release.prerelease)
-        .filter_map(|release| {
-            let version = stable_version(&release.tag_name)?;
-            if version[0] != current[0] || version <= current {
-                return None;
-            }
-            let [major, minor, patch] = version;
-            let version_text = format!("{major}.{minor}.{patch}");
-            let arch = match std::env::consts::ARCH {
-                "x86_64" => "x64",
-                "aarch64" => "arm64",
-                _ => return None,
-            };
-            let installer = format!("OpenPlayer_{version_text}_{arch}-setup.exe");
-            let has_installer = release
-                .assets
-                .iter()
-                .any(|asset| asset.name == installer && asset.state == "uploaded");
-            has_installer.then(|| {
-                let url = format!("{RELEASE_DOWNLOADS}/{}/{installer}", release.tag_name);
-                (
-                    version,
-                    ReleaseUpdate {
-                        version: version_text,
-                        url,
-                    },
-                )
-            })
-        })
-        .max_by_key(|(version, _)| *version)
+pub(super) fn check() -> Result<Option<Update>> {
+    installed_executable()?;
+    updater::check(Target::WindowsNsis)
 }
 
-fn stable_version(text: &str) -> Option<Version> {
-    let mut parts = text.strip_prefix('v').unwrap_or(text).split('.');
-    let mut next = || {
-        let part = parts.next()?;
-        if !part.bytes().all(|byte| byte.is_ascii_digit())
-            || (part.len() > 1 && part.starts_with('0'))
-        {
-            return None;
-        }
-        part.parse::<u32>().ok()
+pub(super) fn download(update: &Update) -> Result<DownloadedUpdate> {
+    let data = std::env::var_os("LOCALAPPDATA").context("Windows local app data is unavailable")?;
+    updater::download(
+        update,
+        &PathBuf::from(data).join("OpenPlayer").join("updates"),
+    )
+}
+
+pub(super) fn launch(installer: &DownloadedUpdate, silent: bool) -> Result<Child> {
+    installed_executable()?;
+    let path = installer.path();
+    installer.verify(path)?;
+    let mut command = Command::new(path);
+    command.current_dir(path.parent().context("missing installer directory")?);
+    // The NSIS update mode reads the registered install directory and confirms the upgrade
+    // before it closes the player. This installation is per user, so no elevation is needed.
+    command.arg("/UPDATE");
+    if silent {
+        command.arg("/S");
+    }
+    command.spawn().context("could not start OpenPlayer Setup")
+}
+
+fn installed_executable() -> Result<()> {
+    let key = wide(UNINSTALL_KEY);
+    let field = wide("InstallLocation");
+    let mut value = vec![0u16; 32_768];
+    let mut size = (value.len() * size_of::<u16>()) as u32;
+    let result = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            key.as_ptr(),
+            field.as_ptr(),
+            RRF_RT_REG_SZ | RRF_SUBKEY_WOW6464KEY,
+            null_mut(),
+            value.as_mut_ptr().cast(),
+            &mut size,
+        )
     };
-    let version = [next()?, next()?, next()?];
-    parts.next().is_none().then_some(version)
-}
-
-struct GitHub {
-    connection: HttpHandle,
-    _session: HttpHandle,
-}
-
-impl GitHub {
-    fn new() -> Result<Self> {
-        let agent = wide(&format!("OpenPlayer/{}", env!("CARGO_PKG_VERSION")));
-        let host = wide("api.github.com");
-        // All WinHTTP operations run on GPUI's background executor. WinHTTP owns TLS and proxy settings.
-        let session = HttpHandle::new(unsafe {
-            WinHttpOpen(
-                agent.as_ptr(),
-                WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
-                null(),
-                null(),
-                0,
-            )
-        })?;
-        let timeout = REQUEST_TIMEOUT_MS;
-        checked(unsafe { WinHttpSetTimeouts(session.0, timeout, timeout, timeout, timeout) })?;
-        let connection =
-            HttpHandle::new(unsafe { WinHttpConnect(session.0, host.as_ptr(), 443, 0) })?;
-        Ok(Self {
-            connection,
-            _session: session,
-        })
-    }
-
-    fn releases(&self, page: usize, deadline: Instant) -> Result<Vec<Release>> {
-        let path = wide(&format!("{RELEASE_PATH}?per_page={PAGE_SIZE}&page={page}"));
-        let headers = wide("Accept: application/vnd.github+json\r\n");
-        let request = HttpHandle::new(unsafe {
-            WinHttpOpenRequest(
-                self.connection.0,
-                null(),
-                path.as_ptr(),
-                null(),
-                null(),
-                null(),
-                WINHTTP_FLAG_SECURE,
-            )
-        })?;
-        checked(unsafe {
-            WinHttpSendRequest(request.0, headers.as_ptr(), u32::MAX, null(), 0, 0, 0)
-        })?;
-        checked(unsafe { WinHttpReceiveResponse(request.0, null_mut()) })?;
-        let mut status: u32 = 0;
-        let mut len = size_of::<u32>() as u32;
-        checked(unsafe {
-            WinHttpQueryHeaders(
-                request.0,
-                WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-                null(),
-                (&raw mut status).cast(),
-                &mut len,
-                null_mut(),
-            )
-        })?;
-        ensure!(status == 200, "GitHub HTTP {status}");
-
-        let mut body = Vec::new();
-        let mut buffer = [0u8; 8 * 1024];
-        loop {
-            ensure!(Instant::now() < deadline, "GitHub release check timed out");
-            let mut read = 0;
-            checked(unsafe {
-                WinHttpReadData(
-                    request.0,
-                    buffer.as_mut_ptr().cast(),
-                    buffer.len() as u32,
-                    &mut read,
-                )
-            })?;
-            if read == 0 {
-                break;
-            }
-            ensure!(
-                body.len() + read as usize <= RESPONSE_LIMIT,
-                "GitHub response is too large"
-            );
-            body.extend_from_slice(&buffer[..read as usize]);
-        }
-        serde_json::from_slice(&body).context("invalid GitHub release list")
-    }
-}
-
-struct HttpHandle(*mut c_void);
-
-impl HttpHandle {
-    fn new(handle: *mut c_void) -> io::Result<Self> {
-        if handle.is_null() {
-            Err(io::Error::last_os_error())
-        } else {
-            Ok(Self(handle))
-        }
-    }
-}
-
-impl Drop for HttpHandle {
-    fn drop(&mut self) {
-        unsafe { WinHttpCloseHandle(self.0) };
-    }
-}
-
-fn checked(result: i32) -> io::Result<()> {
-    if result == 0 {
-        Err(io::Error::last_os_error())
-    } else {
-        Ok(())
-    }
+    ensure!(
+        result == 0,
+        "OpenPlayer is not registered as an installed application"
+    );
+    let value = &value[..size as usize / size_of::<u16>()];
+    let directory = PathBuf::from(std::ffi::OsString::from_wide(
+        value.strip_suffix(&[0]).unwrap_or(value),
+    ));
+    ensure!(
+        directory.is_absolute(),
+        "OpenPlayer has an invalid installation path"
+    );
+    // A development or portable copy must not replace a separate registered installation.
+    let installed = directory.join(PLAYER_EXE).canonicalize()?;
+    let current = std::env::current_exe()?.canonicalize()?;
+    ensure!(
+        current == installed,
+        "the running copy of OpenPlayer is not registered for updates"
+    );
+    Ok(())
 }
 
 fn wide(text: &str) -> Vec<u16> {
     text.encode_utf16().chain([0]).collect()
 }
 
-#[cfg(test)]
-mod tests;
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum SmokeAction {
+    Verify,
+    Install,
+    InstallSilent,
+    Playback,
+}
+
+#[derive(Clone)]
+pub(super) struct UpdateSmoke {
+    pub(super) action: SmokeAction,
+    pub(super) wait_for_playback: bool,
+    status: PathBuf,
+}
+
+impl UpdateSmoke {
+    pub(super) fn new(action: Option<&str>, status: PathBuf) -> Result<Self> {
+        ensure!(
+            updater::test_updates_enabled()
+                && std::env::var_os("OPENPLAYER_WINDOWS_SMOKE_PROFILE").is_some(),
+            "the update smoke harness requires a fixture build, loopback source and smoke profile"
+        );
+        let action = match action {
+            Some("verify") => SmokeAction::Verify,
+            Some("install") => SmokeAction::Install,
+            Some("install-silent") => SmokeAction::InstallSilent,
+            Some("playback") => SmokeAction::Playback,
+            _ => anyhow::bail!("invalid smoke update action"),
+        };
+        Ok(Self {
+            action,
+            wait_for_playback: false,
+            status,
+        })
+    }
+
+    pub(super) fn record(&self, event: &str) {
+        let result = (|| -> io::Result<()> {
+            let mut log = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&self.status)?;
+            writeln!(log, "{}", event.replace(['\r', '\n'], " "))
+        })();
+        if let Err(error) = result {
+            eprintln!("OpenPlayer update smoke status: {error}");
+        }
+    }
+}

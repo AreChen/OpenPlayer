@@ -160,7 +160,7 @@ export function buildPlayerOverlayViewPropsFromDomains({
     setRecordingShortcutAction: foundation.setRecordingShortcutAction,
     assignShortcut: foundation.assignShortcut,
     checkForUpdates: lifecycle.checkForUpdates,
-    openUpdateDownload: lifecycle.openUpdateDownload,
+    runUpdateAction: lifecycle.runUpdateAction,
     queue: state.queue,
     loadedMediaPath: state.loadedMediaPath,
     tracks: state.tracks,

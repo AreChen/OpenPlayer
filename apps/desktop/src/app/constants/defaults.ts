@@ -1,4 +1,4 @@
-import type { MpvRecordingState, PlaybackSettings, PlayerPreferences, UpdateState } from "../types";
+import type { MpvRecordingState, PlaybackSettings, PlayerPreferences } from "../types";
 
 export const INACTIVE_RECORDING_STATE: MpvRecordingState = { active: false, path: null, format: null };
 
@@ -15,11 +15,4 @@ export const DEFAULT_PLAYBACK_SETTINGS: PlaybackSettings = {
   playbackSpeed: 1,
   videoFill: false,
   timeDisplayMode: "timecode",
-};
-
-export const DEFAULT_UPDATE_STATE: UpdateState = {
-  status: "idle",
-  latest: null,
-  asset: null,
-  error: null,
 };
