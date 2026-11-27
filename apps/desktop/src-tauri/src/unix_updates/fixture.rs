@@ -10,13 +10,21 @@ use crate::{
 
 use super::{CheckResult, app_update_check, app_update_download, app_update_install};
 
+#[derive(PartialEq, Eq)]
+enum FixtureAction {
+    Check,
+    Download,
+    Install,
+}
+
 pub(crate) fn start_fixture_test(app: &AppHandle) {
     if !updater::test_updates_enabled() {
         return;
     }
-    let install = match std::env::var("OPENPLAYER_TEST_UPDATE_ACTION").as_deref() {
-        Ok("check") => false,
-        Ok("install") => true,
+    let action = match std::env::var("OPENPLAYER_TEST_UPDATE_ACTION").as_deref() {
+        Ok("check") => FixtureAction::Check,
+        Ok("download") => FixtureAction::Download,
+        Ok("install") => FixtureAction::Install,
         _ => return,
     };
     let Some(result_path) = std::env::var_os("OPENPLAYER_TEST_UPDATE_RESULT")
@@ -52,12 +60,15 @@ pub(crate) fn start_fixture_test(app: &AppHandle) {
             let check = app_update_check(app.clone()).await?;
             if let CheckResult::Available { update } = check {
                 target_version = Some(update.version.clone());
-                if install {
-                    app_update_download(app.clone(), update.version.clone()).await?;
-                    let installed = app_update_install(app.clone(), update.version).await?;
-                    return serialize_install_result(&app, installed);
+                if action == FixtureAction::Check {
+                    return Ok(json!({ "status": "available" }));
                 }
-                return Ok(json!({ "status": "available" }));
+                app_update_download(app.clone(), update.version.clone()).await?;
+                if action == FixtureAction::Download {
+                    return Ok(json!({ "status": "ready" }));
+                }
+                let installed = app_update_install(app.clone(), update.version).await?;
+                return serialize_install_result(&app, installed);
             }
             serde_json::to_value(check).map_err(|error| error.to_string())
         }

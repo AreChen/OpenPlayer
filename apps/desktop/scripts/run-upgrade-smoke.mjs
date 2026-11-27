@@ -103,7 +103,7 @@ async function attemptUpdate(host, packagePath, mode, media) {
       const confirm = mode !== "cancel" || host.packageKind === "deb";
       player = host.launch([media], {
         ...environment,
-        OPENPLAYER_TEST_UPDATE_ACTION: confirm ? "install" : "check",
+        OPENPLAYER_TEST_UPDATE_ACTION: confirm ? "install" : "download",
         OPENPLAYER_TEST_UPDATE_RESULT: file,
       });
       window = await host.window(player);
@@ -121,7 +121,8 @@ async function attemptUpdate(host, packagePath, mode, media) {
       } else if (confirm) {
         assert.equal(result.status, "failed", JSON.stringify(result));
       } else {
-        assert.equal(result.status, "available", JSON.stringify(result));
+        assert.equal(result.status, "ready", JSON.stringify(result));
+        assert.equal(result.version, newVersion);
       }
     }
     await processAlive(player);
@@ -129,7 +130,7 @@ async function attemptUpdate(host, packagePath, mode, media) {
     assert.equal(code, 0, `the original player exited with ${code ?? signal}`);
   });
   const downloads = requests.filter((path) => path.endsWith(`/${basename(packagePath)}`));
-  if (mode === "corrupt" || mode === "install" || (mode === "cancel" && (process.platform === "win32" || host.packageKind === "deb"))) {
+  if (mode !== "offline") {
     assert.ok(downloads.length, `the ${mode} test did not reach the actual package request`);
   } else {
     assert.equal(downloads.length, 0, `${mode} must leave the package undownloaded`);

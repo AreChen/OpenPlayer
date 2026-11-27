@@ -48,6 +48,14 @@ node apps/desktop/scripts/run-window-smoke.mjs
 
 The harness opens temporary windows in an interactive desktop, loads a video into the embedded libmpv host and checks resizing, overlay alignment, fullscreen restoration and coordinated closure. CI runs the harness on macOS. The standard Windows player has its own single-window pipeline.
 
+## Release package and upgrade validation
+
+[The native validation workflow](../../.github/workflows/package-validation.yml) runs on Windows x64, Linux x64 and both macOS architectures. It checks the candidate package checksums against the source commit, installs the packages, opens generated video and audio, sends playback shortcuts when desktop permissions allow, closes the player and checks its stored settings and history after relaunch.
+
+The workflow separately builds the release version and the next patch version with a loopback-only update fixture. It records the installed and upgrade package SHA-256s and the results for network failure, corrupt downloads, cancellation, upgrade while playing, relaunch and profile retention. Windows cancellation uses the NSIS window, and the successful upgrade goes through the same setup in silent mode. Linux exercises PolicyKit authorization and denial, atomic AppImage replacement and the Wayland capability fallback. macOS opens the verified DMG and the script copies its app to a temporary Applications directory. The native runner uploads `installed-packages.json` and `isolated-upgrade.json` as workflow artifacts.
+
+Before publishing, record the remaining interactive checks against the candidate hashes. Confirm visible video and playback-control results, the Windows interactive setup finish and relaunch, the macOS Finder replacement and Gatekeeper verification, and the Linux PolicyKit prompt, cancellation and relaunch. For Linux confirm the Wayland notice and the AppImage FUSE launch on a desktop when the runner used extraction mode.
+
 ## React timeline check
 
 Run from `apps/desktop` with Playwright and Chromium available:

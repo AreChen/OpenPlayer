@@ -335,7 +335,7 @@ assert.match(packageBuildAction, /libmpv-dev/, "Linux release job must install l
 assert.match(packageBuildAction, /libfuse2t64[\s\S]*libfuse2/, "Linux release job must handle the Ubuntu FUSE package rename");
 assert.match(packageBuildAction, /npm run tauri:build -- --config src-tauri\/tauri\.linux\.conf\.json/, "release workflow must build Linux deb and AppImage packages");
 assert.match(releaseWorkflow, /platform: macos-x64\s+runner: macos-15-intel/, "macOS release workflow must build an Intel DMG");
-assert.match(releaseWorkflow, /platform: macos-arm64\s+runner: macos-15\n/, "macOS release workflow must build an Apple Silicon DMG");
+assert.match(releaseWorkflow, /platform: macos-arm64\s+runner: macos-15\s*$/m, "macOS release workflow must build an Apple Silicon DMG");
 assert.match(packageBuildAction, /brew install mpv pkg-config/, "macOS release job must prepare Homebrew libmpv and pkg-config");
 assert.match(packageBuildAction, /bundle-macos-libmpv\.mjs[\s\S]*build-macos-dmg\.sh/, "macOS DMGs must include the bundled libmpv runtime");
 assert.match(macosDmgScript, /otool -L[\s\S]*\/opt\/homebrew[\s\S]*\/Cellar/, "macOS packaging must reject unbundled Homebrew dylib references");
@@ -344,6 +344,7 @@ assert.match(macosDmgScript, /notarytool submit[\s\S]*stapler staple/, "macOS di
 assert.match(packageStagingScript, /createHash\("sha256"\)/, "all release packages must have a SHA-256 checksum");
 assert.match(releaseWorkflow, /stage-assets:[\s\S]*needs: \[prepare, draft, packages\]/, "draft upload must wait for the full package matrix");
 assert.match(releaseWorkflow, /attempts\/\$run_attempt\/jobs[\s\S]*Native installation and upgrade validation/, "publication must check successful native validation for the staged run");
+assert.match(releaseWorkflow, /actions\/workflows\/ci\.yml\/runs\?head_sha=\$commit&status=success/, "publication must check repository CI for the staged commit");
 assert.match(releaseWorkflow, /native_verification:[\s\S]*diff --brief --recursive release-files uploaded/, "publication must require a native acceptance record and the exact staged packages");
 assert.match(releaseWorkflow, /gh release edit[^\n]*--draft=false --latest=false/, "publishing 2.x must preserve the 1.x Latest channel");
 assert.match(indexHtml, /surface["')\s.]*={1,3}\s*"video"[\s\S]*surface-video/, "index.html must classify the main video surface before React mounts");

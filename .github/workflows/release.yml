@@ -189,6 +189,7 @@ jobs:
   package-validation:
     name: Native installation and upgrade validation
     needs: [prepare, packages]
+    if: always() && needs.prepare.result == 'success' && (needs.packages.result == 'success' || needs.packages.result == 'failure')
     uses: ./.github/workflows/package-validation.yml
     with:
       tag: ${{ needs.prepare.outputs.tag }}
@@ -222,6 +223,11 @@ jobs:
           candidate="$(gh api "$candidate_api")"
           commit="$(jq -er 'select(.conclusion == "success" and .path == ".github/workflows/release.yml") | .head_sha' <<< "$candidate")"
           git merge-base --is-ancestor "$commit" refs/remotes/origin/main
+          successful_ci="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$commit&status=success&per_page=1" --jq .total_count)"
+          if [[ ! "$successful_ci" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Repository CI must pass for candidate commit $commit before publishing." >&2
+            exit 1
+          fi
           run_attempt="$(jq -er '.run_attempt' <<< "$candidate")"
           gh api "$candidate_api/attempts/$run_attempt/jobs?per_page=100" | jq -e '
             [.jobs[] | select(.name == "Verify and upload all draft assets") | .conclusion] == ["success"] and

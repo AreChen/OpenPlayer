@@ -17,13 +17,13 @@ pub(super) fn open_path(
     #[cfg(target_os = "macos")]
     {
         let _ = state;
-        return open_path_for_main_window_on_main_thread(
+        open_path_for_main_window_on_main_thread(
             app,
             path,
             resume_position,
             initial_volume,
             load_options,
-        );
+        )
     }
 
     #[cfg(not(target_os = "macos"))]

@@ -25,9 +25,11 @@ function versionLine(text) {
 
 await update("Cargo.toml", versionLine);
 await update("Cargo.lock", (text) => {
-  const blocks = text.split("\n[[package]]\n");
-  return blocks.map((block) => block.startsWith('name = "openplayer-desktop"\n') ? versionLine(block) : block)
-    .join("\n[[package]]\n");
+  const newline = text.includes("\r\n") ? "\r\n" : "\n";
+  const separator = `${newline}[[package]]${newline}`;
+  return text.split(separator)
+    .map((block) => block.startsWith(`name = "openplayer-desktop"${newline}`) ? versionLine(block) : block)
+    .join(separator);
 });
 
 async function updateJson(path, lock = false) {
