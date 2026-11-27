@@ -1,4 +1,5 @@
 mod address;
+mod listing;
 mod locations;
 mod motion;
 mod preview_state;
@@ -13,9 +14,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use gpui::{
-    AppContext, Context, Entity, KeyDownEvent, SharedString, Task, UniformListScrollHandle, Window,
-};
+use gpui::{AppContext, Context, Entity, KeyDownEvent, Task, UniformListScrollHandle, Window};
 use gpui_ce_motion::MotionState;
 use serde_json::json;
 
@@ -23,6 +22,7 @@ use super::PlayerView;
 use crate::media_paths::is_supported_media_path;
 
 use address::AddressInput;
+use listing::{Entry, EntryKind, Filter, Listing, Sort, file_kind};
 use locations::{QuickLocation, home_directory, system_locations};
 use motion::ListingMotion;
 use preview_state::QuickPreviews;
@@ -39,10 +39,11 @@ pub(super) struct QuickOpen {
     mode: QuickOpenMode,
     directory: PathBuf,
     entries: DirectoryEntries,
-    hidden_folders: Vec<Entry>,
-    show_hidden_folders: bool,
+    filter: Filter,
+    sort: Sort,
     show_media_favorites: bool,
     context: Option<view::QuickEntryContext>,
+    toolbar_menu: Option<view::ToolbarMenu>,
     selected: BTreeSet<usize>,
     scroll: UniformListScrollHandle,
     history: Vec<PathBuf>,
@@ -83,6 +84,7 @@ impl QuickOpen {
 
     fn reset_listing(&mut self, cx: &mut Context<PlayerView>) {
         self.context = None;
+        self.toolbar_menu = None;
         self.previews.clear_visible(cx);
         self.selected.clear();
         self.scroll = UniformListScrollHandle::new();
@@ -92,33 +94,24 @@ impl QuickOpen {
         self.listing_motion.restart();
     }
 
-    fn apply_folder_visibility(&mut self) {
-        let DirectoryEntries::Ready(entries) = &mut self.entries else {
-            return;
-        };
-        if self.show_hidden_folders {
-            if !self.hidden_folders.is_empty() {
-                entries.append(&mut self.hidden_folders);
-                sort_entries(entries);
-            }
-        } else {
-            self.hidden_folders.extend(entries.extract_if(.., |entry| {
-                entry.is_directory && entry.path.file_name().is_some_and(is_dot_named)
-            }));
+    fn apply_listing_options(&mut self) {
+        if let DirectoryEntries::Ready(entries) = &mut self.entries {
+            entries.apply(self.sort, self.filter);
+        }
+        if let Some(DirectoryEntries::Ready(entries)) = self
+            .search
+            .as_mut()
+            .and_then(|search| search.results.as_mut())
+        {
+            entries.apply(self.sort, self.filter);
         }
     }
 }
 
 enum DirectoryEntries {
     Loading,
-    Ready(Vec<Entry>),
+    Ready(Listing),
     Unreadable,
-}
-
-struct Entry {
-    path: PathBuf,
-    name: SharedString,
-    is_directory: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -158,10 +151,11 @@ impl PlayerView {
             mode,
             directory: directory.clone(),
             entries: DirectoryEntries::Loading,
-            hidden_folders: Vec::new(),
-            show_hidden_folders: false,
+            filter: Filter::new(mode),
+            sort: Sort::default(),
             show_media_favorites: false,
             context: None,
+            toolbar_menu: None,
             selected: BTreeSet::new(),
             scroll: UniformListScrollHandle::new(),
             history: vec![directory.clone()],
@@ -195,7 +189,7 @@ impl PlayerView {
         let modifiers = event.keystroke.modifiers;
         if key == "escape"
             && let Some(picker) = &mut self.quick_open
-            && picker.context.take().is_some()
+            && (picker.context.take().is_some() || picker.toolbar_menu.take().is_some())
         {
             cx.notify();
             return;
@@ -340,32 +334,43 @@ impl PlayerView {
             return;
         }
         self.exit_quick_address();
-        let entries = self
-            .controller
-            .favorite_media()
-            .iter()
-            .map(|path| Entry {
-                path: path.clone(),
-                name: path
-                    .file_name()
-                    .unwrap_or(path.as_os_str())
-                    .to_string_lossy()
-                    .into_owned()
-                    .into(),
-                is_directory: false,
-            })
-            .collect();
+        let paths = self.controller.favorite_media().to_vec();
         if let Some(picker) = &mut self.quick_open {
             self.restore_quick_focus |= picker.search.take().is_some();
-            picker.navigation = None;
             picker.address_unavailable = false;
             picker.reset_listing(cx);
-            picker.entries = DirectoryEntries::Ready(entries);
-            picker.hidden_folders.clear();
+            picker.entries = DirectoryEntries::Loading;
             if !picker.show_media_favorites {
                 picker.restart_listing_motion();
             }
             picker.show_media_favorites = true;
+            let sort = picker.sort;
+            let filter = picker.filter;
+            let work = cx.background_executor().spawn(async move {
+                let entries = paths
+                    .into_iter()
+                    .map(|path| {
+                        let kind = file_kind(&path);
+                        let metadata = fs::metadata(&path).ok();
+                        Entry::new(path, kind, metadata)
+                    })
+                    .collect();
+                Listing::new(entries, sort, filter)
+            });
+            picker.navigation = Some(cx.spawn(async move |view, cx| {
+                let entries = work.await;
+                let _ = view.update(cx, |view, cx| {
+                    if let Some(picker) = &mut view.quick_open {
+                        if let Some(task) = picker.navigation.take() {
+                            task.detach();
+                        }
+                        picker.entries = DirectoryEntries::Ready(entries);
+                        picker.apply_listing_options();
+                        picker.restart_listing_motion();
+                        cx.notify();
+                    }
+                });
+            }));
             cx.notify();
         }
     }
@@ -381,9 +386,16 @@ impl PlayerView {
         if picker.show_media_favorites {
             return;
         }
-        picker.show_hidden_folders = !picker.show_hidden_folders;
-        picker.apply_folder_visibility();
-        if picker.showing_search_results() {
+        picker.filter.show_dot_folders = !picker.filter.show_dot_folders;
+        self.refresh_quick_listing(true, cx);
+    }
+
+    fn refresh_quick_listing(&mut self, filter_changed: bool, cx: &mut Context<Self>) {
+        let Some(picker) = &mut self.quick_open else {
+            return;
+        };
+        picker.apply_listing_options();
+        if filter_changed && picker.showing_search_results() {
             self.reload_quick_search(cx);
         } else {
             picker.reset_listing(cx);
@@ -474,7 +486,10 @@ impl PlayerView {
         }
         picker.address_unavailable = false;
         picker.context = None;
+        picker.toolbar_menu = None;
         let mode = picker.mode;
+        let filter = picker.filter;
+        let sort = picker.sort;
         let path = directory.clone();
         let work = cx.background_executor().spawn(async move {
             let path = std::path::absolute(&path)?;
@@ -485,7 +500,7 @@ impl PlayerView {
             {
                 return Ok((path, None));
             }
-            scan_directory(&path, mode).map(|entries| (path, Some(entries)))
+            scan_directory(&path, sort, filter).map(|entries| (path, Some(entries)))
         });
         picker.navigation = Some(cx.spawn(async move |view, cx| {
             let result = work.await;
@@ -505,8 +520,7 @@ impl PlayerView {
                         if let Some(picker) = &mut view.quick_open {
                             picker.reset_listing(cx);
                             picker.entries = DirectoryEntries::Ready(entries);
-                            picker.hidden_folders.clear();
-                            picker.apply_folder_visibility();
+                            picker.apply_listing_options();
                             picker.restart_listing_motion();
                             picker.show_media_favorites = false;
                             match navigation {
@@ -560,18 +574,20 @@ impl PlayerView {
         let Some(entry) = entries.get(index) else {
             return;
         };
-        if entry.is_directory {
+        if entry.kind == EntryKind::Folder {
             let path = entry.path.clone();
             self.quick_open_directory(path, cx);
-        } else if double_click {
-            let (mode, path) = (picker.mode, entry.path.clone());
-            self.accept_quick_paths(mode, vec![path], cx);
-        } else {
-            if !picker.selected.remove(&index) {
-                picker.selected.insert(index);
+        } else if entry.kind.is_media() {
+            if double_click {
+                let (mode, path) = (picker.mode, entry.path.clone());
+                self.accept_quick_paths(mode, vec![path], cx);
+            } else {
+                if !picker.selected.remove(&index) {
+                    picker.selected.insert(index);
+                }
+                self.restore_quick_focus = true;
+                cx.notify();
             }
-            self.restore_quick_focus = true;
-            cx.notify();
         }
     }
 
@@ -654,30 +670,26 @@ fn address_path(text: &str, directory: &Path) -> Option<PathBuf> {
     Some(directory.join(text))
 }
 
-fn scan_directory(directory: &Path, mode: QuickOpenMode) -> io::Result<Vec<Entry>> {
-    let mut entries = fs::read_dir(directory)?
+fn scan_directory(directory: &Path, sort: Sort, filter: Filter) -> io::Result<Listing> {
+    let entries = fs::read_dir(directory)?
         .filter_map(|entry| {
             let entry = entry.ok()?;
             let file_type = entry.file_type().ok()?;
             let path = entry.path();
             let is_directory = file_type.is_dir() || (file_type.is_symlink() && path.is_dir());
-            (is_directory
-                || (mode != QuickOpenMode::AppendFolder && is_supported_media_path(&path)))
-            .then(|| Entry {
-                path,
-                name: entry.file_name().to_string_lossy().into_owned().into(),
-                is_directory,
-            })
+            let kind = if is_directory {
+                EntryKind::Folder
+            } else if filter.mode != QuickOpenMode::AppendFolder {
+                file_kind(&path)
+            } else {
+                return None;
+            };
+            Some(Entry::new(path, kind, entry.metadata().ok()))
         })
-        .collect::<Vec<_>>();
-    sort_entries(&mut entries);
-    Ok(entries)
+        .collect();
+    Ok(Listing::new(entries, sort, filter))
 }
 
 fn is_dot_named(name: &OsStr) -> bool {
     name.as_encoded_bytes().starts_with(b".")
-}
-
-fn sort_entries(entries: &mut [Entry]) {
-    entries.sort_by_cached_key(|entry| (!entry.is_directory, entry.name.to_lowercase()));
 }

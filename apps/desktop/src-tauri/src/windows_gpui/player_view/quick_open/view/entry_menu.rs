@@ -2,12 +2,12 @@ use std::path::PathBuf;
 
 use gpui::{Context, Div, MouseButton, Pixels, Point, Rgba, Window, div, prelude::*, px};
 
-use super::super::PlayerView;
+use super::super::{EntryKind, PlayerView};
 use crate::windows_gpui::{theme::icon, widgets::row};
 
 pub(in crate::windows_gpui::player_view::quick_open) struct QuickEntryContext {
     path: PathBuf,
-    is_directory: bool,
+    kind: EntryKind,
     position: Point<Pixels>,
 }
 
@@ -25,14 +25,15 @@ impl PlayerView {
     pub(super) fn show_quick_entry_context(
         &mut self,
         path: PathBuf,
-        is_directory: bool,
+        kind: EntryKind,
         position: Point<Pixels>,
         cx: &mut Context<Self>,
     ) {
         if let Some(picker) = &mut self.quick_open {
+            picker.toolbar_menu = None;
             picker.context = Some(QuickEntryContext {
                 path,
-                is_directory,
+                kind,
                 position,
             });
             cx.notify();
@@ -53,6 +54,8 @@ impl PlayerView {
         cx: &Context<Self>,
     ) -> Div {
         let palette = self.palette;
+        let reveal = (Action::Reveal, "folder", "media.quickOpen.revealDirectory");
+        let other_files = [reveal];
         let files = [
             (Action::Play, "play", "media.quickOpen.playMedia"),
             (
@@ -64,7 +67,7 @@ impl PlayerView {
                     "media.quickOpen.favoriteMedia"
                 },
             ),
-            (Action::Reveal, "folder", "media.quickOpen.revealDirectory"),
+            reveal,
             (
                 Action::MediaProperties,
                 "info",
@@ -86,12 +89,12 @@ impl PlayerView {
                     "media.quickOpen.pin"
                 },
             ),
-            (Action::Reveal, "folder", "media.quickOpen.revealDirectory"),
+            reveal,
         ];
-        let actions: &[(Action, &str, &str)] = if menu.is_directory {
-            &directories
-        } else {
-            &files
+        let actions: &[(Action, &str, &str)] = match menu.kind {
+            EntryKind::Folder => &directories,
+            EntryKind::Other => &other_files,
+            EntryKind::Video | EntryKind::Audio => &files,
         };
         let size = window.viewport_size();
         let width = px(196.);

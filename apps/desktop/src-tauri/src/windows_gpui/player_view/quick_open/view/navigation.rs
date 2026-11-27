@@ -5,7 +5,7 @@ use gpui::{
     Window, div, prelude::*, px,
 };
 
-use super::super::{PlayerView, QuickLocation, QuickOpenMode, address::address_field};
+use super::super::{EntryKind, PlayerView, QuickLocation, QuickOpenMode, address::address_field};
 use super::quick_tooltip;
 use crate::windows_gpui::{
     theme::icon,
@@ -45,8 +45,13 @@ impl PlayerView {
             search.opacity(0.38)
         };
         let hidden = quick_tooltip(
-            icon_button("quick-hidden", "eye", palette, picker.show_hidden_folders),
-            self.ui.label(if picker.show_hidden_folders {
+            icon_button(
+                "quick-hidden",
+                "eye",
+                palette,
+                picker.filter.show_dot_folders,
+            ),
+            self.ui.label(if picker.filter.show_dot_folders {
                 "media.quickOpen.hideHiddenFolders"
             } else {
                 "media.quickOpen.showHiddenFolders"
@@ -478,7 +483,12 @@ impl PlayerView {
             .on_mouse_down(
                 MouseButton::Right,
                 cx.listener(move |view, event: &MouseDownEvent, _, cx| {
-                    view.show_quick_entry_context(context_path.clone(), true, event.position, cx);
+                    view.show_quick_entry_context(
+                        context_path.clone(),
+                        EntryKind::Folder,
+                        event.position,
+                        cx,
+                    );
                     cx.stop_propagation();
                 }),
             )
@@ -520,7 +530,12 @@ impl PlayerView {
             .on_mouse_down(
                 MouseButton::Right,
                 cx.listener(move |view, event: &MouseDownEvent, _, cx| {
-                    view.show_quick_entry_context(context_path.clone(), true, event.position, cx);
+                    view.show_quick_entry_context(
+                        context_path.clone(),
+                        EntryKind::Folder,
+                        event.position,
+                        cx,
+                    );
                     cx.stop_propagation();
                 }),
             )

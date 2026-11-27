@@ -8,6 +8,8 @@ pub(crate) use extensions::SUPPORTED_MEDIA_EXTENSIONS;
 #[cfg(all(windows, feature = "windows-gpui"))]
 pub(crate) use extensions::is_supported_media_path;
 mod sort;
+#[cfg(all(windows, feature = "windows-gpui"))]
+pub(crate) use sort::natural_name_key;
 #[cfg(any(not(windows), test))]
 mod startup;
 #[cfg(feature = "mpv-embed")]

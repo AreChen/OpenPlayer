@@ -84,7 +84,11 @@ impl PlayerView {
         };
         if picker.showing_search_results() {
             if let DirectoryEntries::Ready(entries) = picker.visible_entries() {
-                paths.retain(|path| entries.iter().any(|entry| &entry.path == path));
+                paths.retain(|path| {
+                    entries
+                        .range(0, entries.len())
+                        .any(|entry| &entry.path == path)
+                });
             } else {
                 paths.clear();
             }

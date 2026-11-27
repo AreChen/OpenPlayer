@@ -2,6 +2,7 @@ mod entry_menu;
 mod grid;
 mod navigation;
 mod scrollbar;
+mod toolbar;
 
 use gpui::{Context, Div, FontWeight, MouseButton, Rgba, Window, div, prelude::*, px};
 
@@ -16,6 +17,7 @@ use crate::windows_gpui::{
 };
 
 pub(super) use entry_menu::QuickEntryContext;
+pub(super) use toolbar::ToolbarMenu;
 
 impl PlayerView {
     pub(in crate::windows_gpui::player_view) fn quick_open_view(
@@ -51,6 +53,7 @@ impl PlayerView {
         let width = (size.width - px(if compact { 16. } else { 48. })).min(px(1220.));
         let height = (size.height - px(40.)).min(px(770.));
         let sidebar_width = if compact { 109. } else { 184. };
+        let content_width = f32::from(width) - sidebar_width;
         let title = match picker.mode {
             QuickOpenMode::Open => "media.quickOpen.title",
             QuickOpenMode::AppendFiles => "media.quickOpen.appendFiles",
@@ -141,16 +144,24 @@ impl PlayerView {
                             .min_h_0()
                             .overflow_hidden()
                             .child(self.quick_sidebar(sidebar_width, cx))
-                            .child(self.quick_contents(
-                                f32::from(width) - sidebar_width,
-                                listing,
-                                cx,
-                            )),
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .min_h_0()
+                                    .child(self.quick_toolbar(content_width < 430., cx))
+                                    .child(self.quick_contents(content_width, listing, cx)),
+                            ),
                     )
                     .child(self.quick_footer(cx)),
             )
             .when_some(picker.context.as_ref(), |el, menu| {
                 el.child(self.quick_entry_menu(menu, window, cx))
+            })
+            .when_some(picker.toolbar_menu.as_ref(), |el, menu| {
+                el.child(self.quick_toolbar_menu(menu, window, cx))
             })
     }
 

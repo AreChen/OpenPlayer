@@ -6,7 +6,9 @@ use gpui::{
     div, img, prelude::*, px, uniform_list,
 };
 
-use super::super::{DirectoryEntries, Entry, PlayerView, motion::ListingFrame, previews};
+use super::super::{
+    DirectoryEntries, Entry, EntryKind, PlayerView, motion::ListingFrame, previews,
+};
 use super::{quick_tooltip, scrollbar};
 use crate::windows_gpui::{theme::icon, widgets::button_feedback};
 
@@ -76,7 +78,10 @@ impl PlayerView {
                     }
                     DirectoryEntries::Loading => ("folder", "media.quickOpen.loading"),
                     DirectoryEntries::Unreadable => ("info", "media.quickOpen.unreadable"),
-                    DirectoryEntries::Ready(_) if picker.show_media_favorites => {
+                    DirectoryEntries::Ready(_)
+                        if picker.show_media_favorites
+                            && picker.filter.category == super::super::listing::Category::All =>
+                    {
                         ("bookmark", "media.quickOpen.emptyMediaFavorites")
                     }
                     DirectoryEntries::Ready(_) => ("folder", "media.quickOpen.empty"),
@@ -177,32 +182,27 @@ impl PlayerView {
                         |parent| parent.to_string_lossy().into_owned().into(),
                     )
             });
-        let previewable = !entry.is_directory && previews::supports_preview(&entry.path);
-        let show_bookmark = !entry.is_directory
+        let previewable = entry.kind == EntryKind::Video && previews::supports_preview(&entry.path);
+        let show_bookmark = entry.kind.is_media()
             && self
                 .quick_open
                 .as_ref()
                 .is_some_and(|picker| !picker.show_media_favorites)
             && self.quick_media_is_favorite(&entry.path);
         let context_path = entry.path.clone();
-        let is_directory = entry.is_directory;
-        let kind = if entry.is_directory {
+        let is_directory = entry.kind == EntryKind::Folder;
+        let entry_kind = entry.kind;
+        let kind = if is_directory {
             self.ui.label("media.quickOpen.folder")
         } else {
             entry
                 .path
                 .extension()
                 .and_then(|value| value.to_str())
-                .unwrap_or_default()
-                .to_uppercase()
-                .into()
-        };
-        let glyph = if entry.is_directory {
-            "folder"
-        } else if previews::is_video_file(&entry.path) {
-            "frames"
-        } else {
-            "headphones"
+                .map_or_else(
+                    || self.ui.label("media.quickOpen.file"),
+                    |ext| ext.to_uppercase().into(),
+                )
         };
         let thumbnail = previewable
             .then(|| self.quick_thumbnail(&entry.path))
@@ -217,7 +217,7 @@ impl PlayerView {
             .justify_center()
             .overflow_hidden()
             .rounded(px(8.))
-            .bg(if entry.is_directory {
+            .bg(if is_directory {
                 palette.accent_soft
             } else {
                 palette.control
@@ -230,8 +230,8 @@ impl PlayerView {
                     .into_any_element()
             } else {
                 icon(
-                    glyph,
-                    if entry.is_directory {
+                    entry_kind.glyph(),
+                    if is_directory {
                         palette.accent
                     } else {
                         palette.faint
@@ -274,7 +274,7 @@ impl PlayerView {
             } else {
                 palette.control
             })
-            .cursor_pointer()
+            .when(entry_kind != EntryKind::Other, |el| el.cursor_pointer())
             .child(preview)
             .child(
                 div()
@@ -318,7 +318,7 @@ impl PlayerView {
                 cx.listener(move |view, event: &MouseDownEvent, _, cx| {
                     view.show_quick_entry_context(
                         context_path.clone(),
-                        is_directory,
+                        entry_kind,
                         event.position,
                         cx,
                     );
@@ -377,9 +377,11 @@ impl UniformListDecoration for VisiblePreviews {
                 let DirectoryEntries::Ready(entries) = picker.visible_entries() else {
                     return;
                 };
-                let paths = entries[start.min(entries.len())..end.min(entries.len())]
-                    .iter()
-                    .filter(|entry| !entry.is_directory && previews::supports_preview(&entry.path))
+                let paths = entries
+                    .range(start, end)
+                    .filter(|entry| {
+                        entry.kind == EntryKind::Video && previews::supports_preview(&entry.path)
+                    })
                     .map(|entry| entry.path.clone())
                     .collect();
                 view.queue_quick_thumbnails(paths, cx);

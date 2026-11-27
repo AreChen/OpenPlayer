@@ -14,8 +14,8 @@ use ignore::{DirEntry, WalkBuilder};
 use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
 
 use super::{
-    AddressInput, DirectoryEntries, Entry, PlayerView, QuickOpenMode, is_dot_named,
-    is_supported_media_path,
+    AddressInput, DirectoryEntries, Entry, EntryKind, Filter, Listing, PlayerView, Sort, file_kind,
+    is_dot_named,
 };
 
 const SEARCH_DELAY: Duration = Duration::from_millis(180);
@@ -90,6 +90,7 @@ impl PlayerView {
         picker.address = None;
         picker.address_unavailable = false;
         picker.context = None;
+        picker.toolbar_menu = None;
         search.input.update(cx, |input, cx| input.focus(window, cx));
         self.restore_quick_focus = false;
         cx.notify();
@@ -140,8 +141,8 @@ impl PlayerView {
             return;
         }
         let directory = picker.directory.clone();
-        let mode = picker.mode;
-        let show_hidden_folders = picker.show_hidden_folders;
+        let sort = picker.sort;
+        let filter = picker.filter;
         let executor = cx.background_executor().clone();
         let progress = Arc::new(SearchProgress::default());
         let request = progress.clone();
@@ -167,7 +168,7 @@ impl PlayerView {
             executor.timer(SEARCH_DELAY).await;
             let worker = request.clone();
             let results = executor
-                .spawn(async move { scan(&directory, mode, &query, show_hidden_folders, &worker) })
+                .spawn(async move { scan(&directory, sort, filter, &query, &worker) })
                 .await;
             if request.cancelled.load(Ordering::Relaxed) {
                 return;
@@ -196,6 +197,7 @@ impl PlayerView {
                     }
                     Err(_) => DirectoryEntries::Unreadable,
                 });
+                picker.apply_listing_options();
                 picker.restart_listing_motion();
                 cx.notify();
             });
@@ -214,20 +216,21 @@ fn search_tokens(query: &str) -> Vec<String> {
 
 fn scan(
     root: &Path,
-    mode: QuickOpenMode,
+    sort: Sort,
+    filter: Filter,
     query: &[String],
-    show_hidden_folders: bool,
     progress: &SearchProgress,
-) -> io::Result<(Vec<Entry>, bool)> {
+) -> io::Result<(Listing, bool)> {
     if progress.cancelled.load(Ordering::Relaxed) {
-        return Ok((Vec::new(), false));
+        return Ok((Listing::new(Vec::new(), sort, filter), false));
     }
     fs::read_dir(root)?;
     let mut entries = Vec::new();
+    let mut truncated = false;
     let mut walker = WalkBuilder::new(root)
         .standard_filters(false)
         .follow_links(false)
-        .filter_entry(move |entry| searchable_entry(entry, show_hidden_folders))
+        .filter_entry(move |entry| searchable_entry(entry, filter.show_dot_folders))
         .build();
     while !progress.cancelled.load(Ordering::Relaxed) {
         let Some(result) = walker.next() else { break };
@@ -240,12 +243,14 @@ fn scan(
         let Some(kind) = candidate.file_type() else {
             continue;
         };
-        let is_directory = kind.is_dir();
-        if !is_directory
-            && (mode == QuickOpenMode::AppendFolder
-                || !kind.is_file()
-                || !is_supported_media_path(candidate.path()))
-        {
+        let kind = if kind.is_dir() {
+            EntryKind::Folder
+        } else if kind.is_file() {
+            file_kind(candidate.path())
+        } else {
+            continue;
+        };
+        if !filter.includes(kind) {
             continue;
         }
         let name = candidate.file_name().to_string_lossy();
@@ -253,29 +258,19 @@ fn scan(
         if query.iter().any(|token| !lowercase.contains(token)) {
             continue;
         }
-        entries.push(Entry {
-            name: name.into_owned().into(),
-            path: candidate.into_path(),
-            is_directory,
-        });
-        if entries.len() > MAX_SEARCH_RESULTS {
+        if entries.len() == MAX_SEARCH_RESULTS {
+            truncated = true;
             break;
         }
+        let metadata = candidate.metadata().ok();
+        entries.push(Entry::new(candidate.into_path(), kind, metadata));
         progress.matches.fetch_add(1, Ordering::Release);
     }
     if progress.cancelled.load(Ordering::Relaxed) {
-        return Ok((Vec::new(), false));
+        return Ok((Listing::new(Vec::new(), sort, filter), false));
     }
-    let truncated = entries.len() > MAX_SEARCH_RESULTS;
-    entries.truncate(MAX_SEARCH_RESULTS);
-    entries.sort_by_cached_key(|entry| {
-        (
-            !entry.is_directory,
-            entry.name.to_lowercase(),
-            entry.path.clone(),
-        )
-    });
-    Ok((entries, truncated))
+    entries.sort_unstable_by(|left, right| left.path.cmp(&right.path));
+    Ok((Listing::new(entries, sort, filter), truncated))
 }
 
 fn searchable_entry(entry: &DirEntry, show_hidden_folders: bool) -> bool {
@@ -296,6 +291,7 @@ mod tests {
     };
 
     use super::*;
+    use crate::windows_gpui::player_view::quick_open::{QuickOpenMode, listing::Category};
 
     struct Fixture(PathBuf);
 
@@ -329,13 +325,19 @@ mod tests {
         let root = Fixture::new();
         let names = |mode, query: &str| {
             let progress = SearchProgress::default();
-            let (results, truncated) =
-                scan(&root.0, mode, &search_tokens(query), false, &progress).unwrap();
+            let (results, truncated) = scan(
+                &root.0,
+                Sort::default(),
+                Filter::new(mode),
+                &search_tokens(query),
+                &progress,
+            )
+            .unwrap();
             assert_eq!(progress.counts(), (5, results.len()));
             assert!(!truncated);
             results
-                .into_iter()
-                .map(|entry| entry.path)
+                .range(0, results.len())
+                .map(|entry| entry.path.clone())
                 .collect::<Vec<_>>()
         };
 
@@ -359,9 +361,9 @@ mod tests {
         progress.cancelled.store(true, Ordering::Relaxed);
         let (results, truncated) = scan(
             &root.0,
-            QuickOpenMode::Open,
+            Sort::default(),
+            Filter::new(QuickOpenMode::Open),
             &search_tokens("film"),
-            false,
             &progress,
         )
         .unwrap();
@@ -383,15 +385,18 @@ mod tests {
         let matching_paths = |directory: &Path, show_hidden_folders| {
             let (results, _) = scan(
                 directory,
-                QuickOpenMode::Open,
+                Sort::default(),
+                Filter {
+                    show_dot_folders: show_hidden_folders,
+                    ..Filter::new(QuickOpenMode::Open)
+                },
                 &search_tokens("film"),
-                show_hidden_folders,
                 &SearchProgress::default(),
             )
             .unwrap();
             results
-                .into_iter()
-                .map(|entry| entry.path)
+                .range(0, results.len())
+                .map(|entry| entry.path.clone())
                 .collect::<Vec<_>>()
         };
         let visible = matching_paths(&root.0, false);
@@ -402,5 +407,44 @@ mod tests {
         assert!(showing_hidden.contains(&hidden));
         assert!(showing_hidden.contains(&nested_media));
         assert_eq!(matching_paths(&hidden, false), [nested_media]);
+    }
+
+    #[test]
+    fn search_uses_the_active_category_and_only_media_setting() {
+        let root = Fixture::new();
+        let audio = root.0.join("Family Notes.WAV");
+        let text = root.0.join("Family Notes.TXT");
+        fs::write(&audio, []).unwrap();
+        fs::write(&text, []).unwrap();
+        let matching_paths = |category, only_media| {
+            let (results, _) = scan(
+                &root.0,
+                Sort::default(),
+                Filter {
+                    category,
+                    only_media,
+                    ..Filter::new(QuickOpenMode::Open)
+                },
+                &search_tokens("family notes"),
+                &SearchProgress::default(),
+            )
+            .unwrap();
+            results
+                .range(0, results.len())
+                .map(|entry| entry.path.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            matching_paths(Category::Audio, false),
+            std::slice::from_ref(&audio)
+        );
+        assert_eq!(
+            matching_paths(Category::All, true),
+            [root.0.join("Family Notes.MP4"), audio.clone()]
+        );
+        assert_eq!(
+            matching_paths(Category::All, false),
+            [root.0.join("Family Notes.MP4"), text, audio]
+        );
     }
 }

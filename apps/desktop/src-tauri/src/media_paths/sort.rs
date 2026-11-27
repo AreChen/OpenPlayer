@@ -38,6 +38,11 @@ fn natural_str_cmp(left: &str, right: &str) -> Ordering {
     left_tokens.len().cmp(&right_tokens.len())
 }
 
+#[cfg(all(windows, feature = "windows-gpui"))]
+pub(crate) fn natural_name_key(text: &str) -> impl Ord + use<> {
+    natural_tokens(&text.to_lowercase())
+}
+
 #[derive(Debug, Eq, PartialEq)]
 enum NaturalToken {
     Text(String),
