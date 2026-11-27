@@ -21,11 +21,41 @@ async function attempt(command, args, options) {
 
 const macToolSource = `
 import AppKit
+import ApplicationServices
 import CoreGraphics
 
 let action = CommandLine.arguments[1]
 let pid = pid_t(CommandLine.arguments[2])!
 guard let app = NSRunningApplication(processIdentifier: pid) else { exit(1) }
+
+func waitUntil(_ seconds: TimeInterval, _ condition: () -> Bool) -> Bool {
+    let deadline = Date(timeIntervalSinceNow: seconds)
+    while Date() < deadline {
+        if condition() { return true }
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+    }
+    return condition()
+}
+
+func attribute(_ element: AXUIElement, _ name: CFString) -> CFTypeRef? {
+    var result: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, name, &result) == .success else { return nil }
+    return result
+}
+
+func focusControls() -> Bool {
+    let application = AXUIElementCreateApplication(pid)
+    let windows = attribute(application, kAXWindowsAttribute as CFString) as? [AXUIElement] ?? []
+    guard let overlay = windows.first(where: {
+        (attribute($0, kAXTitleAttribute as CFString) as? String) == "OpenPlayer Controls"
+    }) else { return false }
+    _ = AXUIElementPerformAction(overlay, kAXRaiseAction as CFString)
+    _ = AXUIElementSetAttributeValue(application, kAXFocusedWindowAttribute as CFString, overlay)
+    return waitUntil(2) {
+        guard let focused = attribute(application, kAXFocusedWindowAttribute as CFString) else { return false }
+        return CFEqual(overlay, focused)
+    }
+}
 
 switch action {
 case "window":
@@ -38,18 +68,25 @@ case "window":
 case "close":
     guard app.terminate() else { exit(1) }
 case "keys":
-    guard CGPreflightPostEventAccess() else { exit(1) }
-    let deadline = Date(timeIntervalSinceNow: 3)
+    guard CGPreflightPostEventAccess(), AXIsProcessTrusted() else {
+        print("input-unavailable")
+        exit(0)
+    }
     if NSWorkspace.shared.frontmostApplication?.processIdentifier != pid {
         guard app.activate(options: [.activateAllWindows]) else { exit(1) }
     }
-    while NSWorkspace.shared.frontmostApplication?.processIdentifier != pid && Date() < deadline {
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+    guard waitUntil(3, { NSWorkspace.shared.frontmostApplication?.processIdentifier == pid }),
+          focusControls() else {
+        fputs("Could not focus the OpenPlayer Controls window.", stderr)
+        exit(1)
     }
-    for key in [49, 124, 125, 49] {
-        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { exit(1) }
-        CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(key), keyDown: true)?.post(tap: .cghidEventTap)
-        CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(key), keyDown: false)?.post(tap: .cghidEventTap)
+    let source = CGEventSource(stateID: .hidSystemState)
+    for key in [125, 49, 124, 49] {
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid,
+              let down = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(key), keyDown: true),
+              let up = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(key), keyDown: false) else { exit(1) }
+        down.post(tap: .cghidEventTap)
+        up.post(tap: .cghidEventTap)
         Thread.sleep(forTimeInterval: 0.2)
     }
 default:
@@ -233,7 +270,9 @@ export class PackageSmokeHost {
       `, { OPENPLAYER_PID: String(player.child.pid) });
       return true;
     }
-    if (process.platform === "darwin") return Boolean(await attempt(this.macTool, ["keys", String(player.child.pid)]));
+    if (process.platform === "darwin") {
+      return await capture(this.macTool, ["keys", String(player.child.pid)]) === "ok";
+    }
     await run("xdotool", ["windowactivate", "--sync", window, "key", "--clearmodifiers", "--delay", "200", "space", "Right", "Down", "space"]);
     return true;
   }
@@ -313,6 +352,13 @@ export class PackageSmokeHost {
       return profile?.history.some((entry) => basename(entry.path) === basename(media) && entry.position > 0);
     }, 35_000);
     const controls = controlsRequested && await this.exerciseControls(player, window);
+    if (process.platform === "darwin" && controls) {
+      await waitFor("macOS volume control to save its setting", async () => {
+        const profile = await this.readProfile(media).catch(() => null);
+        const volume = profile?.settings?.volume;
+        return typeof volume === "number" && volume < 82;
+      }, 10_000);
+    }
     await setTimeout(1_500);
     const { code, signal } = await this.close(player, window);
     if (code !== 0) throw new Error(`OpenPlayer exited with ${code ?? signal}`);
