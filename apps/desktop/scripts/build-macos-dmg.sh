@@ -4,7 +4,8 @@ set -euo pipefail
 version="${1:?Expected a version}"
 arch="${2:?Expected a package architecture}"
 distribution="${3:-false}"
-case "$(uname -m):$arch" in
+machine_arch="$(uname -m)"
+case "$machine_arch:$arch" in
   arm64:arm64|x86_64:x64) ;;
   *) echo "Runner architecture does not match $arch" >&2; exit 1 ;;
 esac
@@ -27,8 +28,8 @@ trap cleanup EXIT
 
 exe_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
 exe="$app/Contents/MacOS/$exe_name"
-lipo -verify_arch "$(uname -m)" "$exe"
-otool -L "$exe" | grep -E '@executable_path/../Frameworks/libmpv[^/]*\.dylib'
+lipo "$exe" -verify_arch "$machine_arch"
+otool -L "$exe" | grep -E '@executable_path/\.\./Frameworks/libmpv[^/]*\.dylib'
 
 identity="-"
 sign_options=(--timestamp=none)
@@ -88,7 +89,7 @@ while IFS= read -r -d '' binary; do
       echo "Unbundled dylib reference in $binary" >&2
       exit 1
     fi
-    lipo -verify_arch "$(uname -m)" "$binary"
+    lipo "$binary" -verify_arch "$machine_arch"
     sign_code "$binary"
   fi
 done < <(find "$app/Contents/Frameworks" -type f \( -name '*.dylib' -o -name '*.so' -o -perm +111 \) -print0)
