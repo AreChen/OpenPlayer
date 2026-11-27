@@ -7,7 +7,7 @@ use serde_json::Value;
 use super::PlayerView;
 use crate::windows_gpui::{
     theme::icon,
-    widgets::{command, icon_button_box},
+    widgets::{command, icon_button_box, tooltip},
 };
 
 const GLYPH_SIZE: f32 = 20.;
@@ -64,8 +64,17 @@ impl PlayerView {
                 ))
             });
 
+        let label = self.ui.label(if self.ui.software_decode {
+            "hardware.switchToHardware"
+        } else {
+            "hardware.switchToSoftware"
+        });
         command(
-            icon_button_box("toggleDecode", palette, false).child(glyph),
+            tooltip(
+                icon_button_box("toggleDecode", palette, false).child(glyph),
+                label,
+                palette,
+            ),
             "toggleDecode",
             Value::Null,
             true,

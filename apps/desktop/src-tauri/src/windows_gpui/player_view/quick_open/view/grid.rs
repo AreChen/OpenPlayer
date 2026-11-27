@@ -6,7 +6,7 @@ use gpui::{
     div, img, prelude::*, px, uniform_list,
 };
 
-use super::super::{DirectoryEntries, Entry, PlayerView, previews};
+use super::super::{DirectoryEntries, Entry, PlayerView, motion::ListingFrame, previews};
 use super::{quick_tooltip, scrollbar};
 use crate::windows_gpui::{theme::icon, widgets::button_feedback};
 
@@ -14,10 +14,17 @@ const CONTENT_PADDING: f32 = 16.;
 const CARD_GAP: f32 = 12.;
 
 impl PlayerView {
-    pub(super) fn quick_contents(&self, width: f32, cx: &Context<Self>) -> Div {
+    pub(super) fn quick_contents(
+        &self,
+        width: f32,
+        listing: ListingFrame,
+        cx: &Context<Self>,
+    ) -> Div {
         let picker = self.quick_open.as_ref().expect("browser is open");
         let root = div()
             .relative()
+            .top(px(listing.offset))
+            .opacity(listing.opacity)
             .flex()
             .flex_1()
             .min_w_0()
@@ -34,7 +41,7 @@ impl PlayerView {
                         "quick-grid",
                         entries.len().div_ceil(columns),
                         cx.processor(move |view, range, _, cx| {
-                            view.quick_grid_rows(range, columns, preview_height, cx)
+                            view.quick_grid_rows(range, columns, preview_height, listing, cx)
                         }),
                     )
                     .with_decoration(VisiblePreviews {
@@ -52,6 +59,11 @@ impl PlayerView {
                 .child(scrollbar::quick_scrollbar(&picker.scroll, self.palette))
             }
             status => {
+                let search_progress = picker
+                    .search
+                    .as_ref()
+                    .and_then(|search| search.progress())
+                    .filter(|(checked, _)| *checked > 0);
                 let (glyph, key) = match status {
                     DirectoryEntries::Loading if picker.showing_search_results() => {
                         ("search", "media.quickOpen.searching")
@@ -78,7 +90,17 @@ impl PlayerView {
                         .text_size(px(13.))
                         .text_color(self.palette.muted)
                         .child(icon(glyph, self.palette.faint, 34.))
-                        .child(self.ui.label(key)),
+                        .child(self.ui.label(key))
+                        .when_some(search_progress, |el, (checked, matches)| {
+                            el.child(
+                                div().text_size(px(12.)).child(
+                                    self.ui
+                                        .label("media.quickOpen.searchProgress")
+                                        .replace("{checked}", &checked.to_string())
+                                        .replace("{matches}", &matches.to_string()),
+                                ),
+                            )
+                        }),
                 )
             }
         }
@@ -89,6 +111,7 @@ impl PlayerView {
         rows: Range<usize>,
         columns: usize,
         preview_height: f32,
+        listing: ListingFrame,
         cx: &Context<Self>,
     ) -> Vec<Div> {
         let Some(picker) = &self.quick_open else {
@@ -112,6 +135,7 @@ impl PlayerView {
                         preview_height,
                         cx,
                     )
+                    .opacity(listing.card_opacity(index))
                     .into_any_element()
                 } else {
                     div().flex_1().min_w_0().into_any_element()

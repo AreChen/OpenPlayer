@@ -12,7 +12,7 @@ use super::PlayerView;
 use crate::windows_gpui::{
     media_info::{MediaInfo, MediaTrackInfo},
     theme::icon,
-    widgets::{icon_button, text_button},
+    widgets::{icon_button, text_button, tooltip},
 };
 
 const PROPERTY_LABEL_WIDTH: f32 = 136.;
@@ -65,11 +65,13 @@ impl PlayerView {
                     .child(icon("info", palette.accent, 18.))
                     .child(self.ui.label("media.properties.title")),
             )
-            .child(
+            .child(tooltip(
                 icon_button("media-properties-close", "close", palette, false)
                     .cursor_pointer()
                     .on_click(cx.listener(|view, _, _, cx| view.close_media_properties(cx))),
-            );
+                close_label.clone(),
+                palette,
+            ));
         let footer = div()
             .flex()
             .flex_none()

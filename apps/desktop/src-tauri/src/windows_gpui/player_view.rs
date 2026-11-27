@@ -46,7 +46,7 @@ use super::{
     theme::{Palette, icon, logo},
     ui_state::UiState,
     updates::{self, UpdateStatus},
-    widgets::button_feedback,
+    widgets::{button_feedback, tooltip},
 };
 
 const CHROME_IDLE: Duration = Duration::from_secs(3);
@@ -583,11 +583,13 @@ impl PlayerView {
 
     fn titlebar(&self, window: &Window) -> Div {
         let palette = self.palette;
-        let maximize_icon = if window.is_maximized() {
-            "restore"
+        let (maximize_icon, maximize_label) = if window.is_maximized() {
+            ("restore", "controls.restore")
         } else {
-            "maximize"
+            ("maximize", "controls.maximizeWindow")
         };
+        let caption_button =
+            |name, label| tooltip(caption(name, palette), self.ui.label(label), palette);
         div()
             .absolute()
             .top(px(10.))
@@ -598,10 +600,13 @@ impl PlayerView {
             .overflow_hidden()
             .bg(palette.titlebar)
             .occlude()
-            .child(caption("minimize", palette).window_control_area(WindowControlArea::Min))
+            .child(
+                caption_button("minimize", "controls.minimize")
+                    .window_control_area(WindowControlArea::Min),
+            )
             .child(
                 // Client-area hit testing keeps Windows from showing Snap Layout on hover.
-                caption(maximize_icon, palette).on_click(|_, window, _| {
+                caption_button(maximize_icon, maximize_label).on_click(|_, window, _| {
                     if let Ok(handle) = hwnd(window) {
                         let show = if window.is_maximized() {
                             SW_RESTORE
@@ -612,7 +617,10 @@ impl PlayerView {
                     }
                 }),
             )
-            .child(caption("close", palette).window_control_area(WindowControlArea::Close))
+            .child(
+                caption_button("close", "controls.close")
+                    .window_control_area(WindowControlArea::Close),
+            )
     }
 
     fn stage(&self, window: &Window, cx: &Context<Self>) -> Div {

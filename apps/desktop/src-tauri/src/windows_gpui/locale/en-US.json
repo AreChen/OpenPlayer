@@ -5,6 +5,7 @@
     "reset": "Reset",
     "restoreDefaults": "Restore Defaults",
     "cancel": "Cancel",
+    "close": "Close",
     "clear": "Clear",
     "choose": "Choose",
     "open": "Open",
@@ -64,6 +65,12 @@
       "description": "Continue through the queue after each item"
     }
   },
+  "hardware": {
+    "hardware": "HW",
+    "software": "SW",
+    "switchToSoftware": "Switch to software decoding",
+    "switchToHardware": "Switch to hardware decoding"
+  },
   "contextMenu": {
     "openMedia": "Open Media",
     "appendFiles": "Add Files to Playlist",
@@ -95,6 +102,7 @@
       "title": "Appearance",
       "builtInTheme": "Built-in theme",
       "accent": "Accent Color",
+      "useAccent": "Use {color} as accent color",
       "custom": "Custom",
       "followTheme": "Follow theme",
       "freePick": "Free Pick",
@@ -137,7 +145,8 @@
     },
     "shortcuts": {
       "title": "Shortcuts",
-      "subtitle": "Custom controls"
+      "subtitle": "Custom controls",
+      "change": "Change keyboard shortcut"
     },
     "about": {
       "title": "About",
@@ -173,6 +182,9 @@
     "videoTracks": "Video Tracks",
     "subtitles": "Subtitles",
     "subtitleSync": "Subtitle Sync",
+    "subtitlesEarlier": "Show subtitles 0.1 seconds earlier",
+    "subtitlesLater": "Show subtitles 0.1 seconds later",
+    "resetSubtitleDelay": "Reset subtitle delay",
     "closeSubtitles": "Disable Subtitles",
     "noSwitchableTracks": "This media did not report switchable tracks",
     "loadExternalSubtitle": "Load External Subtitle",
@@ -194,7 +206,10 @@
       "search": "Search this folder (Ctrl+F)",
       "searchPlaceholder": "Search filenames in this folder and subfolders",
       "closeSearch": "Close search (Esc)",
+      "showHiddenFolders": "Show dot folders (Ctrl+Shift+.)",
+      "hideHiddenFolders": "Hide dot folders (Ctrl+Shift+.)",
       "searching": "Searching…",
+      "searchProgress": "Scanned {checked} · {matches} matches",
       "searchEmpty": "No matching media or folders",
       "searchUnreadable": "Unable to search this folder",
       "searchResults": "{count} results",
@@ -264,6 +279,8 @@
   "controls": {
     "currentTime": "Current playback time",
     "duration": "Playback duration",
+    "showTime": "Show playback time",
+    "showFrames": "Show frame numbers",
     "previousVideo": "Previous video",
     "nextVideo": "Next video",
     "seek": "Seek playback position",
@@ -271,15 +288,20 @@
     "stop": "Stop playback",
     "play": "Play",
     "pause": "Pause",
-    "openLoopMode": "Open loop mode",
+    "openLoopMode": "Choose loop mode",
     "volume": "Volume",
     "mute": "Mute",
     "unmute": "Unmute",
-    "openPlaybackSpeed": "Open playback speed",
-    "openTracks": "Open track and subtitle options",
+    "openPlaybackSpeed": "Adjust playback speed",
+    "openTracks": "Choose tracks and subtitles",
     "togglePlaylist": "Toggle playlist",
+    "showPlaylist": "Show playlist",
+    "hidePlaylist": "Hide playlist",
+    "exitFullscreen": "Exit fullscreen",
     "minimize": "Minimize window",
     "maximize": "Maximize or restore window",
+    "maximizeWindow": "Maximize window",
+    "restore": "Restore window",
     "close": "Close window"
   },
   "streamDialog": {

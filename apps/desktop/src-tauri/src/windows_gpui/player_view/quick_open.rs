@@ -1,5 +1,6 @@
 mod address;
 mod locations;
+mod motion;
 mod preview_state;
 mod previews;
 mod search;
@@ -7,6 +8,7 @@ mod view;
 
 use std::{
     collections::BTreeSet,
+    ffi::OsStr,
     fs, io,
     path::{Path, PathBuf},
 };
@@ -14,6 +16,7 @@ use std::{
 use gpui::{
     AppContext, Context, Entity, KeyDownEvent, SharedString, Task, UniformListScrollHandle, Window,
 };
+use gpui_ce_motion::MotionState;
 use serde_json::json;
 
 use super::PlayerView;
@@ -21,6 +24,7 @@ use crate::media_paths::is_supported_media_path;
 
 use address::AddressInput;
 use locations::{QuickLocation, home_directory, system_locations};
+use motion::ListingMotion;
 use preview_state::QuickPreviews;
 use search::QuickSearch;
 
@@ -35,6 +39,8 @@ pub(super) struct QuickOpen {
     mode: QuickOpenMode,
     directory: PathBuf,
     entries: DirectoryEntries,
+    hidden_folders: Vec<Entry>,
+    show_hidden_folders: bool,
     show_media_favorites: bool,
     context: Option<view::QuickEntryContext>,
     selected: BTreeSet<usize>,
@@ -44,6 +50,8 @@ pub(super) struct QuickOpen {
     address: Option<Entity<AddressInput>>,
     address_unavailable: bool,
     search: Option<QuickSearch>,
+    search_motion: MotionState,
+    listing_motion: ListingMotion,
     locations: Vec<(QuickLocation, PathBuf)>,
     drives: Vec<PathBuf>,
     previews: QuickPreviews,
@@ -78,6 +86,26 @@ impl QuickOpen {
         self.previews.clear_visible(cx);
         self.selected.clear();
         self.scroll = UniformListScrollHandle::new();
+    }
+
+    fn restart_listing_motion(&mut self) {
+        self.listing_motion.restart();
+    }
+
+    fn apply_folder_visibility(&mut self) {
+        let DirectoryEntries::Ready(entries) = &mut self.entries else {
+            return;
+        };
+        if self.show_hidden_folders {
+            if !self.hidden_folders.is_empty() {
+                entries.append(&mut self.hidden_folders);
+                sort_entries(entries);
+            }
+        } else {
+            self.hidden_folders.extend(entries.extract_if(.., |entry| {
+                entry.is_directory && entry.path.file_name().is_some_and(is_dot_named)
+            }));
+        }
     }
 }
 
@@ -130,6 +158,8 @@ impl PlayerView {
             mode,
             directory: directory.clone(),
             entries: DirectoryEntries::Loading,
+            hidden_folders: Vec::new(),
+            show_hidden_folders: false,
             show_media_favorites: false,
             context: None,
             selected: BTreeSet::new(),
@@ -139,6 +169,8 @@ impl PlayerView {
             address: None,
             address_unavailable: false,
             search: None,
+            search_motion: MotionState::default(),
+            listing_motion: ListingMotion::default(),
             locations,
             drives: Vec::new(),
             previews: QuickPreviews::default(),
@@ -174,6 +206,15 @@ impl PlayerView {
         }
         if modifiers.control && key == "f" {
             self.focus_quick_search(window, cx);
+            return;
+        }
+        // On Windows GPUI folds Shift + period into ">" on US keyboards.
+        if modifiers.control
+            && !modifiers.alt
+            && !modifiers.platform
+            && (key == ">" || (modifiers.shift && key == "."))
+        {
+            self.toggle_quick_hidden_folders(cx);
             return;
         }
         if self
@@ -320,6 +361,10 @@ impl PlayerView {
             picker.address_unavailable = false;
             picker.reset_listing(cx);
             picker.entries = DirectoryEntries::Ready(entries);
+            picker.hidden_folders.clear();
+            if !picker.show_media_favorites {
+                picker.restart_listing_motion();
+            }
             picker.show_media_favorites = true;
             cx.notify();
         }
@@ -327,6 +372,24 @@ impl PlayerView {
 
     fn quick_media_is_favorite(&self, path: &Path) -> bool {
         self.controller.is_media_favorite(path)
+    }
+
+    fn toggle_quick_hidden_folders(&mut self, cx: &mut Context<Self>) {
+        let Some(picker) = &mut self.quick_open else {
+            return;
+        };
+        if picker.show_media_favorites {
+            return;
+        }
+        picker.show_hidden_folders = !picker.show_hidden_folders;
+        picker.apply_folder_visibility();
+        if picker.showing_search_results() {
+            self.reload_quick_search(cx);
+        } else {
+            picker.reset_listing(cx);
+            picker.restart_listing_motion();
+        }
+        cx.notify();
     }
 
     fn toggle_quick_media_favorite(&mut self, path: PathBuf, cx: &mut Context<Self>) {
@@ -442,6 +505,9 @@ impl PlayerView {
                         if let Some(picker) = &mut view.quick_open {
                             picker.reset_listing(cx);
                             picker.entries = DirectoryEntries::Ready(entries);
+                            picker.hidden_folders.clear();
+                            picker.apply_folder_visibility();
+                            picker.restart_listing_motion();
                             picker.show_media_favorites = false;
                             match navigation {
                                 Navigation::Initial => picker.history[0] = path.clone(),
@@ -525,7 +591,8 @@ impl PlayerView {
             picker
                 .selected
                 .iter()
-                .map(|&index| entries[index].path.clone())
+                .filter_map(|&index| entries.get(index))
+                .map(|entry| entry.path.clone())
                 .collect()
         };
         if !paths.is_empty() {
@@ -603,6 +670,14 @@ fn scan_directory(directory: &Path, mode: QuickOpenMode) -> io::Result<Vec<Entry
             })
         })
         .collect::<Vec<_>>();
-    entries.sort_by_cached_key(|entry| (!entry.is_directory, entry.name.to_lowercase()));
+    sort_entries(&mut entries);
     Ok(entries)
+}
+
+fn is_dot_named(name: &OsStr) -> bool {
+    name.as_encoded_bytes().starts_with(b".")
+}
+
+fn sort_entries(entries: &mut [Entry]) {
+    entries.sort_by_cached_key(|entry| (!entry.is_directory, entry.name.to_lowercase()));
 }

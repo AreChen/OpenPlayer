@@ -8,7 +8,7 @@ use gpui_ce_motion::MotionState;
 use serde_json::{Value, json};
 
 use super::{PlayerView, motion};
-use crate::windows_gpui::widgets::{command, icon_button};
+use crate::windows_gpui::widgets::{command, icon_button, tooltip};
 
 const BUTTON_WIDTH: f32 = 36.;
 const BUTTON_HEIGHT: f32 = 34.;
@@ -80,8 +80,17 @@ impl PlayerView {
         } else {
             BUTTON_HEIGHT
         };
+        let label = self.ui.label(if self.ui.muted {
+            "controls.unmute"
+        } else {
+            "controls.mute"
+        });
         let button = command(
-            icon_button("toggleMute", self.volume_glyph(), self.palette, revealed),
+            tooltip(
+                icon_button("toggleMute", self.volume_glyph(), self.palette, revealed),
+                label,
+                self.palette,
+            ),
             "toggleMute",
             Value::Null,
             true,

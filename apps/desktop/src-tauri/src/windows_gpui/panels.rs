@@ -5,7 +5,7 @@ use super::{
     player_view::{EditTarget, PlayerView},
     theme::icon,
     ui_state::{ContextMenu, MediaPanel, StreamDialog},
-    widgets::{command, heading, icon_button, item_id, row, text_button},
+    widgets::{command, heading, icon_button, item_id, row, text_button, tooltip},
 };
 
 impl PlayerView {
@@ -103,6 +103,7 @@ impl PlayerView {
     fn playlist(&self, slide: f32, cx: &Context<Self>) -> Div {
         let ui = &self.ui;
         let palette = self.palette;
+        let tip = |element, label| tooltip(element, ui.label(label), palette);
         let tab = |id, label, historical| {
             text_button(id, label, palette, historical == self.show_history)
                 .cursor_pointer()
@@ -120,21 +121,30 @@ impl PlayerView {
             .child(tab("recent-tab", ui.label("media.recent"), true))
             .child(div().flex_1())
             .child(command(
-                icon_button("appendFiles", "folderAdd", palette, false).h(px(28.)),
+                tip(
+                    icon_button("appendFiles", "folderAdd", palette, false).h(px(28.)),
+                    "contextMenu.appendFiles",
+                ),
                 "appendFiles",
                 Value::Null,
                 !self.picker_open,
                 cx,
             ))
             .child(command(
-                icon_button("appendFolder", "folder", palette, false).h(px(28.)),
+                tip(
+                    icon_button("appendFolder", "folder", palette, false).h(px(28.)),
+                    "contextMenu.appendFolder",
+                ),
                 "appendFolder",
                 Value::Null,
                 !self.picker_open,
                 cx,
             ))
             .child(command(
-                icon_button("hide-playlist", "close", palette, false).h(px(28.)),
+                tip(
+                    icon_button("hide-playlist", "close", palette, false).h(px(28.)),
+                    "controls.hidePlaylist",
+                ),
                 "togglePlaylist",
                 Value::Null,
                 true,
@@ -315,7 +325,11 @@ impl PlayerView {
                     .mb_2()
                     .child(heading(ui.label(title), palette))
                     .child(command(
-                        icon_button("hide-media-panel", "close", palette, false).h(px(26.)),
+                        tooltip(
+                            icon_button("hide-media-panel", "close", palette, false).h(px(26.)),
+                            ui.label("common.close"),
+                            palette,
+                        ),
                         kind,
                         Value::Null,
                         true,
@@ -334,26 +348,30 @@ impl PlayerView {
     fn track_options(&self, cx: &Context<Self>) -> Div {
         let palette = self.palette;
         let ui = &self.ui;
-        let layouts = [("media.videoFit", false), ("media.videoFill", true)];
+        let layouts = [
+            ("media.videoFit", "media.videoFitDescription", false),
+            ("media.videoFill", "media.videoFillDescription", true),
+        ];
         let mut content = div()
             .flex()
             .flex_col()
             .gap_2()
             .child(heading(ui.label("media.videoLayout"), palette))
-            .child(
-                div()
-                    .flex()
-                    .gap_2()
-                    .children(layouts.iter().map(|(label, fill)| {
-                        command(
+            .child(div().flex().gap_2().children(layouts.iter().map(
+                |(label, description, fill)| {
+                    command(
+                        tooltip(
                             text_button(*label, ui.label(label), palette, ui.video_fill == *fill),
-                            "videoFill",
-                            json!(fill),
-                            true,
-                            cx,
-                        )
-                    })),
-            );
+                            ui.label(description),
+                            palette,
+                        ),
+                        "videoFill",
+                        json!(fill),
+                        true,
+                        cx,
+                    )
+                },
+            )));
         for (kind, label) in [
             ("audio", "media.audioTracks"),
             ("video", "media.videoTracks"),
@@ -406,7 +424,11 @@ impl PlayerView {
                     .gap_2()
                     .items_center()
                     .child(command(
-                        text_button("delay-minus", "−0.1 s", palette, false),
+                        tooltip(
+                            text_button("delay-minus", "−0.1 s", palette, false),
+                            ui.label("media.subtitlesEarlier"),
+                            palette,
+                        ),
                         "subtitleDelay",
                         json!(ui.subtitle_delay - 0.1),
                         ui.loaded,
@@ -419,14 +441,22 @@ impl PlayerView {
                             .child(format!("{:+.1} s", ui.subtitle_delay)),
                     )
                     .child(command(
-                        text_button("delay-plus", "+0.1 s", palette, false),
+                        tooltip(
+                            text_button("delay-plus", "+0.1 s", palette, false),
+                            ui.label("media.subtitlesLater"),
+                            palette,
+                        ),
                         "subtitleDelay",
                         json!(ui.subtitle_delay + 0.1),
                         ui.loaded,
                         cx,
                     ))
                     .child(command(
-                        text_button("delay-reset", ui.label("common.reset"), palette, false),
+                        tooltip(
+                            text_button("delay-reset", ui.label("common.reset"), palette, false),
+                            ui.label("media.resetSubtitleDelay"),
+                            palette,
+                        ),
                         "subtitleDelay",
                         json!(0),
                         ui.loaded,
@@ -478,7 +508,11 @@ impl PlayerView {
                             .justify_between()
                             .child(heading(ui.label("streamDialog.title"), palette))
                             .child(command(
-                                icon_button("closeNetworkStream", "close", palette, false),
+                                tooltip(
+                                    icon_button("closeNetworkStream", "close", palette, false),
+                                    ui.label("common.close"),
+                                    palette,
+                                ),
                                 "closeNetworkStream",
                                 Value::Null,
                                 true,

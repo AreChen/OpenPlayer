@@ -10,7 +10,7 @@ pub(super) use explorer::ExplorerPreview;
 use super::{
     player_view::{EditTarget, PlayerView},
     theme::{Palette, icon, logo, parse},
-    widgets::{command, heading, icon_button, item_id, row, slider, text_button},
+    widgets::{command, heading, icon_button, item_id, row, slider, text_button, tooltip},
 };
 
 impl PlayerView {
@@ -88,7 +88,11 @@ impl PlayerView {
                                     ),
                             )
                             .child(command(
-                                icon_button("closeSettings", "close", palette, false),
+                                tooltip(
+                                    icon_button("closeSettings", "close", palette, false),
+                                    ui.label("common.close"),
+                                    palette,
+                                ),
                                 "closeSettings",
                                 Value::Null,
                                 true,
@@ -184,16 +188,23 @@ impl PlayerView {
             ))
             .children(ui.accents.iter().enumerate().map(|(index, accent)| {
                 let active = ui.accent_override.as_ref() == Some(accent);
+                let label = ui
+                    .label("settings.appearance.useAccent")
+                    .replace("{color}", accent);
                 command(
-                    div()
-                        .id(("accent", index))
-                        .size(px(28.))
-                        .flex_none()
-                        .rounded_full()
-                        .border_1()
-                        .border_color(if active { palette.text } else { palette.line })
-                        .bg(parse(accent).unwrap_or(palette.accent))
-                        .hover(|el| el.border_color(palette.text)),
+                    tooltip(
+                        div()
+                            .id(("accent", index))
+                            .size(px(28.))
+                            .flex_none()
+                            .rounded_full()
+                            .border_1()
+                            .border_color(if active { palette.text } else { palette.line })
+                            .bg(parse(accent).unwrap_or(palette.accent))
+                            .hover(|el| el.border_color(palette.text)),
+                        label,
+                        palette,
+                    ),
                     "accent",
                     json!(accent),
                     true,
@@ -414,7 +425,15 @@ impl PlayerView {
                     .justify_between()
                     .child(div().flex_1().truncate().child(shortcut.label.clone()))
                     .child(command(
-                        text_button(item_id("shortcut", &shortcut.id), label, palette, active),
+                        tooltip(
+                            text_button(item_id("shortcut", &shortcut.id), label, palette, active),
+                            ui.label(if active {
+                                "common.cancel"
+                            } else {
+                                "settings.shortcuts.change"
+                            }),
+                            palette,
+                        ),
                         "recordShortcut",
                         if active {
                             Value::Null

@@ -44,6 +44,17 @@ impl PlayerView {
         } else {
             search.opacity(0.38)
         };
+        let hidden = quick_tooltip(
+            icon_button("quick-hidden", "eye", palette, picker.show_hidden_folders),
+            self.ui.label(if picker.show_hidden_folders {
+                "media.quickOpen.hideHiddenFolders"
+            } else {
+                "media.quickOpen.showHiddenFolders"
+            }),
+            palette,
+        )
+        .cursor_pointer()
+        .on_click(cx.listener(|view, _, _, cx| view.toggle_quick_hidden_folders(cx)));
 
         let address = if let Some(entity) = &picker.address {
             address_field(entity, palette, cx)
@@ -123,6 +134,7 @@ impl PlayerView {
                     )
                     .when(!picker.show_media_favorites, |el| {
                         el.child(quick_tooltip(pin, favorite, palette))
+                            .child(hidden)
                             .child(search)
                     }),
             )
@@ -412,7 +424,7 @@ impl PlayerView {
             .unwrap_or(path.as_os_str())
             .to_string_lossy()
             .into_owned();
-        let path_label = path.to_string_lossy().into_owned().into();
+        let path_label = path.to_string_lossy().into_owned();
         let destination = path.to_path_buf();
         let context_path = destination.clone();
         let remove_path = destination.clone();
@@ -501,7 +513,7 @@ impl PlayerView {
                 14.,
             ))
             .child(div().truncate().min_w_0().flex_1().child(label));
-        let tip = path.to_string_lossy().into_owned().into();
+        let tip = path.to_string_lossy().into_owned();
         let target = path.to_path_buf();
         let context_path = target.clone();
         quick_tooltip(item, tip, palette)

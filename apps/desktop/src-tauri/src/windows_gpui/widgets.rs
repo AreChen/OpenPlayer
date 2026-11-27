@@ -2,8 +2,8 @@ use std::{cell::Cell, rc::Rc};
 
 use gpui::{
     Bounds, Context, Div, ElementId, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, Pixels, Rgba, SharedString, Stateful, canvas, div, prelude::*, px, relative,
-    transparent_black,
+    MouseUpEvent, Pixels, Render, Rgba, SharedString, Stateful, Window, canvas, div, prelude::*,
+    px, relative, transparent_black,
 };
 use serde_json::Value;
 
@@ -14,6 +14,46 @@ use super::{
 
 pub(super) fn item_id(category: &str, id: &str) -> SharedString {
     format!("{category}:{id}").into()
+}
+
+pub(super) fn tooltip(
+    element: Stateful<Div>,
+    label: impl Into<SharedString>,
+    palette: Palette,
+) -> Stateful<Div> {
+    let label = label.into();
+    element.tooltip(move |_, cx| {
+        cx.new(|_| Tooltip {
+            label: label.clone(),
+            palette,
+        })
+        .into()
+    })
+}
+
+struct Tooltip {
+    label: SharedString,
+    palette: Palette,
+}
+
+impl Render for Tooltip {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .max_w(px(470.))
+            .rounded(px(7.))
+            .bg(Rgba {
+                a: 1.,
+                ..self.palette.surface
+            })
+            .border_1()
+            .border_color(self.palette.line)
+            .shadow_md()
+            .px_2()
+            .py_1()
+            .text_color(self.palette.text)
+            .text_size(px(12.))
+            .child(self.label.clone())
+    }
 }
 
 pub(super) fn command(

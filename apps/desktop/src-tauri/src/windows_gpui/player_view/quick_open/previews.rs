@@ -291,6 +291,8 @@ impl Decoder {
                 ("vd-lavc-threads", "2"),
                 ("vd-lavc-dr", "no"),
                 ("sws-fast", "yes"),
+                // mpv's zimg repacker can abort on unaligned chroma widths.
+                ("sws-allow-zimg", "no"),
             ] {
                 init.set_option(key, value)?;
             }
@@ -529,4 +531,48 @@ impl Drop for SoftwareRender {
 
 fn param(kind: sys::mpv_render_param_type, data: *mut c_void) -> sys::mpv_render_param {
     sys::mpv_render_param { type_: kind, data }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{fs, time::SystemTime};
+
+    use super::*;
+
+    #[test]
+    fn renders_thumbnail_from_odd_sized_chroma_subsampled_video() {
+        const SOURCE_WIDTH: usize = 97;
+        const SOURCE_HEIGHT: usize = 55;
+        let nonce = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "openplayer-preview-{}-{nonce}.y4m",
+            std::process::id()
+        ));
+        let mut video =
+            format!("YUV4MPEG2 W{SOURCE_WIDTH} H{SOURCE_HEIGHT} F24:1 Ip A1:1 C420jpeg\n")
+                .into_bytes();
+        let chroma_samples = SOURCE_WIDTH.div_ceil(2) * SOURCE_HEIGHT.div_ceil(2);
+        for _ in 0..12 {
+            video.extend_from_slice(b"FRAME\n");
+            video.extend(std::iter::repeat_n(80, SOURCE_WIDTH * SOURCE_HEIGHT));
+            video.extend(std::iter::repeat_n(200, chroma_samples));
+            video.extend(std::iter::repeat_n(100, chroma_samples));
+        }
+        fs::write(&path, video).unwrap();
+        let (reply, _receiver) = oneshot::channel();
+        let request = Request {
+            path,
+            animated: false,
+            reply,
+            session_closed: Arc::default(),
+        };
+        let frames = Decoder::new().unwrap().preview(&request);
+        let _ = fs::remove_file(request.path);
+        let bytes = frames.first().unwrap().as_bytes(0).unwrap();
+        assert_eq!(bytes.len(), BYTES);
+        assert!(bytes.as_chunks::<4>().0.iter().any(|pixel| pixel[0] > 100));
+    }
 }
