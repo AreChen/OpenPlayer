@@ -1,0 +1,168 @@
+name: Verify Windows installed package and upgrade
+
+on:
+  push:
+    branches: [codex/openplayer-windows-validation]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  installed-and-upgrade:
+    name: Installed packages and upgrade (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            platform: windows-x64
+    env:
+      PACKAGE_TAG: v2.0.0
+      PACKAGE_COMMIT: 83551458220a0dffd8fdbda8b13f2aa7666246c1
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: 83551458220a0dffd8fdbda8b13f2aa7666246c1
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: openplayer-${{ matrix.platform }}
+          path: candidate
+          run-id: 46058420694
+          github-token: ${{ github.token }}
+
+      - name: Prepare Windows audio and media fixtures
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          foreach ($name in @('AudioEndpointBuilder', 'Audiosrv')) {
+            $service = Get-Service -Name $name
+            if ($service.StartType -eq 'Disabled') { Set-Service -Name $name -StartupType Manual }
+            if ($service.Status -ne 'Running') { Start-Service -Name $name }
+          }
+          Get-Service -Name AudioEndpointBuilder, Audiosrv | Format-Table Name, Status
+          $render = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Render\*'
+          $endpoints = @(Get-ItemProperty -Path $render -ErrorAction SilentlyContinue |
+            Where-Object { ($_.DeviceState -band 1) -eq 1 })
+          "Active Windows playback endpoints: $($endpoints.Count)"
+          "OPENPLAYER_WINDOWS_AUDIO_ENDPOINTS=$($endpoints.Count)" >> $env:GITHUB_ENV
+          if ($endpoints.Count -eq 0) {
+            Write-Warning 'The runner has no active audio rendering endpoint. Playback can advance through the libmpv null output.'
+          }
+          if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+            choco install ffmpeg -y
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Build fixture with the current version
+        uses: ./.github/actions/build-desktop-packages
+        with:
+          tag: v2.0.0
+          output: fixtures/base
+        env:
+          OPENPLAYER_ENABLE_TEST_UPDATES: "1"
+
+      - name: Build the isolated profile reader
+        shell: bash
+        env:
+          OPENPLAYER_ENABLE_TEST_UPDATES: "1"
+        run: |
+          case "$RUNNER_OS" in
+            Windows) export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-Ctarget-feature=+crt-static" ;;
+            macOS) export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Wl,-headerpad_max_install_names" ;;
+          esac
+          cargo build --locked --release -p openplayer-desktop --example package-profile
+
+      - name: Install Linux desktop test tools
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get install -y dbus-x11 ffmpeg openbox pkexec polkitd weston wmctrl xauth xdotool xvfb
+          sudo systemctl start polkit.service
+          cat > "$RUNNER_TEMP/openplayer-alsa.conf" <<'EOF'
+          pcm.!default {
+            type null
+          }
+          EOF
+          echo "ALSA_CONFIG_PATH=$RUNNER_TEMP/openplayer-alsa.conf" >> "$GITHUB_ENV"
+          if [[ ! -c /dev/fuse ]]; then
+            echo "OPENPLAYER_SMOKE_APPIMAGE_EXTRACT=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install macOS media fixture tools
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          if ! command -v ffmpeg; then
+            brew install ffmpeg
+          fi
+
+      - name: Exercise the exact candidate packages
+        id: candidate-smoke
+        continue-on-error: true
+        shell: bash
+        run: |
+          helper="target/release/examples/package-profile"
+          case "$RUNNER_OS" in
+            Linux)
+              prefix=(xvfb-run -a -s '-screen 0 1440x900x24' dbus-run-session --)
+              ;;
+            Windows)
+              helper="$helper.exe"
+              prefix=()
+              ;;
+            *) prefix=() ;;
+          esac
+          "${prefix[@]}" node apps/desktop/scripts/run-package-smoke.mjs candidate "$PACKAGE_TAG" "$PACKAGE_COMMIT" evidence "$helper"
+
+      - name: Prepare next version in this runner checkout
+        id: next
+        shell: bash
+        run: |
+          tag="$(node apps/desktop/scripts/prepare-upgrade-version.mjs "$PACKAGE_TAG")"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Build fixture with the next version
+        uses: ./.github/actions/build-desktop-packages
+        with:
+          tag: ${{ steps.next.outputs.tag }}
+          output: fixtures/next
+          install-dependencies: "false"
+        env:
+          OPENPLAYER_ENABLE_TEST_UPDATES: "1"
+
+      - name: Exercise the isolated upgrade
+        shell: bash
+        env:
+          NEXT_TAG: ${{ steps.next.outputs.tag }}
+        run: |
+          helper="target/release/examples/package-profile"
+          case "$RUNNER_OS" in
+            Linux)
+              prefix=(xvfb-run -a -s '-screen 0 1440x900x24' dbus-run-session --)
+              ;;
+            Windows)
+              helper="$helper.exe"
+              prefix=()
+              ;;
+            *) prefix=() ;;
+          esac
+          "${prefix[@]}" node apps/desktop/scripts/run-upgrade-smoke.mjs fixtures/base fixtures/next "$PACKAGE_TAG" "$NEXT_TAG" "$PACKAGE_COMMIT" evidence "$helper"
+
+      - name: Require the exact candidate package result
+        if: steps.candidate-smoke.outcome == 'failure'
+        shell: bash
+        run: |
+          echo '::error::Exact candidate package validation failed. See the installed package and upgrade evidence.'
+          exit 1
+
+      - name: Upload native validation evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: package-validation-${{ matrix.platform }}
+          path: evidence/
+          if-no-files-found: warn
