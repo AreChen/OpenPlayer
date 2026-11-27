@@ -99,7 +99,7 @@ fn validates_executable_integrity() {
     let path =
         std::env::temp_dir().join(format!("openplayer-native-hash-{}.tmp", std::process::id()));
     std::fs::write(&path, b"native fixture").unwrap();
-    let digest = format!("{:x}", Sha256::digest(b"native fixture"));
+    let digest = hex::encode(Sha256::digest(b"native fixture"));
     assert!(verify_executable(&path, &digest).is_ok());
     assert!(verify_executable(&path, &digest.to_uppercase()).is_ok());
     assert!(verify_executable(&path, &"0".repeat(64)).is_err());

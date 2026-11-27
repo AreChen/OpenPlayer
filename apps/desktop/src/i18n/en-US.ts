@@ -222,7 +222,7 @@ export const enUS = {
       about: {
         title: "About",
         subtitle: "Version, license, and updates",
-        description: "A high-performance cross-platform media player powered by Tauri, Rust, React, and libmpv.",
+        description: "An open-source desktop media player with libmpv playback and plugin extensions.",
         version: "Version",
         latestVersion: "Latest Version",
         license: "License",

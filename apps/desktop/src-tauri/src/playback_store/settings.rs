@@ -1,9 +1,9 @@
-use redb::ReadableDatabase;
+use redb::{ReadableDatabase, ReadableTable};
 
 use super::{helpers::*, *};
 
 impl PlaybackStore {
-    pub(super) fn settings(&self) -> Result<PlaybackSettings, String> {
+    pub(crate) fn settings(&self) -> Result<PlaybackSettings, String> {
         let transaction = self
             .database
             .begin_read()
@@ -21,7 +21,7 @@ impl PlaybackStore {
         decode_settings(stored.value())
     }
 
-    pub(super) fn update_settings(
+    pub(crate) fn update_settings(
         &mut self,
         update: PlaybackSettingsUpdate,
     ) -> Result<PlaybackSettings, String> {
@@ -48,7 +48,7 @@ impl PlaybackStore {
         Ok(settings)
     }
 
-    pub(super) fn media_settings(&self, path: &str) -> Result<MediaPlaybackSettings, String> {
+    pub(crate) fn media_settings(&self, path: &str) -> Result<MediaPlaybackSettings, String> {
         let normalized_path = path.trim();
         let key = store_key_for_path(normalized_path);
         let transaction = self
@@ -73,7 +73,7 @@ impl PlaybackStore {
         Ok(settings)
     }
 
-    pub(super) fn update_media_settings(
+    pub(crate) fn update_media_settings(
         &mut self,
         path: &str,
         update: MediaPlaybackSettingsUpdate,

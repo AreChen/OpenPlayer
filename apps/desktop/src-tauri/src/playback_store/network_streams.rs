@@ -3,7 +3,7 @@ use redb::{ReadableDatabase, ReadableTable};
 use super::{helpers::*, *};
 
 impl PlaybackStore {
-    pub(super) fn network_stream_history(&self) -> Result<Vec<NetworkStreamHistoryEntry>, String> {
+    pub(crate) fn network_stream_history(&self) -> Result<Vec<NetworkStreamHistoryEntry>, String> {
         let transaction = self
             .database
             .begin_read()
@@ -34,7 +34,7 @@ impl PlaybackStore {
         Ok(entries)
     }
 
-    pub(super) fn remember_network_stream(
+    pub(crate) fn remember_network_stream(
         &mut self,
         update: NetworkStreamHistoryUpdate,
     ) -> Result<Vec<NetworkStreamHistoryEntry>, String> {
@@ -87,7 +87,7 @@ impl PlaybackStore {
         self.network_stream_history()
     }
 
-    pub(super) fn clear_network_stream_history(
+    pub(crate) fn clear_network_stream_history(
         &mut self,
     ) -> Result<Vec<NetworkStreamHistoryEntry>, String> {
         let transaction = self

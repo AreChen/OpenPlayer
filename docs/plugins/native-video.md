@@ -1,5 +1,7 @@
 # Native video adapters
 
+This page records 1.x development work and test results for native video plugins. The Windows GPUI player composes libmpv video directly. [Runtime architecture](../architecture/README.md)
+
 **Native video requires OpenPlayer 1.6.4 or later; unavailable in 1.6.3.**
 The current development checkout additionally implements the experimental Windows
 x64 `present-rgba-v1` adapter. Its presence here is not a claim of availability

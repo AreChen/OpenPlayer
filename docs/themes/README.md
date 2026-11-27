@@ -1,8 +1,6 @@
 # OpenPlayer Themes
 
-OpenPlayer uses a built-in `Studio Dark` theme plus a user-selected accent
-override. Additional themes can be imported through manifest-only theme plugins
-and are persisted in the backend redb appearance store.
+The Windows GPUI player provides Studio Dark, a user-selected accent and separate title-bar and transport opacity controls. The Tauri player also supports manifest-only theme plugins. The following format applies to those plugins. [Runtime architecture](../architecture/README.md)
 
 ## Theme Manifest
 

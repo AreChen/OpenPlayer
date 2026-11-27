@@ -156,7 +156,7 @@ fn native_frame_owner_follows_real_plugin_lifecycle() {
         "contributes": {
             "capabilities":[{"id":"native", "name":"Native", "kind":"nativeTool", "permissions":["native.process"]}],
             "nativeModules":[{"id":"enhance", "protocol":"openplayer-native-v1", "methods":["frames.open","frames.status","frames.close"],
-                "targets":{"windows-x86_64":{"entry":"worker.exe","sha256":format!("{:x}",Sha256::digest(b"native lifecycle package fixture"))}}}]
+                "targets":{"windows-x86_64":{"entry":"worker.exe","sha256":hex::encode(Sha256::digest(b"native lifecycle package fixture"))}}}]
         }
     });
     std::fs::write(source.join("manifest.json"), manifest.to_string()).unwrap();
@@ -218,7 +218,7 @@ fn native_packages_validate_before_replacing_existing_install() {
         "contributes": {
             "capabilities":[{"id":"native", "name":"Native", "kind":"nativeTool", "permissions":["native.process"]}],
             "nativeModules":[{"id":"enhance", "protocol":"openplayer-native-v1", "methods":["echo"],
-                "targets":{"windows-x86_64":{"entry":"worker.exe","sha256":format!("{:x}",Sha256::digest(b"native fixture"))}}}]
+                "targets":{"windows-x86_64":{"entry":"worker.exe","sha256":hex::encode(Sha256::digest(b"native fixture"))}}}]
         }
     });
     std::fs::write(source.join("manifest.json"), manifest.to_string()).unwrap();

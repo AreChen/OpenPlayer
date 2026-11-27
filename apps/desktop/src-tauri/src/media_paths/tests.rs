@@ -8,6 +8,24 @@ use super::{
     startup::StartupMediaState,
 };
 
+#[cfg(feature = "mpv-embed")]
+#[test]
+fn detects_hls_from_the_http_path_only() {
+    use super::is_hls_manifest_media_url;
+
+    assert!(is_hls_manifest_media_url(
+        "HTTPS://example.com/live.M3U8?token=a#part"
+    ));
+    for source in [
+        "https://media.m3u8",
+        "https://example.com/video.mp4?manifest=live.m3u8",
+        "rtsp://example.com/live.m3u8",
+        "local.m3u8",
+    ] {
+        assert!(!is_hls_manifest_media_url(source), "{source}");
+    }
+}
+
 fn create_temp_directory(name: &str) -> PathBuf {
     let directory = std::env::temp_dir().join(format!(
         "openplayer-{name}-{}-{}",

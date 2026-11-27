@@ -1,13 +1,18 @@
-use std::{fs, path::PathBuf, sync::Mutex};
+use std::{fs, path::PathBuf};
 
+#[cfg(not(windows))]
+use super::PlaybackStoreState;
+#[cfg(not(windows))]
+use std::sync::Mutex;
+#[cfg(not(windows))]
 use tauri::{AppHandle, Manager};
 
 use super::{
     HISTORY_BY_PATH, HISTORY_BY_UPDATED, MEDIA_SETTINGS_BY_PATH, NETWORK_STREAMS_BY_UPDATED,
-    NETWORK_STREAMS_BY_URL, PLAYBACK_SETTINGS, PlaybackStore, PlaybackStoreState,
-    helpers::create_database_with_retry,
+    NETWORK_STREAMS_BY_URL, PLAYBACK_SETTINGS, PlaybackStore, helpers::create_database_with_retry,
 };
 
+#[cfg(not(windows))]
 impl PlaybackStoreState {
     pub fn open(app: &AppHandle) -> Self {
         let path = match Self::store_path(app) {
@@ -47,7 +52,7 @@ impl PlaybackStoreState {
 }
 
 impl PlaybackStore {
-    pub(super) fn open(path: PathBuf) -> Result<Self, String> {
+    pub(crate) fn open(path: PathBuf) -> Result<Self, String> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
                 .map_err(|error| format!("failed to create playback history directory: {error}"))?;

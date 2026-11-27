@@ -1,4 +1,4 @@
-import { OPENPLAYER_RELEASES_URL, openPlayerLogoUrl } from "../../app/constants";
+import { OPENPLAYER_RELEASES_URL, OPENPLAYER_REPOSITORY_URL } from "../../app/constants";
 import { updateStatusText } from "../../app/updates";
 import type { AppVersionInfo, UpdateState } from "../../app/types";
 import type { AppStrings } from "../../i18n";
@@ -17,10 +17,10 @@ export function AboutSettingsPanel({ t, appVersion, updateState, onCheckForUpdat
     name: t.common.appName,
     version: t.common.loading,
     license: t.common.loading,
-    repository: OPENPLAYER_RELEASES_URL.replace(/\/releases\/latest$/, ""),
+    repository: OPENPLAYER_REPOSITORY_URL,
     releasesUrl: OPENPLAYER_RELEASES_URL,
   };
-  const latestVersion = updateState.latest?.version ?? t.common.none;
+  const latestVersion = updateState.latest?.version ?? (updateState.status === "current" ? versionInfo.version : t.common.none);
   const downloadLabel = updateState.status === "available" && updateState.asset ? t.settings.about.downloadUpdate : t.settings.about.openReleasePage;
 
   return (
@@ -34,7 +34,7 @@ export function AboutSettingsPanel({ t, appVersion, updateState, onCheckForUpdat
 
       <div className="about-panel">
         <section className="about-hero">
-          <img src={openPlayerLogoUrl} alt="" draggable={false} />
+          <div className="openplayer-logo about-logo" aria-hidden="true" />
           <div>
             <strong>{versionInfo.name}</strong>
             <p>{t.settings.about.description}</p>

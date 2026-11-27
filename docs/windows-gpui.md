@@ -1,0 +1,29 @@
+# OpenPlayer on Windows
+
+The Windows executable and NSIS installer use one native GPUI Fast window. libmpv renders video through D3D11 and DirectComposition without a WebView dependency. GPUI Motion respects the Windows animations setting. The current video composition path targets 8-bit SDR.
+
+## Run and package
+
+Use rustup with the x64 MSVC host and PowerShell. Cargo selects Rust 1.100.0 from the project toolchain file. From the repository root:
+
+~~~powershell
+./apps/desktop/scripts/restore-windows-mpv.ps1
+$env:PATH = "$(Resolve-Path vendor/native/mpv/windows-x64);$env:PATH"
+cargo run --locked -p openplayer-desktop --bin openplayer-desktop -- "C:\Media\sample.mp4"
+~~~
+
+Use `--adapter INDEX` to select a DXGI adapter. Set `OPENPLAYER_WINDOWS_SMOKE_PROFILE` to a name such as `regression` for isolated playback and preference data. See [native runtime metadata](native-deps/README.md) for the pinned binary and checksums.
+
+Install NSIS and run the package script from the repository root:
+
+~~~powershell
+./apps/desktop/scripts/build-windows.ps1
+~~~
+
+The installer is created in `target/release/bundle/nsis/`. The finish page offers two independent options. **Launch OpenPlayer now** is selected by default. **Set as the default player** opens Windows Default Apps for the user to confirm the desired associations. During upgrade and removal, the installer closes the process that is using the files in the selected installation directory.
+
+## Updates
+
+From **Settings → About → Check for Updates**, OpenPlayer 2.x checks the GitHub release list. It offers a newer stable Windows installer for the installed major version when the asset is available.
+
+Published 1.x builds use GitHub's repository-wide `/releases/latest` endpoint, so keep a stable 1.x release marked **Latest**. The release workflow publishes 2.x with `--latest=false` and checks the 1.x endpoint before uploading the new installer. This setting applies to the GitHub release. `main` is the 2.x development branch. [Release workflow](../.github/workflows/release.yml)

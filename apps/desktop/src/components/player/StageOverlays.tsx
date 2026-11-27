@@ -1,6 +1,6 @@
 import { Icon } from "../../app/Icon";
 import { usePlaybackPosition } from "./PlaybackClockContext";
-import { audioVisualizerBarLevels, openPlayerLogoUrl } from "../../app/constants";
+import { audioVisualizerBarLevels } from "../../app/constants";
 import { formatTimecode, platformUnsupportedPlaybackMessage } from "../../app/playback";
 import type {
   AlwaysOnTopFeedback,
@@ -54,7 +54,7 @@ export function StageOverlays({
     <>
       {!media && (
         <div className="empty-open">
-          <img className="empty-open-logo" src={openPlayerLogoUrl} alt="" draggable={false} />
+          <div className="openplayer-logo empty-open-logo" aria-hidden="true" />
           <span>{t.contextMenu.openMedia}</span>
           {platformSupport && !platformSupport.mpvEmbedVideo && <small className="platform-support-note">{platformUnsupportedPlaybackMessage(platformSupport, t)}</small>}
         </div>

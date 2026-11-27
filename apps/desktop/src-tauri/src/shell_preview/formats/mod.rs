@@ -29,7 +29,7 @@ pub(super) struct ShellPreviewFormat {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShellPreviewRegistrationSummary {
-    registered_count: usize,
+    pub(crate) registered_count: usize,
     video_count: usize,
     audio_count: usize,
     extensions: Vec<String>,
@@ -38,10 +38,10 @@ pub struct ShellPreviewRegistrationSummary {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShellPreviewFormatInfo {
-    extension: &'static str,
+    pub(crate) extension: &'static str,
     mime: &'static str,
-    kind: &'static str,
-    common: bool,
+    pub(crate) kind: &'static str,
+    pub(crate) common: bool,
 }
 
 impl ShellPreviewFormat {

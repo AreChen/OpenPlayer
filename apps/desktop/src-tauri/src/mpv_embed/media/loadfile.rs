@@ -1,3 +1,5 @@
+use crate::media_paths::is_hls_manifest_media_url;
+
 use super::command::mpv_command_async;
 use super::*;
 
@@ -138,21 +140,6 @@ fn is_valid_mpv_load_option_value(value: &str) -> bool {
         && !value.contains(',')
         && !value.contains('=')
         && !value.chars().any(char::is_control)
-}
-
-pub(in crate::mpv_embed) fn is_hls_manifest_media_url(path_text: &str) -> bool {
-    let Some((scheme, rest)) = path_text.trim().split_once("://") else {
-        return false;
-    };
-    if !matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https") {
-        return false;
-    }
-    let path_without_fragment = rest.split_once('#').map(|(path, _)| path).unwrap_or(rest);
-    let path_without_query = path_without_fragment
-        .split_once('?')
-        .map(|(path, _)| path)
-        .unwrap_or(path_without_fragment);
-    path_without_query.to_ascii_lowercase().ends_with(".m3u8")
 }
 
 pub(in crate::mpv_embed) fn is_network_stream_media_url(path_text: &str) -> bool {

@@ -20,13 +20,9 @@
   padding: 14px;
 }
 
-.about-hero img {
+.about-logo {
   width: 64px;
   height: 64px;
-  border-radius: 18px;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34);
-  user-select: none;
-  -webkit-user-drag: none;
 }
 
 .about-hero strong {

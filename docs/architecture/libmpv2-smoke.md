@@ -3,9 +3,7 @@
 The optional `mpv-smoke` feature verifies that the desktop Rust crate can
 compile, link, and initialize libmpv in a headless mode.
 
-The default application path is still `mpv-embed`, not this smoke feature. The
-smoke test does not open media, create an embedded video child window, or test
-the React overlay.
+For video rendering, window lifecycle and user input, use the platform [regression checks](regression-checks.md).
 
 ## Local Requirements
 

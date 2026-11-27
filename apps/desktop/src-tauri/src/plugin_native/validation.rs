@@ -116,7 +116,7 @@ pub(crate) fn verify_executable(path: &Path, expected: &str) -> Result<(), Strin
         }
         hash.update(&buffer[..count]);
     }
-    if format!("{:x}", hash.finalize()) != expected.to_ascii_lowercase() {
+    if !hex::encode(hash.finalize()).eq_ignore_ascii_case(expected) {
         return Err("native executable integrity check failed; reinstall a trusted package".into());
     }
     Ok(())

@@ -1,0 +1,7 @@
+.openplayer-logo {
+  --openplayer-logo-image: url("../../assets/openplayer-logo-transparent.svg");
+  background: var(--accent) var(--openplayer-logo-image) center / contain no-repeat;
+  background-blend-mode: luminosity;
+  -webkit-mask: var(--openplayer-logo-image) center / contain no-repeat;
+  mask: var(--openplayer-logo-image) center / contain no-repeat;
+}

@@ -44,6 +44,7 @@ const packageLock = await readJson("apps/desktop/package-lock.json");
 const tauriConfig = await readJson("apps/desktop/src-tauri/tauri.conf.json");
 const pluginRuntimeConstants = await readText("apps/desktop/src/app/pluginRuntime/constants.ts");
 const releaseWorkflow = await readText(".github/workflows/release.yml");
+const semverPattern = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 
 const versions = new Map([
   ["Cargo workspace", matchVersion(workspaceToml, /\[workspace\.package\][\s\S]*?^version = "([^"]+)"$/m, "Cargo workspace")],
@@ -52,7 +53,6 @@ const versions = new Map([
   ["package-lock.json", packageLock.version],
   ["package-lock root package", packageLock.packages?.[""]?.version],
   ["tauri.conf.json", tauriConfig.version],
-  ["plugin runtime SDK", matchVersion(pluginRuntimeConstants, /PLUGIN_SDK_VERSION = "([^"]+)"/, "plugin runtime SDK")],
   ["plugin runtime host", matchVersion(pluginRuntimeConstants, /OPENPLAYER_HOST_VERSION = "([^"]+)"/, "plugin runtime host")],
 ]);
 
@@ -63,8 +63,13 @@ if (uniqueVersions.size !== 1) {
 }
 
 const [version] = uniqueVersions;
-if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
+if (!semverPattern.test(version)) {
   fail(`version is not valid semver: ${version}`);
+}
+
+const sdkVersion = matchVersion(pluginRuntimeConstants, /PLUGIN_SDK_VERSION = "([^"]+)"/, "plugin runtime SDK");
+if (!semverPattern.test(sdkVersion)) {
+  fail(`plugin runtime SDK version is not valid semver: ${sdkVersion}`);
 }
 
 const expectedTag = `v${version}`;

@@ -169,13 +169,60 @@ fn main() {
     compile_macos_mpv_render_view();
 
     #[cfg(windows)]
-    {
-        let icon_path = std::path::PathBuf::from("icons").join("icon.ico");
-        let windows = tauri_build::WindowsAttributes::new().window_icon_path(icon_path);
-        let attributes = tauri_build::Attributes::new().windows_attributes(windows);
-        tauri_build::try_build(attributes).expect("failed to run Tauri build script");
-    }
+    embed_windows_resources();
 
     #[cfg(not(windows))]
     tauri_build::build();
+}
+
+#[cfg(windows)]
+fn embed_windows_resources() {
+    use std::{env, fs, path::PathBuf};
+
+    let project = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let output = PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("openplayer.rc");
+    let icon = project.join("icons/icon.ico");
+    let manifest = project.join("windows-player.manifest");
+    let version = env!("CARGO_PKG_VERSION");
+    let numbers = format!(
+        "{},{},{},0",
+        env!("CARGO_PKG_VERSION_MAJOR"),
+        env!("CARGO_PKG_VERSION_MINOR"),
+        env!("CARGO_PKG_VERSION_PATCH")
+    );
+    println!("cargo:rerun-if-changed={}", icon.display());
+    println!("cargo:rerun-if-changed={}", manifest.display());
+    let icon = icon.to_string_lossy().replace('\\', "/");
+    let manifest = manifest.to_string_lossy().replace('\\', "/");
+    let resource = format!(
+        r#"
+1 ICON "{icon}"
+1 24 "{manifest}"
+1 VERSIONINFO
+ FILEVERSION {numbers}
+ PRODUCTVERSION {numbers}
+ FILEOS 0x40004
+ FILETYPE 1
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "FileDescription", "OpenPlayer\0"
+            VALUE "ProductName", "OpenPlayer\0"
+            VALUE "FileVersion", "{version}\0"
+            VALUE "ProductVersion", "{version}\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END
+"#
+    );
+    fs::write(&output, resource).expect("failed to write OpenPlayer Windows resources");
+    embed_resource::compile_for(output, ["openplayer-desktop"], embed_resource::NONE)
+        .manifest_required()
+        .expect("failed to embed OpenPlayer Windows resources");
 }

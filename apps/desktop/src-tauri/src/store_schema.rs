@@ -30,7 +30,7 @@ pub(crate) fn ensure_string_tables(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use redb::backends::InMemoryBackend;
+    use redb::{ReadableTable, backends::InMemoryBackend};
 
     #[test]
     fn initializes_only_missing_tables_and_preserves_existing_values() {

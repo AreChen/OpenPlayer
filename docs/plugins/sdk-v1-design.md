@@ -1,5 +1,7 @@
 # OpenPlayer Plugin SDK v1 Design
 
+This document records the original design. Use the [SDK 1.6 developer guide](sdk-1.6-developer-guide.md) for the implemented Tauri host contract.
+
 ## Goal
 
 Plugin SDK v1 turns OpenPlayer plugins into first-class extensions instead of

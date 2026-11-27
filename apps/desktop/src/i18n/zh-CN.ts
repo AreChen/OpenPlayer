@@ -222,7 +222,7 @@ export const zhCN = {
       about: {
         title: "关于",
         subtitle: "版本、协议与更新",
-        description: "一款基于 Tauri、Rust、React 和 libmpv 的高性能跨平台播放器。",
+        description: "支持插件扩展、使用 libmpv 播放的开源桌面播放器。",
         version: "版本",
         latestVersion: "最新版本",
         license: "协议",

@@ -1,5 +1,7 @@
 # Native modules
 
+This page records the 1.x native module contract and associated development milestones. The Windows GPUI player focuses on core playback. [Runtime architecture](../architecture/README.md)
+
 OpenPlayer 1.6.4 can run plugin-packaged native executables through a bounded
 control protocol. OpenPlayer 1.6.3 binaries do not include this extension.
 

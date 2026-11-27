@@ -1,0 +1,236 @@
+use std::collections::HashSet;
+
+use gpui::{Context, Div, ElementId, SharedString, Stateful, div, prelude::*};
+
+use crate::shell_preview::{
+    ShellPreviewFormatInfo, shell_preview_formats, shell_preview_open_default_apps_settings,
+    shell_preview_register_formats,
+};
+
+use super::card;
+use crate::windows_gpui::{
+    player_view::PlayerView,
+    widgets::{heading, item_id, text_button},
+};
+
+pub(in crate::windows_gpui) struct ExplorerPreview {
+    formats: Vec<ShellPreviewFormatInfo>,
+    selected: HashSet<&'static str>,
+    registering: bool,
+    status: Option<Status>,
+}
+
+enum Status {
+    Registered(usize),
+    RegisterFailed(String),
+    DefaultAppsFailed(String),
+}
+
+#[derive(Clone, Copy)]
+enum Action {
+    Toggle(&'static str),
+    ToggleAll,
+    RestoreDefaults,
+    Register,
+    DefaultApps,
+}
+
+impl ExplorerPreview {
+    pub(in crate::windows_gpui) fn new() -> Self {
+        let formats = shell_preview_formats();
+        Self {
+            selected: common_formats(&formats),
+            formats,
+            registering: false,
+            status: None,
+        }
+    }
+
+    fn all_selected(&self) -> bool {
+        self.selected.len() == self.formats.len()
+    }
+}
+
+fn common_formats(formats: &[ShellPreviewFormatInfo]) -> HashSet<&'static str> {
+    formats
+        .iter()
+        .filter(|format| format.common)
+        .map(|format| format.extension)
+        .collect()
+}
+
+impl PlayerView {
+    pub(super) fn explorer_settings(&self, cx: &Context<Self>) -> Div {
+        let preview = &self.explorer_preview;
+        let palette = self.palette;
+        let count = preview.selected.len();
+        let register_label = if preview.registering {
+            self.explorer_label("registering")
+        } else {
+            self.explorer_label("register")
+                .replace("{count}", &count.to_string())
+                .into()
+        };
+        let status = preview.status.as_ref().map(|status| match status {
+            Status::Registered(count) => self
+                .explorer_label("registered")
+                .replace("{count}", &count.to_string()),
+            Status::RegisterFailed(error) => {
+                self.explorer_label("failed").replace("{error}", error)
+            }
+            Status::DefaultAppsFailed(error) => self
+                .explorer_label("openDefaultAppsFailed")
+                .replace("{error}", error),
+        });
+        card(palette)
+            .child(heading(self.explorer_label("title"), palette))
+            .child(
+                div()
+                    .text_color(palette.muted)
+                    .child(self.explorer_label("description")),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .gap_2()
+                    .child(self.explorer_button(
+                        "explorer-toggle-all",
+                        self.explorer_label(if preview.all_selected() {
+                            "clearAll"
+                        } else {
+                            "selectAll"
+                        }),
+                        false,
+                        Action::ToggleAll,
+                        cx,
+                    ))
+                    .child(self.explorer_button(
+                        "explorer-defaults",
+                        self.explorer_label("defaults"),
+                        false,
+                        Action::RestoreDefaults,
+                        cx,
+                    ))
+                    .child(self.explorer_button(
+                        "explorer-default-apps",
+                        self.explorer_label("defaultApps"),
+                        false,
+                        Action::DefaultApps,
+                        cx,
+                    ))
+                    .child(self.explorer_button(
+                        "explorer-register",
+                        register_label,
+                        count != 0,
+                        Action::Register,
+                        cx,
+                    )),
+            )
+            .when_some(status, |el, status| {
+                el.child(div().text_color(palette.muted).child(status))
+            })
+            .children(["video", "audio"].map(|kind| {
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .child(heading(self.explorer_label(kind), palette))
+                    .child(
+                        div().flex().flex_wrap().gap_1().children(
+                            preview
+                                .formats
+                                .iter()
+                                .filter(|format| format.kind == kind)
+                                .map(|format| {
+                                    self.explorer_button(
+                                        item_id("explorer-format", format.extension),
+                                        format!(".{}", format.extension).into(),
+                                        preview.selected.contains(format.extension),
+                                        Action::Toggle(format.extension),
+                                        cx,
+                                    )
+                                }),
+                        ),
+                    )
+            }))
+    }
+
+    fn explorer_label(&self, key: &str) -> SharedString {
+        self.ui.label(&format!("settings.shellPreview.{key}"))
+    }
+
+    fn explorer_button(
+        &self,
+        id: impl Into<ElementId>,
+        label: SharedString,
+        active: bool,
+        action: Action,
+        cx: &Context<Self>,
+    ) -> Stateful<Div> {
+        let button = text_button(id, label, self.palette, active);
+        if self.explorer_preview.registering
+            || matches!(action, Action::Register) && self.explorer_preview.selected.is_empty()
+        {
+            button.opacity(0.42)
+        } else {
+            button
+                .cursor_pointer()
+                .on_click(cx.listener(move |view, _, _, cx| view.explorer_action(action, cx)))
+        }
+    }
+
+    fn explorer_action(&mut self, action: Action, cx: &mut Context<Self>) {
+        let preview = &mut self.explorer_preview;
+        preview.status = None;
+        match action {
+            Action::Toggle(extension) => {
+                if !preview.selected.remove(extension) {
+                    preview.selected.insert(extension);
+                }
+            }
+            Action::ToggleAll => {
+                if preview.all_selected() {
+                    preview.selected.clear();
+                } else {
+                    preview.selected = preview
+                        .formats
+                        .iter()
+                        .map(|format| format.extension)
+                        .collect();
+                }
+            }
+            Action::RestoreDefaults => preview.selected = common_formats(&preview.formats),
+            Action::DefaultApps => {
+                if let Err(error) = shell_preview_open_default_apps_settings() {
+                    preview.status = Some(Status::DefaultAppsFailed(error));
+                }
+            }
+            Action::Register => {
+                preview.registering = true;
+                let selected = preview
+                    .selected
+                    .iter()
+                    .map(|value| (*value).into())
+                    .collect();
+                let registration = cx
+                    .background_executor()
+                    .spawn(async move { shell_preview_register_formats(selected) });
+                cx.spawn(async move |view, cx| {
+                    let result = registration.await;
+                    let _ = view.update(cx, |view, cx| {
+                        let preview = &mut view.explorer_preview;
+                        preview.registering = false;
+                        preview.status = Some(match result {
+                            Ok(summary) => Status::Registered(summary.registered_count),
+                            Err(error) => Status::RegisterFailed(error),
+                        });
+                        cx.notify();
+                    });
+                })
+                .detach();
+            }
+        }
+        cx.notify();
+    }
+}

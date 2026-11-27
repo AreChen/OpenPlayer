@@ -31,9 +31,7 @@ pub(in crate::media_paths) fn collect_media_files_in_directory(
         .collect())
 }
 
-pub(in crate::media_paths) fn collect_media_files_from_paths(
-    paths: &[String],
-) -> Result<Vec<String>, String> {
+pub(crate) fn collect_media_files_from_paths(paths: &[String]) -> Result<Vec<String>, String> {
     let mut media_paths = Vec::new();
     for raw_path in paths {
         let trimmed = raw_path.trim();

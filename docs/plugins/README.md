@@ -1,5 +1,7 @@
 # OpenPlayer Plugins
 
+This document covers SDK 1.6 and the Tauri plugin host. See the current runtime overview for the Windows GPUI player. [Runtime architecture](../architecture/README.md)
+
 OpenPlayer plugins are currently **package-based extensions**. A user-facing
 plugin ships as a `.opplugin` file, which is a zip archive with a root
 `manifest.json`. The manifest can contribute themes, capability metadata,

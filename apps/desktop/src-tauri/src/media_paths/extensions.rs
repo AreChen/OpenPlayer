@@ -10,7 +10,7 @@ const SUPPORTED_MEDIA_EXTENSIONS: &[&str] = &[
     "tta", "vob", "voc", "wav", "weba", "webm", "wm", "wma", "wmv", "wv", "y4m",
 ];
 
-pub(in crate::media_paths) fn is_supported_media_path(path: &Path) -> bool {
+pub(crate) fn is_supported_media_path(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
         .map(|extension| {

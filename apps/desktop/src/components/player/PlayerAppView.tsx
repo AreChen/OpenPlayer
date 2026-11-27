@@ -84,7 +84,11 @@ export function PlayerAppView({
   settingsDialogProps,
 }: PlayerAppViewProps) {
   return (
-    <main className="app-shell" style={appearanceStyle} {...shellHandlers}>
+    <main
+      className="app-shell"
+      style={appearanceStyle}
+      {...shellHandlers}
+    >
       <section
         className={`window-shell ${mediaLoaded ? "window-shell--loaded" : ""}`}
         aria-label="OpenPlayer"

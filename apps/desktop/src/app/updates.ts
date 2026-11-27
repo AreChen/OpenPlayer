@@ -3,12 +3,14 @@ import { OPENPLAYER_RELEASES_URL } from "./constants";
 import type { LatestRelease, PlatformSupport, ReleaseAsset, UpdateState } from "./types";
 
 function normalizeReleaseVersion(value: string) {
-  return value.trim().replace(/^v/i, "");
+  const version = value.replace(/^v/, "");
+  return /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)
+    && version.split(".").every((part) => Number(part) <= 0xffffffff) ? version : null;
 }
 
 export function compareVersionParts(current: string, latest: string) {
-  const left = normalizeReleaseVersion(current).split(".").map((part) => Number.parseInt(part, 10));
-  const right = normalizeReleaseVersion(latest).split(".").map((part) => Number.parseInt(part, 10));
+  const left = current.split(".").map(Number);
+  const right = latest.split(".").map(Number);
   const length = Math.max(left.length, right.length);
   for (let index = 0; index < length; index += 1) {
     const leftValue = left[index];
@@ -22,43 +24,47 @@ export function compareVersionParts(current: string, latest: string) {
   return 0;
 }
 
-function normalizeReleaseAsset(asset: unknown): ReleaseAsset | null {
+function normalizeReleaseAsset(asset: unknown, tagName: string): ReleaseAsset | null {
   if (!asset || typeof asset !== "object") {
     return null;
   }
 
   const record = asset as Record<string, unknown>;
-  if (typeof record.name !== "string" || typeof record.browser_download_url !== "string") {
+  if (record.state !== "uploaded" || typeof record.name !== "string" || !/^[\w.-]+$/.test(record.name)) {
     return null;
   }
 
   return {
     name: record.name,
-    browserDownloadUrl: record.browser_download_url,
+    browserDownloadUrl: `${OPENPLAYER_RELEASES_URL}/download/${tagName}/${record.name}`,
   };
 }
 
-export function normalizeLatestRelease(payload: unknown): LatestRelease | null {
+function normalizeLatestRelease(payload: unknown): LatestRelease | null {
   if (!payload || typeof payload !== "object") {
     return null;
   }
 
   const record = payload as Record<string, unknown>;
   const tagName = typeof record.tag_name === "string" ? record.tag_name : "";
-  const htmlUrl = typeof record.html_url === "string" ? record.html_url : OPENPLAYER_RELEASES_URL;
-  const assets = Array.isArray(record.assets) ? record.assets.map(normalizeReleaseAsset).filter((asset): asset is ReleaseAsset => asset !== null) : [];
   const version = normalizeReleaseVersion(tagName);
-  if (!version) {
+  if (!version || record.draft !== false || record.prerelease !== false) {
     return null;
   }
+
+  const htmlUrl = `${OPENPLAYER_RELEASES_URL}/tag/${tagName}`;
+  const assets = Array.isArray(record.assets)
+    ? record.assets.map((asset) => normalizeReleaseAsset(asset, tagName)).filter((asset): asset is ReleaseAsset => asset !== null)
+    : [];
 
   return { version, tagName, htmlUrl, assets };
 }
 
 function releaseAssetCandidates(latest: LatestRelease, support: PlatformSupport | null) {
   const version = latest.version;
-  const os = support?.os.toLowerCase() ?? "";
   const userAgent = navigator.userAgent.toLowerCase();
+  const os = support?.os.toLowerCase()
+    ?? (userAgent.includes("windows") ? "windows" : userAgent.includes("macintosh") ? "macos" : userAgent.includes("linux") ? "linux" : "");
   if (os === "windows") {
     return [`OpenPlayer_${latest.version}_x64-setup.exe`];
   }
@@ -69,10 +75,10 @@ function releaseAssetCandidates(latest: LatestRelease, support: PlatformSupport 
   if (os === "linux") {
     return [`OpenPlayer_${version}_amd64.AppImage`, `OpenPlayer_${version}_amd64.deb`];
   }
-  return [`OpenPlayer_${version}_x64-setup.exe`, `OpenPlayer_${version}_amd64.AppImage`, `OpenPlayer_${version}_x64.dmg`, `OpenPlayer_${version}_arm64.dmg`];
+  return [];
 }
 
-export function releaseAssetForCurrentPlatform(latest: LatestRelease, support: PlatformSupport | null) {
+function releaseAssetForCurrentPlatform(latest: LatestRelease, support: PlatformSupport | null) {
   const candidates = releaseAssetCandidates(latest, support);
   for (const candidate of candidates) {
     const asset = latest.assets.find((item) => item.name === candidate);
@@ -80,7 +86,24 @@ export function releaseAssetForCurrentPlatform(latest: LatestRelease, support: P
       return asset;
     }
   }
-  return latest.assets.find((asset) => asset.name.includes(`OpenPlayer_${latest.version}_`) && !asset.name.endsWith(".sha256")) ?? null;
+  return null;
+}
+
+export function latestInstallableRelease(releases: unknown[], installedVersion: string, support: PlatformSupport | null) {
+  const installed = normalizeReleaseVersion(installedVersion);
+  if (!installed) throw new Error("invalid installed version");
+
+  const [major] = installed.split(".");
+  let update: { latest: LatestRelease; asset: ReleaseAsset } | null = null;
+  for (const payload of releases) {
+    const latest = normalizeLatestRelease(payload);
+    if (!latest || !latest.version.startsWith(`${major}.`) || compareVersionParts(update?.latest.version ?? installed, latest.version) >= 0) {
+      continue;
+    }
+    const asset = releaseAssetForCurrentPlatform(latest, support);
+    if (asset) update = { latest, asset };
+  }
+  return update;
 }
 
 export function updateStatusText(state: UpdateState, t: AppStrings) {

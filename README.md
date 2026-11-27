@@ -1,155 +1,46 @@
-<div align="center">
+# OpenPlayer
 
-<img src="docs/assets/openplayer-social-preview.png" alt="OpenPlayer desktop media player" width="820" />
+[简体中文](README.zh-CN.md) · [GitHub Releases](https://github.com/AreChen/OpenPlayer/releases) · [2.0.0 release notes](docs/releases/v2.0.0.md)
 
-# 🎬 OpenPlayer
+<img src="apps/desktop/src-tauri/icons/icon.png" alt="OpenPlayer app icon" width="96" />
 
-**A beautiful, extensible, high-performance desktop media player powered by Tauri v2, Rust, React, and libmpv**
+OpenPlayer is a desktop media player built with Rust and libmpv. The `main` branch is the 2.x development line.
 
-<p>
-  <a href="README.md"><img alt="English" src="https://img.shields.io/badge/English-Default-111111?style=for-the-badge" /></a>
-  <a href="README.zh-CN.md"><img alt="Chinese" src="https://img.shields.io/badge/%E4%B8%AD%E6%96%87-Switch-F6C15B?style=for-the-badge" /></a>
-</p>
+| Platform | Runtime | Release package |
+| --- | --- | --- |
+| Windows x64 | Native GPUI Fast window, D3D11 video composition and GPUI Motion | NSIS installer with libmpv |
+| Linux | Tauri and React with a native libmpv video host | `.deb` and AppImage |
+| macOS | Tauri and React with a native libmpv video host | Unsigned DMG in opt-in release builds |
 
-[![Release](https://img.shields.io/github/v/release/AreChen/OpenPlayer?style=for-the-badge&logo=github&label=Release)](https://github.com/AreChen/OpenPlayer/releases)
-[![Windows](https://img.shields.io/badge/Windows-x64-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/AreChen/OpenPlayer/releases/latest)
-[![Linux](https://img.shields.io/badge/Linux-DEB%20%7C%20AppImage-FCC624?style=for-the-badge&logo=linux&logoColor=111111)](https://github.com/AreChen/OpenPlayer/releases/latest)
-[![macOS](https://img.shields.io/badge/macOS-DMG-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/AreChen/OpenPlayer/releases/latest)
-[![Tauri](https://img.shields.io/badge/Tauri-v2-24C8DB?style=for-the-badge&logo=tauri&logoColor=white)](https://tauri.app/)
-[![Rust](https://img.shields.io/badge/Rust-native-CE412B?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![License](https://img.shields.io/github/license/AreChen/OpenPlayer?style=for-the-badge)](LICENSE)
+## Windows player
 
-[Download](https://github.com/AreChen/OpenPlayer/releases/latest) · [Release Notes](docs/releases/v1.6.8.md) · [Plugin SDK](docs/plugins/sdk-1.6-developer-guide.md) · [License](LICENSE)
+- Play local media and network streams with speed, loop, frame stepping, subtitle and audio-track controls. Resume from playback history or use incognito mode.
+- Double-click the empty player to open media. The file browser remembers the last folder and provides an editable path, favorites, and video thumbnails with silent hover previews. Use `Ctrl+F` to search filenames in the current folder and its subfolders.
+- View container, video and audio details from the file browser or the playback menu. Copy the details from the properties panel.
+- Adjust the accent color and the opacity of the title bar and transport. The controls hide on pointer exit or after three seconds of inactivity.
+- Configure keyboard shortcuts and Windows Explorer media previews. Use the installer finish page to open OpenPlayer or go to Windows Default Apps to select it as your player.
 
-</div>
+Common shortcuts are `Ctrl+O` to open media, `Space` to play or pause, `←` / `→` to seek, `D` / `F` to step frames, and `Enter` to toggle fullscreen. Use the mouse wheel or `↑` / `↓` for volume.
 
----
+## Install and update
 
-## ✨ Overview
+Choose your version and platform in the release list and use the corresponding checksum file to verify the download. OpenPlayer 2.x can check for updates in **Settings → About**. Published 1.x installations follow their own update channel. [GitHub Releases](https://github.com/AreChen/OpenPlayer/releases)
 
-OpenPlayer is a lightweight, visually refined desktop media player built with **Tauri v2, Rust, React, and libmpv**. It keeps playback close to the native mpv surface while using a transparent React overlay for polished controls, menus, shortcuts, and settings.
+The Windows installer is unsigned, so SmartScreen may show a prompt. Linux requires the system libmpv runtime. [Native runtime and licenses](docs/native-deps/README.md)
 
-The default playback path is `mpv-embed`: the main Tauri window hosts the native libmpv video surface, while the overlay window hosts the interactive UI. This split gives OpenPlayer native-level playback behavior without giving up a modern, customizable desktop experience.
+## Development
 
-<img src="docs/assets/openplayer-feature-banner.png" alt="OpenPlayer playback controls" width="100%" />
+Use rustup to select Rust 1.100.0 from the project toolchain file and install the platform prerequisites in CI. Windows builds use Cargo, PowerShell and NSIS. [Windows development](docs/windows-gpui.md) · [CI prerequisites](.github/workflows/ci.yml)
 
-## 🚀 Highlights
+On Linux or macOS, use Node.js 26 as in CI. From `apps/desktop`:
 
-- ⚡ **Native mpv playback**: Embedded libmpv backend with broad media compatibility and high-performance decoding.
-- 🪟 **Video host + transparent overlay**: Native rendering and React controls are separated for stability, responsiveness, and UI flexibility.
-- 🌐 **Bilingual interface**: English and Simplified Chinese are supported, with automatic language matching based on the operating system.
-- 🎨 **Studio Dark theme**: Built-in dark visual system with configurable accent colors and synchronized appearance across windows.
-- ⌨️ **Reliable shortcuts**: Configurable shortcuts plus a native Windows shortcut bridge for cases where the video surface owns focus.
-- 🎞️ **Precise playback control**: Fullscreen restore, smooth progress, frame stepping, loop modes, playback speed, track selection, and subtitle controls.
-- 🧭 **Smart chrome hiding**: Controls and the title bar hide during playback inactivity and when the mouse leaves the window.
-- 🗂️ **Playback memory**: Recent media and resume progress are persisted with a lightweight redb store, with clear-history and private playback options.
-- 🧩 **Open plugin SDK**: User-installed plugins can declare permissions, persist runtime data, open custom views, listen for playback events, and call controlled mpv APIs.
-- 🧩 **Desktop integration**: Optional Windows media association and Explorer preview registration for selected formats.
-
-<img src="docs/assets/openplayer-feature-grid.png" alt="OpenPlayer playback, themes, shortcuts, and format settings" width="100%" />
-
-## 🧩 Plugins and SDK
-
-OpenPlayer 1.6.0 expands the plugin system into a documented SDK for modular media-player extensions. Plugins can combine typed manifests, capability checks, runtime events, scoped storage, validated network requests, translucent themed custom views with setting-backed side-panel opacity, native dialogs, segment export, and permission-gated mpv controls for playback, filters, OSD, and script messages.
-
-- SDK guide: [docs/plugins/sdk-1.6-developer-guide.md](docs/plugins/sdk-1.6-developer-guide.md)
-- Plugin host overview: [docs/plugins/README.md](docs/plugins/README.md)
-- Official plugin packages: [AreChen/openplayer-plugins](https://github.com/AreChen/openplayer-plugins)
-
-## 📦 Download
-
-The latest release is available from GitHub Releases:
-
-[![Download OpenPlayer](https://img.shields.io/badge/Download-Latest%20Release-F6C15B?style=for-the-badge&logo=github&logoColor=111111)](https://github.com/AreChen/OpenPlayer/releases/latest)
-
-Current release:
-
-- 🏷️ `v1.6.8`
-- 🪟 Windows: `OpenPlayer_1.6.8_x64-setup.exe`
-- 🐧 Linux: `OpenPlayer_1.6.8_amd64.deb` and `OpenPlayer_1.6.8_amd64.AppImage`
-- 🍎 macOS: deferred for this release pending separate validation.
-- 🔐 Checksums: release assets include `.sha256` files
-
-> Windows packages are not code-signed yet, so SmartScreen may show a warning on first install.
-> Linux packages are an initial distribution target and still rely on the host desktop media stack, including system libmpv.
-
-## ⌨️ Default Shortcuts
-
-| Action | Shortcut |
-| --- | --- |
-| Open media | `Ctrl + O` |
-| Play / Pause | `Space` |
-| Seek backward 5 seconds | `Left` |
-| Seek forward 5 seconds | `Right` |
-| Previous frame | `D` |
-| Next frame | `F` |
-| Fullscreen / Restore | `Enter` |
-| Volume | Mouse wheel / `Up` / `Down` |
-
-## 🛠️ Development
-
-Prerequisites:
-
-- Rust stable toolchain
-- Node.js 20+
-- npm 10+
-- Tauri v2 system dependencies for your platform
-- Windows builds use the local mpv runtime under `vendor/native/mpv/windows-x64`
-
-Install dependencies:
-
-```powershell
-Set-Location apps/desktop
-npm install
-```
-
-Run the desktop app:
-
-```powershell
-Set-Location apps/desktop
+~~~sh
+npm ci
 npm run tauri:dev
-```
+~~~
 
-Verify the project:
+[Runtime architecture](docs/architecture/README.md) · [Verification](docs/architecture/regression-checks.md)
 
-```powershell
-npm run verify:shell
-npm run build
-cargo test -p openplayer-desktop
-```
+The native Windows player focuses on core playback. The plugin documentation covers SDK 1.6 and the Tauri plugin host. [Plugin documentation](docs/plugins/README.md)
 
-Build the Windows installer:
-
-```powershell
-Set-Location apps/desktop
-npm run tauri:build -- --config src-tauri/tauri.windows.conf.json
-```
-
-The installer is emitted under:
-
-```text
-target/release/bundle/nsis/
-```
-
-## 🤝 Built With
-
-OpenPlayer stands on the work of excellent open source projects:
-
-- [Tauri](https://tauri.app/) - secure, lightweight desktop app shell.
-- [Rust](https://www.rust-lang.org/) - native backend, shell integration, and persistence.
-- [mpv / libmpv](https://mpv.io/) - high-quality media playback engine.
-- [React](https://react.dev/) - overlay controls and settings UI.
-- [Vite](https://vite.dev/) and [TypeScript](https://www.typescriptlang.org/) - frontend tooling.
-- [redb](https://github.com/cberner/redb) - embedded persistence for history, settings, and playback state.
-
-## ⚖️ Licensing Notes
-
-OpenPlayer's application source code is released under MIT. Release packages also include or link to upstream components under their own licenses.
-
-- Tauri, Rust ecosystem crates, React, Vite, TypeScript, and redb are MIT, Apache-2.0, or similarly permissive according to their package metadata.
-- Windows release automation uses the `mpv-dev-lgpl` libmpv artifact from `zhongfly/mpv-winbuild` to keep the bundled media runtime aligned with OpenPlayer's permissive application license.
-- Linux packages depend on the distribution's `libmpv2`; macOS packages bundle Homebrew libmpv dylibs. Their notices and source obligations remain governed by the upstream packages used for each platform.
-
-## 📄 License
-
-OpenPlayer is released under the [MIT License](LICENSE).
+OpenPlayer source code is available under the [MIT License](LICENSE). Bundled dependencies retain their upstream licenses.

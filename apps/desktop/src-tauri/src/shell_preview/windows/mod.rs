@@ -15,7 +15,6 @@ pub(super) use settings::open_default_apps_settings;
 
 #[cfg(not(windows))]
 pub(super) fn register_shell_previews(
-    _app: &tauri::AppHandle,
     _formats: &[ShellPreviewFormat],
 ) -> Result<ShellPreviewRegistrationSummary, String> {
     Err("Explorer preview registration is only available on Windows".to_string())

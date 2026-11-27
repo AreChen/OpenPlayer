@@ -14,12 +14,16 @@ const OPENPLAYER_REGISTERED_APP_NAME: &str = "OpenPlayer";
 const OPENPLAYER_CAPABILITIES_KEY: &str = "Software\\OpenPlayer\\Capabilities";
 
 pub(in crate::shell_preview) fn register_shell_previews(
-    app: &tauri::AppHandle,
     formats: &[ShellPreviewFormat],
 ) -> Result<ShellPreviewRegistrationSummary, String> {
-    let handler = openplayer_handler_registration(app)?;
+    let handler = openplayer_handler_registration()?;
     register_openplayer_handlers(formats, &handler)?;
-    register_system_video_thumbnail_defaults()?;
+    if formats
+        .iter()
+        .any(|format| format.kind.perceived_type() == "video")
+    {
+        register_system_video_thumbnail_defaults()?;
+    }
 
     for format in formats {
         register_format(format, &handler)?;
@@ -36,9 +40,7 @@ struct OpenPlayerHandlerRegistration {
     command: String,
 }
 
-fn openplayer_handler_registration(
-    _app: &tauri::AppHandle,
-) -> Result<OpenPlayerHandlerRegistration, String> {
+fn openplayer_handler_registration() -> Result<OpenPlayerHandlerRegistration, String> {
     let executable_path = std::env::current_exe()
         .map_err(|error| format!("failed to resolve OpenPlayer executable: {error}"))?;
     let executable_name = executable_path

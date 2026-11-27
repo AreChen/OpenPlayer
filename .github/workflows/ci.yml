@@ -6,16 +6,13 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   rust:
     name: Rust
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
 
       - name: Install Tauri Linux dependencies
         run: |
@@ -30,10 +27,8 @@ jobs:
             librsvg2-dev \
             patchelf
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      - name: Select the project Rust toolchain
+        run: rustc --version
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -52,12 +47,12 @@ jobs:
         working-directory: apps/desktop
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
 
       - name: Install Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7.1.0
         with:
-          node-version: 24
+          node-version: 26
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
 
@@ -66,6 +61,9 @@ jobs:
 
       - name: Verify shell architecture
         run: npm run verify:shell
+
+      - name: Verify native translations
+        run: node scripts/sync-native-locales.mjs --check
 
       - name: Run frontend behavior tests
         run: npm test
@@ -85,13 +83,15 @@ jobs:
       matrix:
         os: [windows-latest, macos-15]
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        if: runner.os == 'macOS'
         with:
-          node-version: 24
+          node-version: 26
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Select the project Rust toolchain
+        run: rustc --version
       - name: Install Windows mpv
         if: runner.os == 'Windows'
         shell: pwsh
@@ -104,6 +104,7 @@ jobs:
           brew install mpv pkg-config
           echo "PKG_CONFIG_PATH=$(brew --prefix mpv)/lib/pkgconfig" >> "$GITHUB_ENV"
       - name: Build frontend assets
+        if: runner.os == 'macOS'
         working-directory: apps/desktop
         run: |
           npm ci
@@ -111,6 +112,18 @@ jobs:
       - name: Run platform Rust tests
         run: cargo test -p openplayer-desktop --locked
       - name: Build native smoke executable
+        if: runner.os == 'macOS'
         run: cargo build -p openplayer-desktop --locked --features window-smoke --bin window-smoke
       - name: Exercise native windows and mpv teardown
+        if: runner.os == 'macOS'
         run: node apps/desktop/scripts/run-window-smoke.mjs
+      - name: Verify Windows runtime dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $deps = cargo tree -p openplayer-desktop --locked --target x86_64-pc-windows-msvc -e normal,build --prefix none
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($deps -match '^(tauri|tao|wry|webview2)[ -]') { throw 'Unexpected web runtime dependency' }
+          cargo build -p openplayer-desktop --locked --bin openplayer-desktop
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./target/debug/openplayer-desktop.exe --help

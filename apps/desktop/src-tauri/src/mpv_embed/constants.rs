@@ -21,7 +21,6 @@ pub(super) const MAX_PLAYBACK_SPEED: f64 = 4.0;
 pub(super) const MIN_SUBTITLE_DELAY: f64 = -10.0;
 pub(super) const MAX_SUBTITLE_DELAY: f64 = 10.0;
 pub(super) const MAX_TRACKS: i64 = 128;
-pub(super) const SUPPORTED_SUBTITLE_EXTENSIONS: &[&str] = &["ass", "srt", "ssa", "sub", "vtt"];
 pub(super) const AUDIO_VISUALIZER_EXTENSIONS: &[&str] = &[
     "aac", "ac3", "adts", "aif", "aifc", "aiff", "alac", "amr", "ape", "au", "awb", "caf", "dff",
     "dsf", "dts", "dtshd", "eac3", "flac", "gsm", "m4a", "m4b", "m4r", "mka", "mlp", "mp1", "mp2",

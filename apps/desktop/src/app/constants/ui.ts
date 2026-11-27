@@ -22,4 +22,3 @@ export const resizeRegions: Array<{ className: string; direction: ResizeDirectio
 ];
 
 export const surface = new URLSearchParams(window.location.search).get("surface");
-export const openPlayerLogoUrl = new URL("../../assets/openplayer-logo.png", import.meta.url).href;

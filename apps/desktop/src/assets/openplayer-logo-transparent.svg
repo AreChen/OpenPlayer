@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="1000" height="1000" viewBox="0 0 1000 1000" fill="none"
+     role="img" aria-labelledby="logo-title logo-description">
+  <title id="logo-title">OpenPlayer — transparent gold play mark</title>
+  <desc id="logo-description">Standalone gold folded play mark with a true alpha fade toward its transparent inner opening. No background is painted. The gold ribbon and central play triangle remain editable vector paths. No bitmap is embedded.</desc>
+
+  <defs>
+    <!-- Background: the canvas outside this rounded square stays transparent. -->
+    <radialGradient id="background-gold-light" gradientUnits="userSpaceOnUse"
+                    cx="870" cy="65" r="1160" gradientTransform="translate(870 65) scale(1 1.05) translate(-870 -65)">
+      <stop stop-color="#272520"/>
+      <stop offset=".30" stop-color="#201F1C"/>
+      <stop offset=".66" stop-color="#161615"/>
+      <stop offset="1" stop-color="#0C0D0D"/>
+    </radialGradient>
+    <linearGradient id="background-bottom-shade" x1="500" y1="0" x2="500" y2="1000" gradientUnits="userSpaceOnUse">
+      <stop offset=".32" stop-color="#000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000" stop-opacity=".14"/>
+    </linearGradient>
+
+    <!-- The inner gold surface fades to true alpha transparency. -->
+    <linearGradient id="back-gold" x1="250" y1="117" x2="250" y2="887" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EDC05C"/>
+      <stop offset=".11" stop-color="#E3B252"/>
+      <stop offset=".30" stop-color="#D7A54A"/>
+      <stop offset=".50" stop-color="#CD9B40"/>
+      <stop offset=".70" stop-color="#B58736"/>
+      <stop offset=".87" stop-color="#9E742E"/>
+      <stop offset="1" stop-color="#906827"/>
+    </linearGradient>
+    <linearGradient id="back-opacity" x1="234" y1="480" x2="470" y2="480" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF" stop-opacity="1"/>
+      <stop offset=".068" stop-color="#FFF" stop-opacity="1"/>
+      <stop offset=".174" stop-color="#FFF" stop-opacity=".895"/>
+      <stop offset=".280" stop-color="#FFF" stop-opacity=".675"/>
+      <stop offset=".386" stop-color="#FFF" stop-opacity=".450"/>
+      <stop offset=".492" stop-color="#FFF" stop-opacity=".270"/>
+      <stop offset=".598" stop-color="#FFF" stop-opacity=".160"/>
+      <stop offset=".704" stop-color="#FFF" stop-opacity=".035"/>
+      <stop offset=".831" stop-color="#FFF" stop-opacity="0"/>
+      <stop offset="1" stop-color="#FFF" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="back-upper-opacity" cx="315" cy="117" r="260" gradientUnits="userSpaceOnUse"
+                    gradientTransform="translate(315 117) scale(.9 1.12) translate(-315 -117)">
+      <stop stop-color="#FFF" stop-opacity=".82"/>
+      <stop offset=".30" stop-color="#FFF" stop-opacity=".50"/>
+      <stop offset=".55" stop-color="#FFF" stop-opacity=".25"/>
+      <stop offset=".75" stop-color="#FFF" stop-opacity=".10"/>
+      <stop offset="1" stop-color="#FFF" stop-opacity="0"/>
+    </radialGradient>
+    <mask id="back-transparency" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse"
+          x="0" y="0" width="1000" height="1000" style="mask-type:alpha">
+      <rect width="1000" height="1000" fill="url(#back-opacity)"/>
+      <rect width="1000" height="1000" fill="url(#back-upper-opacity)"/>
+    </mask>
+    <radialGradient id="back-upper-light" cx="315" cy="117" r="260" gradientUnits="userSpaceOnUse"
+                    gradientTransform="translate(315 117) scale(.9 1.12) translate(-315 -117)">
+      <stop stop-color="#F1C763" stop-opacity=".82"/>
+      <stop offset=".30" stop-color="#E6B34C" stop-opacity=".50"/>
+      <stop offset=".55" stop-color="#E1AF4B" stop-opacity=".25"/>
+      <stop offset=".75" stop-color="#E3B151" stop-opacity=".10"/>
+      <stop offset="1" stop-color="#E3B151" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="back-bottom-shade" x1="350" y1="460" x2="350" y2="790" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#111210" stop-opacity="0"/>
+      <stop offset="1" stop-color="#111210" stop-opacity=".10"/>
+    </linearGradient>
+
+    <!-- Lower return of the ribbon and its curved cast shadow. -->
+    <linearGradient id="lower-gold" x1="280" y1="850" x2="741" y2="539" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#916827"/>
+      <stop offset=".30" stop-color="#AA7C30"/>
+      <stop offset=".64" stop-color="#BC8D39"/>
+      <stop offset="1" stop-color="#BE903B"/>
+    </linearGradient>
+    <linearGradient id="lower-fold-shade" x1="620" y1="550" x2="815" y2="550" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#201B13" stop-opacity="0"/>
+      <stop offset=".42" stop-color="#201B13" stop-opacity=".08"/>
+      <stop offset=".68" stop-color="#201B13" stop-opacity=".27"/>
+      <stop offset="1" stop-color="#201B13" stop-opacity=".49"/>
+    </linearGradient>
+    <radialGradient id="fold-contact-shadow" cx="748" cy="493" r="86" gradientUnits="userSpaceOnUse"
+                    gradientTransform="translate(748 493) rotate(31) scale(1 1.14) translate(-748 -493)">
+      <stop stop-color="#181713" stop-opacity=".66"/>
+      <stop offset=".38" stop-color="#181713" stop-opacity=".30"/>
+      <stop offset="1" stop-color="#181713" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Front ribbon and central play button, independently recolorable. -->
+    <linearGradient id="front-gold" x1="450" y1="145" x2="480" y2="575" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EFC363"/>
+      <stop offset=".35" stop-color="#E0B050"/>
+      <stop offset=".62" stop-color="#C59940"/>
+      <stop offset=".85" stop-color="#B08334"/>
+      <stop offset="1" stop-color="#A77B30"/>
+    </linearGradient>
+    <linearGradient id="play-gold" x1="430" y1="347" x2="430" y2="651" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EFC463"/>
+      <stop offset=".175" stop-color="#E4B553"/>
+      <stop offset=".50" stop-color="#D4A447"/>
+      <stop offset="1" stop-color="#C5973C"/>
+    </linearGradient>
+    <linearGradient id="gold-edge" x1="270" y1="117" x2="680" y2="877" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F9D481" stop-opacity=".92"/>
+      <stop offset=".42" stop-color="#E8BE66" stop-opacity=".62"/>
+      <stop offset="1" stop-color="#B58A3B" stop-opacity=".45"/>
+    </linearGradient>
+    <linearGradient id="front-edge" x1="388" y1="145" x2="831" y2="578" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE09A" stop-opacity=".72"/>
+      <stop offset=".68" stop-color="#E4BB66" stop-opacity=".36"/>
+      <stop offset="1" stop-color="#CC9C49" stop-opacity=".20"/>
+    </linearGradient>
+    <linearGradient id="play-edge" x1="378" y1="350" x2="571" y2="628" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFDD8D" stop-opacity=".80"/>
+      <stop offset=".5" stop-color="#E5BC62" stop-opacity=".62"/>
+      <stop offset="1" stop-color="#E6B553" stop-opacity=".83"/>
+    </linearGradient>
+
+    <!-- Subtle procedural grain. k1 + k2 = 1 preserves SourceAlpha exactly. -->
+    <filter id="matte-grain" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency=".82" numOctaves="3" seed="23" stitchTiles="stitch" result="noise"/>
+      <feColorMatrix in="noise" type="saturate" values="0" result="mono-noise"/>
+      <feColorMatrix in="mono-noise" type="matrix"
+                     values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0 1" result="opaque-noise"/>
+      <feComposite in="SourceGraphic" in2="opaque-noise" operator="arithmetic" k1=".04" k2=".96" k3="0" k4="0"/>
+    </filter>
+
+    <path id="outer-ribbon-shape" d="M234.5 205.5 C234.5 153.8 273.3 116.7 316.9 116.7 C342.3 116.7 358.6 126.0 388.6 144.9 L830.7 422.0 C858.7 439.8 874.2 466.6 874.2 499.3 C874.2 530.7 858.1 557.7 831.8 575.5 L388.4 868.0 C358.3 887.9 325.7 892.5 294.6 878.1 C256.2 860.4 234.5 825.7 234.5 782.2 Z"/>
+    <path id="back-ribbon-shape" d="M234.5 205.5 C234.5 153.8 273.3 116.7 316.9 116.7 C342.3 116.7 358.6 126.0 388.6 144.9 L749.5 493.8 C746.7 507.8 735.8 519.7 719.6 531.0 L349.1 775.6 C331.3 786.2 315.8 790.0 300.0 789.5 C272.7 788.6 249.1 777.1 234.5 756.2 Z"/>
+    <path id="lower-ribbon-shape" d="M234.5 754.7 C248.7 776.2 272.7 788.6 300.0 789.5 C315.8 790.0 331.3 786.2 349.1 775.6 L719.6 531.0 C735.8 519.7 746.7 507.8 749.5 493.8 L778.2 514.8 C798.7 536.4 807.4 570.6 791.7 601.9 L388.4 868.0 C358.3 887.9 325.7 892.5 294.6 878.1 C256.2 860.4 234.5 825.7 234.5 782.2 Z"/>
+    <path id="front-ribbon-shape" d="M388.6 144.9 C373.1 157.4 366.1 178.0 366.1 200.4 C366.1 230.1 376.3 251.5 400.5 267.5 L749.5 493.8 C785.7 517.3 808.9 551.2 795.0 591.9 C794.0 595.2 792.9 598.5 791.7 601.9 L831.8 575.5 C858.1 557.7 874.2 530.7 874.2 499.3 C874.2 466.6 858.7 439.8 830.7 422.0 Z"/>
+    <path id="play-shape" d="M367.8 389.0 C367.8 356.0 396.6 335.5 425.4 352.3 L596.2 462.1 C626.9 481.8 626.9 515.5 597.1 535.3 L428.1 644.1 C399.0 662.9 367.8 642.7 367.8 609.8 Z"/>
+    <clipPath id="icon-clip"><rect width="1000" height="1000" rx="320"/></clipPath>
+  </defs>
+
+  <g id="artwork" clip-path="url(#icon-clip)" filter="url(#matte-grain)">
+    <g id="play-mark">
+    <g id="gold-ribbon">
+      <g id="left-back-surface" mask="url(#back-transparency)">
+        <use xlink:href="#back-ribbon-shape" fill="url(#back-gold)"/>
+        <use xlink:href="#back-ribbon-shape" fill="url(#back-upper-light)"/>
+        <use xlink:href="#back-ribbon-shape" fill="url(#back-bottom-shade)"/>
+      </g>
+      <g id="lower-return-surface">
+        <use xlink:href="#lower-ribbon-shape" fill="url(#lower-gold)"/>
+        <use xlink:href="#lower-ribbon-shape" fill="url(#lower-fold-shade)"/>
+        <use xlink:href="#lower-ribbon-shape" fill="url(#fold-contact-shadow)"/>
+      </g>
+      <g id="front-diagonal-surface">
+        <use xlink:href="#front-ribbon-shape" fill="url(#front-gold)"/>
+        <path d="M388.6 144.9 C373.1 157.4 366.1 178.0 366.1 200.4 C366.1 230.1 376.3 251.5 400.5 267.5 L749.5 493.8" stroke="url(#front-edge)" stroke-width="1.25" stroke-linecap="round"/>
+      </g>
+      <use xlink:href="#outer-ribbon-shape" stroke="url(#gold-edge)" stroke-width="1.25"/>
+    </g>
+    <g id="play-button">
+      <use xlink:href="#play-shape" fill="url(#play-gold)" stroke="url(#play-edge)" stroke-width="1.4"/>
+    </g>
+    </g>
+  </g>
+</svg>

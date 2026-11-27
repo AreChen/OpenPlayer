@@ -3,7 +3,7 @@ use redb::{ReadableDatabase, ReadableTable};
 use super::{helpers::*, *};
 
 impl PlaybackStore {
-    pub(super) fn list(&self) -> Result<Vec<PlaybackHistoryEntry>, String> {
+    pub(crate) fn list(&self) -> Result<Vec<PlaybackHistoryEntry>, String> {
         let transaction = self
             .database
             .begin_read()
@@ -34,7 +34,7 @@ impl PlaybackStore {
         Ok(entries)
     }
 
-    pub(super) fn remember(
+    pub(crate) fn remember(
         &mut self,
         update: PlaybackHistoryUpdate,
     ) -> Result<Vec<PlaybackHistoryEntry>, String> {
@@ -86,7 +86,7 @@ impl PlaybackStore {
         self.list()
     }
 
-    pub(super) fn resume_position(&self, path: &str) -> Result<f64, String> {
+    pub(crate) fn resume_position(&self, path: &str) -> Result<f64, String> {
         let transaction = self
             .database
             .begin_read()
@@ -101,7 +101,7 @@ impl PlaybackStore {
         Ok(resume_position_for_entry(entry.position, entry.duration))
     }
 
-    pub(super) fn clear(&mut self) -> Result<Vec<PlaybackHistoryEntry>, String> {
+    pub(crate) fn clear(&mut self) -> Result<Vec<PlaybackHistoryEntry>, String> {
         let transaction = self
             .database
             .begin_write()

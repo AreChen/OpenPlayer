@@ -1,21 +1,21 @@
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
-import ts from "typescript";
+import { transformSync } from "esbuild";
 
 export function loadSource(path, imports = {}, globals = {}) {
   const source = readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
-  const { outputText } = ts.transpileModule(source, {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  const { code } = transformSync(source, {
+    sourcefile: path, loader: "ts", format: "cjs", target: "es2022",
   });
-  const exports = {};
-  vm.runInNewContext(outputText, {
-    exports, console, ...globals,
+  const module = { exports: {} };
+  vm.runInNewContext(code, {
+    module, exports: module.exports, console, ...globals,
     require(name) {
       if (!(name in imports)) throw new Error(`Unconfigured import: ${name} in ${path}`);
       return imports[name];
     },
   }, { filename: path });
-  return exports;
+  return module.exports;
 }
 
 export function hookHarness() {

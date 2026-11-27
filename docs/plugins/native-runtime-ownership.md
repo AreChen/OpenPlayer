@@ -1,5 +1,7 @@
 # Host-owned runtime copies
 
+This page records experiments from the 1.x window harness. See the current Windows build and playback path in the [Windows guide](../windows-gpui.md).
+
 The Windows developer window harness now loads its embedded video runtime from
 a verified, process-owned copy rather than an installed plugin directory.
 **The current development host also uses this for authorized

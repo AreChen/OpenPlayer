@@ -19,9 +19,6 @@ on:
 permissions:
   contents: write
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   windows-installer:
     name: Windows installer
@@ -30,60 +27,21 @@ jobs:
       RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Install Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7.1.0
         with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: apps/desktop/package-lock.json
+          node-version: 26
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install frontend dependencies
-        working-directory: apps/desktop
-        run: npm ci
+      - name: Select the project Rust toolchain
+        run: rustc --version
 
       - name: Restore Windows mpv runtime
         shell: pwsh
-        run: |
-          $manifestPath = "docs/native-deps/mpv-windows-x64.json"
-          $manifest = Get-Content -LiteralPath $manifestPath | ConvertFrom-Json
-          $downloadPath = Join-Path $env:RUNNER_TEMP $manifest.asset
-          $extractRoot = Join-Path $env:RUNNER_TEMP "mpv-extract"
-          $targetRoot = "vendor/native/mpv/windows-x64"
-
-          Invoke-WebRequest -Uri $manifest.url -OutFile $downloadPath
-          $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $downloadPath).Hash.ToLowerInvariant()
-          if ($actualHash -ne $manifest.sha256) {
-            throw "mpv archive hash mismatch: expected $($manifest.sha256), got $actualHash"
-          }
-
-          $sevenZip = (Get-Command 7z -ErrorAction SilentlyContinue).Source
-          if (-not $sevenZip) {
-            $sevenZip = (Get-Command 7z.exe -ErrorAction SilentlyContinue).Source
-          }
-          if (-not $sevenZip) {
-            throw "7-Zip is required on the Windows runner"
-          }
-
-          New-Item -ItemType Directory -Force -Path $extractRoot, $targetRoot | Out-Null
-          & $sevenZip x $downloadPath "-o$extractRoot" -y | Out-Null
-
-          $runtimeDll = Get-ChildItem -LiteralPath $extractRoot -Recurse -Filter "libmpv-2.dll" | Select-Object -First 1
-          $importLibrary = Get-ChildItem -LiteralPath $extractRoot -Recurse -Filter "libmpv.dll.a" | Select-Object -First 1
-          $includeDir = Get-ChildItem -LiteralPath $extractRoot -Recurse -Directory -Filter "include" | Select-Object -First 1
-          if (-not $runtimeDll -or -not $importLibrary -or -not $includeDir) {
-            throw "mpv archive is missing libmpv-2.dll, libmpv.dll.a, or include"
-          }
-
-          Copy-Item -LiteralPath $runtimeDll.FullName -Destination $targetRoot -Force
-          Copy-Item -LiteralPath $importLibrary.FullName -Destination $targetRoot -Force
-          Copy-Item -LiteralPath $includeDir.FullName -Destination $targetRoot -Recurse -Force
+        run: ./apps/desktop/scripts/restore-windows-mpv.ps1
 
       - name: Verify release metadata
         working-directory: apps/desktop
@@ -94,9 +52,15 @@ jobs:
         working-directory: apps/desktop
         run: npm run verify:shell
 
-      - name: Build Windows installer
+      - name: Verify native translations
         working-directory: apps/desktop
-        run: npm run tauri:build -- --config src-tauri/tauri.windows.conf.json
+        run: node scripts/sync-native-locales.mjs --check
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          choco install nsis -y
+          ./apps/desktop/scripts/build-windows.ps1
 
       - name: Prepare installer checksum
         shell: pwsh
@@ -120,9 +84,27 @@ jobs:
             throw "Missing release notes file: $notesFile"
           }
 
+          $preserveLegacyLatest = $env:RELEASE_TAG -notmatch '^v1\.\d+\.\d+$'
+          $channelFlags = @()
+          if ($preserveLegacyLatest) {
+            # Shipped 1.x builds use the repository-wide /releases/latest endpoint.
+            $channelFlags += '--latest=false'
+          }
+
           gh release view $env:RELEASE_TAG *> $null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $env:RELEASE_TAG --title "OpenPlayer $version" --notes-file $notesFile --target $env:GITHUB_SHA
+            gh release create $env:RELEASE_TAG --title "OpenPlayer $version" --notes-file $notesFile --target $env:GITHUB_SHA @channelFlags
+            if ($LASTEXITCODE -ne 0) { throw "Could not create $env:RELEASE_TAG" }
+          } elseif ($preserveLegacyLatest) {
+            gh release edit $env:RELEASE_TAG @channelFlags
+            if ($LASTEXITCODE -ne 0) { throw "Could not remove $env:RELEASE_TAG from the 1.x update endpoint" }
+          }
+
+          if ($preserveLegacyLatest) {
+            $legacyLatest = gh api "repos/$env:GITHUB_REPOSITORY/releases/latest" --jq '.tag_name'
+            if ($LASTEXITCODE -ne 0 -or $legacyLatest -notmatch '^v1\.\d+\.\d+$') {
+              throw "The legacy update endpoint must serve a stable 1.x release. Found '$legacyLatest'."
+            }
           }
 
           gh release upload $env:RELEASE_TAG $env:OPENPLAYER_INSTALLER $env:OPENPLAYER_CHECKSUM --clobber
@@ -135,7 +117,7 @@ jobs:
       RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
@@ -154,14 +136,14 @@ jobs:
           sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2
 
       - name: Install Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7.1.0
         with:
-          node-version: 24
+          node-version: 26
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Select the project Rust toolchain
+        run: rustc --version
 
       - name: Install frontend dependencies
         working-directory: apps/desktop
@@ -223,19 +205,19 @@ jobs:
             arch: x64
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Install Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7.1.0
         with:
-          node-version: 24
+          node-version: 26
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Select the project Rust toolchain
+        run: rustc --version
 
       - name: Install macOS dependencies
         run: |

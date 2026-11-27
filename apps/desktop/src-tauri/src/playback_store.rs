@@ -1,17 +1,27 @@
+#[cfg(not(windows))]
 use std::{path::PathBuf, sync::Mutex};
 
 use redb::{Database, TableDefinition};
 use serde::{Deserialize, Serialize};
 
+#[cfg(not(windows))]
 pub(crate) mod commands;
 mod helpers;
 mod history;
 mod network_streams;
 mod settings;
 mod store;
+#[cfg(not(windows))]
 mod sync;
 #[cfg(test)]
 mod tests;
+
+#[cfg(windows)]
+pub(crate) fn network_stream(url: &str) -> Result<(String, String), String> {
+    let (url, _) = helpers::normalize_network_stream_url(url)?;
+    let name = helpers::network_stream_name_from_url(&url);
+    Ok((url, name))
+}
 
 const HISTORY_BY_PATH: TableDefinition<&str, &str> = TableDefinition::new("history_by_path");
 const HISTORY_BY_UPDATED: TableDefinition<&str, &str> = TableDefinition::new("history_by_updated");
@@ -40,32 +50,32 @@ const MAX_PLAYBACK_SPEED: f64 = 4.0;
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaybackHistoryEntry {
-    path: String,
-    name: String,
-    position: f64,
-    duration: f64,
+    pub(crate) path: String,
+    pub(crate) name: String,
+    pub(crate) position: f64,
+    pub(crate) duration: f64,
     updated_at: i64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaybackHistoryUpdate {
-    path: String,
-    name: Option<String>,
-    position: f64,
-    duration: f64,
-    updated_at: Option<i64>,
+    pub(crate) path: String,
+    pub(crate) name: Option<String>,
+    pub(crate) position: f64,
+    pub(crate) duration: f64,
+    pub(crate) updated_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaybackSettings {
-    volume: f64,
-    loop_mode: String,
-    hwdec_mode: String,
-    playback_speed: f64,
-    video_fill: bool,
-    time_display_mode: String,
+    pub(crate) volume: f64,
+    pub(crate) loop_mode: String,
+    pub(crate) hwdec_mode: String,
+    pub(crate) playback_speed: f64,
+    pub(crate) video_fill: bool,
+    pub(crate) time_display_mode: String,
 }
 
 impl Default for PlaybackSettings {
@@ -81,37 +91,37 @@ impl Default for PlaybackSettings {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaybackSettingsUpdate {
-    volume: Option<f64>,
-    loop_mode: Option<String>,
-    hwdec_mode: Option<String>,
-    playback_speed: Option<f64>,
-    video_fill: Option<bool>,
-    time_display_mode: Option<String>,
+    pub(crate) volume: Option<f64>,
+    pub(crate) loop_mode: Option<String>,
+    pub(crate) hwdec_mode: Option<String>,
+    pub(crate) playback_speed: Option<f64>,
+    pub(crate) video_fill: Option<bool>,
+    pub(crate) time_display_mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MediaPlaybackSettings {
     path: String,
-    subtitle_track_id: Option<i64>,
-    has_subtitle_track_selection: bool,
+    pub(crate) subtitle_track_id: Option<i64>,
+    pub(crate) has_subtitle_track_selection: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MediaPlaybackSettingsUpdate {
     #[serde(default)]
-    subtitle_track_id: Option<Option<i64>>,
+    pub(crate) subtitle_track_id: Option<Option<i64>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkStreamHistoryEntry {
-    url: String,
-    name: String,
+    pub(crate) url: String,
+    pub(crate) name: String,
     scheme: String,
     updated_at: i64,
 }
@@ -119,16 +129,17 @@ pub struct NetworkStreamHistoryEntry {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkStreamHistoryUpdate {
-    url: String,
-    name: Option<String>,
-    updated_at: Option<i64>,
+    pub(crate) url: String,
+    pub(crate) name: Option<String>,
+    pub(crate) updated_at: Option<i64>,
 }
 
+#[cfg(not(windows))]
 pub struct PlaybackStoreState {
     path: PathBuf,
     access: Mutex<()>,
 }
 
-struct PlaybackStore {
+pub(crate) struct PlaybackStore {
     database: Database,
 }

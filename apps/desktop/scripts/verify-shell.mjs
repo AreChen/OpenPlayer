@@ -47,8 +47,8 @@ async function readSourceTree(dirUrl, extensions) {
 }
 
 const config = JSON.parse(await readFile(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8"));
-const windowsConfigUrl = new URL("../src-tauri/tauri.windows.conf.json", import.meta.url);
-const windowsConfig = existsSync(windowsConfigUrl) ? JSON.parse(await readFile(windowsConfigUrl, "utf8")) : {};
+const windowsInstaller = await readFile(new URL("./openplayer-windows.nsi", import.meta.url), "utf8");
+const windowsBuild = await readFile(new URL("./build-windows.ps1", import.meta.url), "utf8");
 const linuxConfigUrl = new URL("../src-tauri/tauri.linux.conf.json", import.meta.url);
 const linuxConfig = existsSync(linuxConfigUrl) ? JSON.parse(await readFile(linuxConfigUrl, "utf8")) : {};
 const macosConfigUrl = new URL("../src-tauri/tauri.macos.conf.json", import.meta.url);
@@ -127,6 +127,7 @@ const releaseVerifyScriptUrl = new URL("./verify-release.mjs", import.meta.url);
 const macosBundleScriptUrl = new URL("./bundle-macos-libmpv.mjs", import.meta.url);
 const macosBundleScriptSource = existsSync(macosBundleScriptUrl) ? await readFile(macosBundleScriptUrl, "utf8") : "";
 const releaseMpvManifestUrl = new URL("../../../docs/native-deps/mpv-windows-x64.json", import.meta.url);
+const restoreWindowsMpv = await readFile(new URL("./restore-windows-mpv.ps1", import.meta.url), "utf8");
 const pluginSdkGuide = await readFile(new URL("../../../docs/plugins/sdk-1.6-developer-guide.md", import.meta.url), "utf8");
 const pluginReadme = await readFile(new URL("../../../docs/plugins/README.md", import.meta.url), "utf8");
 const pluginDocsAgentsUrl = new URL("../../../docs/plugins/AGENTS.md", import.meta.url);
@@ -134,7 +135,7 @@ const pluginDocsAgents = existsSync(pluginDocsAgentsUrl) ? await readFile(plugin
 const workspaceToml = await readFile(new URL("../../../Cargo.toml", import.meta.url), "utf8");
 const tauriCargoToml = await readFile(new URL("../src-tauri/Cargo.toml", import.meta.url), "utf8");
 const tauriBuildScript = await readFile(new URL("../src-tauri/build.rs", import.meta.url), "utf8");
-const nsisHooksUrl = new URL("../src-tauri/nsis-hooks.nsh", import.meta.url);
+const nsisHooksUrl = new URL("./openplayer-media-shell.nsh", import.meta.url);
 const nsisHooksSource = existsSync(nsisHooksUrl) ? await readFile(nsisHooksUrl, "utf8") : "";
 const mpvEmbedFileUrl = new URL("../src-tauri/src/mpv_embed.rs", import.meta.url);
 const mpvEmbedDirUrl = new URL("../src-tauri/src/mpv_embed/", import.meta.url);
@@ -149,7 +150,7 @@ const mpvRenderFiles = [
   new URL("../src-tauri/src/mpv_render/win32_surface.rs", import.meta.url),
 ];
 const rootLogoUrl = new URL("../../../openplayer_logo_10001000.png", import.meta.url);
-const uiLogoUrl = new URL("../src/assets/openplayer-logo.png", import.meta.url);
+const uiLogoUrl = new URL("../src/assets/openplayer-logo-transparent.svg", import.meta.url);
 const tauriIconPngUrl = new URL("../src-tauri/icons/icon.png", import.meta.url);
 const tauriIconIcoUrl = new URL("../src-tauri/icons/icon.ico", import.meta.url);
 const tauriIconIcnsUrl = new URL("../src-tauri/icons/icon.icns", import.meta.url);
@@ -279,23 +280,21 @@ assert.equal(mainWindow.transparent, true, "video surface behind WebView require
 assert.equal(config.app.security.csp, null, "minimal shell keeps the baseline CSP behavior");
 assert.equal(config.app.security.assetProtocol, undefined, "minimal HTML playback must not expose Tauri asset protocol");
 assert.equal(config.bundle?.resources, undefined, "base Tauri config must not require ignored Windows mpv DLL resources during Linux CI");
-assert.equal(windowsConfig.bundle?.active, true, "Windows desktop release builds must produce an installer bundle by default");
-assert.equal(windowsConfig.bundle?.targets, "nsis", "Windows desktop release build should target the NSIS installer");
-assert.ok(Object.keys(windowsConfig.bundle?.resources ?? {}).some((resource) => resource.endsWith("libmpv-2.dll")), "Windows installer bundle must include the mpv runtime DLL");
-assert.ok(windowsConfig.bundle?.fileAssociations?.some((association) => association.ext?.includes("mp4") && association.ext?.includes("mkv")), "Windows installer must register OpenPlayer as a handler for common media files");
-assert.ok(windowsConfig.bundle?.fileAssociations?.some((association) => association.ext?.includes("mp3") && association.ext?.includes("wav") && association.ext?.includes("mp2") && association.ext?.includes("m4b")), "Windows installer must expose OpenPlayer as a default-app candidate for broad audio formats");
-assert.equal(windowsConfig.bundle?.windows?.nsis?.installerHooks, "nsis-hooks.nsh", "NSIS installer must install mpv runtime DLL next to the app executable");
-assert.match(nsisHooksSource, /CopyFiles[\s\S]*libmpv-2\.dll[\s\S]*\$INSTDIR\\libmpv-2\.dll/, "NSIS hooks must copy libmpv-2.dll beside the installed executable");
-assert.match(nsisHooksSource, /Delete[\s\S]*\$INSTDIR\\libmpv-2\.dll/, "NSIS hooks must remove copied mpv runtime DLL during uninstall");
+assert.match(windowsBuild, /cargo build --locked --release[\s\S]*openplayer-windows\.nsi/, "Windows must package the native Cargo executable");
+assert.match(windowsBuild, /media_paths\/extensions\.rs/, "Windows installer associations must use the supported media catalog");
+assert.match(windowsInstaller, /SetOutPath "\$INSTDIR"[\s\S]*File \/oname=openplayer-desktop\.exe[\s\S]*File \/oname=libmpv-2\.dll/, "Windows installer must put the mpv DLL next to the app");
+assert.match(windowsInstaller, /Software\\RegisteredApplications[\s\S]*RegisterMediaExtensions/, "Windows installer must register the app as a media handler candidate");
+assert.match(windowsInstaller, /Delete "\$INSTDIR\\libmpv-2\.dll"/, "the uninstaller must remove the installed mpv DLL");
+assert.doesNotMatch(windowsInstaller, /WebView2|webview|tauri/i, "the native installer must not install a web runtime");
 assert.match(nsisHooksSource, /OP_THUMBNAIL_HANDLER_GUID[\s\S]*e357fccd-a995-4576-b01f-234630154e96/i, "NSIS hooks must register the Windows thumbnail handler key for media previews");
 assert.match(nsisHooksSource, /OP_PROPERTY_THUMBNAIL_HANDLER_CLSID[\s\S]*9DBD2C50-62AD-11D0-B806-00C04FD706EC/i, "NSIS hooks must reuse the system property thumbnail handler instead of shipping an Explorer-loaded DLL");
-assert.match(nsisHooksSource, /OP_REGISTER_VIDEO_THUMBNAIL[\s\S]*WriteRegStr SHELL_CONTEXT "Software\\Classes\\\.\$\{EXT\}" "PerceivedType" "video"/, "NSIS hooks must mark video associations as video for Explorer thumbnails");
+assert.match(nsisHooksSource, /OP_REGISTER_VIDEO_THUMBNAIL[\s\S]*WriteRegStr HKCU "Software\\Classes\\\.\$\{EXT\}" "PerceivedType" "video"/, "NSIS must mark video associations as video for Explorer thumbnails");
 assert.match(nsisHooksSource, /OP_REGISTER_VIDEO_THUMBNAIL "mp4" "video\/mp4"/, "NSIS hooks must preserve Explorer video thumbnails for MP4 files");
 assert.match(nsisHooksSource, /OP_REGISTER_VIDEO_THUMBNAIL "mkv" "video\/x-matroska"/, "NSIS hooks must preserve Explorer video thumbnails for MKV files");
 assert.doesNotMatch(nsisHooksSource, /OP_REGISTER_VIDEO_THUMBNAIL "mxf" "application\/mxf"/, "NSIS hooks must not register every mpv video container by default");
 assert.doesNotMatch(nsisHooksSource, /OP_REGISTER_AUDIO_METADATA "wv" "audio\/x-wavpack"/, "NSIS hooks must not register every mpv audio container by default");
 assert.match(nsisHooksSource, /SystemFileAssociations\\video[\s\S]*"Treatment" 3[\s\S]*SystemFileAssociations\\video[\s\S]*"ThumbnailCutoff" 1/, "NSIS hooks must preserve Windows video thumbnail adornment metadata");
-assert.match(nsisHooksSource, /UPDATEFILEASSOC/, "NSIS hooks must notify Explorer after media association metadata changes");
+assert.match(windowsInstaller, /SHChangeNotify/, "NSIS must notify Explorer after media association metadata changes");
 assert.ok(existsSync(linuxConfigUrl), "Linux desktop release builds must have a platform-specific Tauri config");
 assert.equal(linuxConfig.bundle?.active, true, "Linux desktop release builds must produce native packages by default");
 assert.deepEqual(linuxConfig.bundle?.targets, ["deb", "appimage"], "Linux desktop release build should target deb and AppImage packages");
@@ -321,12 +320,12 @@ assert.ok(existsSync(releaseVerifyScriptUrl), "release verification script must 
 assert.ok(existsSync(releaseMpvManifestUrl), "Windows mpv dependency manifest must be tracked outside ignored vendor binaries");
 assert.match(ciWorkflow, /npm run verify:release/, "CI must verify release metadata");
 assert.match(ciWorkflow, /npm run verify:shell/, "CI must run shell structural verification");
-assert.match(ciWorkflow, /FORCE_JAVASCRIPT_ACTIONS_TO_NODE24:\s*true/, "CI must opt into the GitHub Actions Node 24 runtime");
 assert.doesNotMatch(`${ciWorkflow}\n${releaseWorkflow}`, /actions\/(?:checkout|setup-node)@v4/, "GitHub workflows must not use deprecated Node 20 action major versions");
 assert.match(releaseWorkflow, /on:[\s\S]*tags:[\s\S]*v\*/, "release workflow must run for version tags");
-assert.match(releaseWorkflow, /FORCE_JAVASCRIPT_ACTIONS_TO_NODE24:\s*true/, "release workflow must opt into the GitHub Actions Node 24 runtime");
-assert.match(releaseWorkflow, /npm run tauri:build -- --config src-tauri\/tauri\.windows\.conf\.json/, "release workflow must build the Windows NSIS installer");
-assert.match(releaseWorkflow, /mpv-windows-x64\.json/, "release workflow must restore mpv runtime from tracked dependency metadata");
+assert.match(releaseWorkflow, /build-windows\.ps1/, "release workflow must build the native Windows NSIS installer");
+assert.match(ciWorkflow, /restore-windows-mpv\.ps1/, "Windows CI must use the shared mpv restore script");
+assert.match(releaseWorkflow, /restore-windows-mpv\.ps1/, "Windows release must use the shared mpv restore script");
+assert.match(restoreWindowsMpv, /mpv-windows-x64\.json/, "the Windows mpv restore script must use tracked dependency metadata");
 assert.match(releaseWorkflow, /Get-FileHash[\s\S]*SHA256/, "release workflow must generate a SHA256 checksum for the installer");
 assert.match(releaseWorkflow, /gh release/, "release workflow must publish installer assets to GitHub Releases");
 assert.match(releaseWorkflow, /linux-packages:/, "release workflow must build Linux packages");
@@ -361,7 +360,15 @@ assert.ok(existsSync(tauriIconIcnsUrl), "macOS ICNS icon must exist");
 assert.equal(packageJson.dependencies["movi-player"], undefined, "minimal branch must not ship WASM/software decoder dependency");
 assert.ok(packageJson.dependencies["@tauri-apps/plugin-dialog"], "mpv path playback must use Tauri dialog to obtain real local paths");
 
-assert.match(tauriCargoToml, /default = \["mpv-embed"\]/, "desktop default feature must use the stable mpv embed overlay backend");
+assert.match(tauriCargoToml, /default = \["mpv-embed", "windows-gpui"\]/, "the ordinary Windows executable must enable GPUI Fast and libmpv");
+assert.match(tauriRuntimeSource, /#\[cfg\(all\(windows, feature = "windows-gpui"\)\)\]\s*pub use windows_gpui::run;/, "the installer entry point must launch the GPUI player on Windows");
+const windowsGpuiSource = await readSourceTree(new URL("../src-tauri/src/windows_gpui/", import.meta.url), [".rs"]);
+assert.match(windowsGpuiSource, /gpui::Application::with_platform[\s\S]*open_window/, "the native runtime must open a GPUI window");
+const windowsRuntimeSource = windowsGpuiSource.replace(
+  String.raw`dev.openplayer.app\EBWebView\Default\Local Storage\leveldb`,
+  "",
+);
+assert.doesNotMatch(windowsRuntimeSource, /tauri::|WebView|PluginHost|gpui_sync_ui/i, "the Windows player must not run any webview");
 assert.match(ciWorkflow, /libmpv-dev/, "Linux CI must install libmpv-dev so default mpv-embed tests can link libmpv");
 assert.match(tauriCargoToml, /mpv-embed/, "Cargo features must define mpv-embed");
 assert.doesNotMatch(tauriCargoToml, /mpv-render|Win32_Graphics_OpenGL/, "desktop crate must not keep the failed mpv render backend or its OpenGL render-only dependencies");
@@ -371,7 +378,7 @@ assert.match(tauriBuildScript, /CARGO_FEATURE_MPV_SMOKE[\s\S]*CARGO_FEATURE_MPV_
 assert.match(tauriBuildScript, /vendor[\\/]native[\\/]mpv[\\/]windows-x64/, "build script must point at the vendored Windows mpv directory");
 assert.match(tauriBuildScript, /macos_mpv_gl_view\.m[\s\S]*framework=OpenGL/, "macOS mpv render API host must compile the AppKit OpenGL child view and link OpenGL");
 assert.match(tauriRuntimeSource, /#\[cfg\(feature = "mpv-smoke"\)\]\s*mod mpv_smoke;/, "desktop crate must keep libmpv2 smoke code feature-gated");
-assert.match(tauriRuntimeSource, /#\[cfg\(feature = "mpv-embed"\)\]\s*mod mpv_embed;/, "desktop crate must compile the stable mpv child HWND backend behind mpv-embed");
+assert.match(tauriRuntimeSource, /#\[cfg\(all\(not\(windows\), feature = "mpv-embed"\)\)\]\s*mod mpv_embed;/, "Unix desktop builds must keep their embedded mpv backend");
 assert.match(tauriRuntimeSource, /mod platform_support;/, "desktop backend must expose platform capability metadata");
 assert.match(tauriRuntimeSource, /platform_support[\s\S]*history_list/, "desktop runtime must register platform support before persistence commands");
 assert.match(platformSupportSource, /pub struct PlatformSupport/, "platform support module must define a serializable capability payload");
@@ -413,7 +420,9 @@ assert.ok(capability.windows.includes("overlay"), "overlay controls window must 
 assert.doesNotMatch(appSource, /<video\b/, "mpv-first player must not use browser video playback");
 assert.match(appSource, /surface=video|surface === "video"/, "frontend must render a video-only main surface separately from overlay controls");
 assert.match(appSource, /open\(/, "player must keep native Tauri file picker access");
-assert.match(appSource, /openplayer-logo\.png/, "empty player state must use the OpenPlayer logo asset");
+assert.match(appSource, /openplayer-logo empty-open-logo/, "empty player state must use the themed OpenPlayer logo");
+assert.match(appSource, /openplayer-logo about-logo/, "About settings must use the themed OpenPlayer logo");
+assert.match(styles, /\.openplayer-logo\s*\{[^}]*openplayer-logo-transparent\.svg[^}]*var\(--accent\)/, "OpenPlayer logo must use the transparent asset and active theme accent");
 assert.doesNotMatch(appSource, /MPV native playback/, "empty player state must not show the old playback engine tagline");
 assert.match(appSource, /isPickerOpen/, "native file picker must guard against repeated open calls while the dialog is pending");
 assert.match(appSource, /mpv_overlay_open_path/, "overlay controls must open files through commands targeting the main video window");
@@ -621,7 +630,8 @@ assert.match(appSource, /function handleShellPointerDown[\s\S]*activePluginView[
 assert.match(appSource, /accentOverride \?\? activeTheme\.tokens\.accent/, "plugin custom views must receive the effective user accent override");
 assert.match(tauriRuntimeSource, /unsupported plugin view presentation/, "plugin manifests must validate view presentation modes");
 assert.match(tauriRuntimeSource, /frame_opacity_setting[\s\S]*number setting/, "plugin manifests must validate setting-backed side panel frame opacity");
-assert.match(appSource, /tv:\s*"/, "plugin action icons must include a small TV glyph for TV-like plugins");
+const sharedIcons = JSON.parse(await readFile(new URL("../src/app/icon-paths.json", import.meta.url), "utf8"));
+assert.ok(sharedIcons.tv, "plugin action icons must include a small TV glyph for TV-like plugins");
 assert.match(appSource, /\|\s*"tv"/, "frontend plugin action icon typing must accept tv");
 assert.match(appearanceStoreSource, /\|\s*"tv"/, "backend plugin manifest validation must accept tv action icons");
 assert.match(pluginSdkGuide, /`sidePanel`[\s\S]*semi-transparent[\s\S]*plugin settings[\s\S]*`frameOpacitySetting`/, "SDK guide must document setting-backed translucent themed sidePanel views");
@@ -959,7 +969,7 @@ assert.match(mpvEmbedSource, /mpv_embed_set_speed/, "mpv embed backend must expo
 assert.match(mpvEmbedSource, /mpv_embed_set_hwdec[\s\S]*set_property\("hwdec"/, "mpv embed backend must expose runtime hardware/software decoding control");
 assert.match(mpvEmbedSource, /normalize_hwdec_mode[\s\S]*"hardware"[\s\S]*"software"/, "mpv embed backend must normalize decode modes to safe mpv hwdec values");
 assert.match(mpvEmbedSource, /mpv_embed_set_loop_file[\s\S]*set_property\("loop-file"/, "mpv embed backend must expose native single-file loop control");
-assert.match(mpvEmbedSource, /initial_volume:\s*Option<f64>[\s\S]*set_property\("volume", initial_volume\)[\s\S]*command\("loadfile"/, "mpv embed backend must set the saved volume before loadfile to prevent startup audio spikes");
+assert.match(mpvEmbedSource, /mpv\.set_property\("volume", initial_volume\)[\s\S]*?load_media_file_for_interactive_open\(&mpv,/, "mpv embed backend must set the saved volume before loadfile to prevent startup audio spikes");
 assert.match(mpvEmbedSource, /mpv_embed_set_subtitle_delay/, "mpv embed backend must expose subtitle delay control");
 assert.match(mpvEmbedSource, /mpv_embed_select_track/, "mpv embed backend must expose track selection");
 assert.match(mpvEmbedSource, /mpv_embed_add_subtitle/, "mpv embed backend must expose external subtitle loading");

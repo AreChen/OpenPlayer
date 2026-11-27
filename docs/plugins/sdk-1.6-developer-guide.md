@@ -1,7 +1,6 @@
 # OpenPlayer Plugin SDK 1.6 Developer Guide
 
-This guide is the current working reference for developers and automation agents that
-build OpenPlayer plugins against SDK 1.6.
+This guide describes SDK 1.6 for the Tauri plugin host and published 1.x builds. A plugin SDK for the Windows GPUI runtime is deferred. [Runtime architecture](../architecture/README.md)
 
 OpenPlayer plugins are package-based extensions. A plugin package contributes a
 validated `manifest.json`, optional settings/actions/views, and optionally a

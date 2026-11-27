@@ -1,4 +1,4 @@
-use redb::ReadableDatabase;
+use redb::{ReadableDatabase, ReadableTable};
 
 use crate::appearance_store::{
     PLUGIN_MANIFESTS, records::decode_plugin_manifest, store::AppearanceStore,

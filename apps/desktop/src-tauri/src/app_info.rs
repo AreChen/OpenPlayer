@@ -9,7 +9,7 @@ pub(crate) struct AppVersionInfo {
 }
 
 const OPENPLAYER_REPOSITORY_URL: &str = "https://github.com/AreChen/OpenPlayer";
-const OPENPLAYER_RELEASES_URL: &str = "https://github.com/AreChen/OpenPlayer/releases/latest";
+const OPENPLAYER_RELEASES_URL: &str = "https://github.com/AreChen/OpenPlayer/releases";
 
 #[tauri::command]
 pub(crate) fn app_version() -> AppVersionInfo {
