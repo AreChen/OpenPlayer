@@ -511,6 +511,13 @@ impl Controller {
             .tracks
             .iter()
             .find(|track| track.kind == "audio" && track.selected);
+        if audio.is_some()
+            && mpv
+                .get_property::<String>("current-ao")
+                .is_ok_and(|output| output == "null")
+        {
+            eprintln!("OpenPlayer audio output: null (no usable Windows audio output)");
+        }
         self.ui.audio_codec = audio.and_then(|track| track.codec.clone());
         self.ui.audio_only = audio.is_some()
             && !self

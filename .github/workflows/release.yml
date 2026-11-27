@@ -189,7 +189,7 @@ jobs:
   package-validation:
     name: Native installation and upgrade validation
     needs: [prepare, packages]
-    if: always() && needs.prepare.result == 'success' && (needs.packages.result == 'success' || needs.packages.result == 'failure')
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.packages.result == 'success' || needs.packages.result == 'failure') }}
     uses: ./.github/workflows/package-validation.yml
     with:
       tag: ${{ needs.prepare.outputs.tag }}

@@ -14,6 +14,9 @@ assert.equal(candidate.commit, commit, "package manifest must match the verified
 await mkdir(evidenceDirectory, { recursive: true });
 
 const evidence = { tag, commit, platform: candidate.platform, distribution: candidate.distribution, packages: [] };
+if (process.platform === "win32" && process.env.OPENPLAYER_WINDOWS_AUDIO_ENDPOINTS === "0") {
+  evidence.audioOutput = "null (no active Windows playback endpoint)";
+}
 try {
   for (const path of candidate.files) {
     const directory = await mkdtemp(join(tmpdir(), "openplayer-installed-"));

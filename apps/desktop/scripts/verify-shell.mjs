@@ -338,7 +338,8 @@ assert.match(releaseWorkflow, /platform: macos-x64\s+runner: macos-15-intel/, "m
 assert.match(releaseWorkflow, /platform: macos-arm64\s+runner: macos-15\s*$/m, "macOS release workflow must build an Apple Silicon DMG");
 assert.match(packageBuildAction, /brew install mpv pkg-config/, "macOS release job must prepare Homebrew libmpv and pkg-config");
 assert.match(packageBuildAction, /bundle-macos-libmpv\.mjs[\s\S]*build-macos-dmg\.sh/, "macOS DMGs must include the bundled libmpv runtime");
-assert.match(macosDmgScript, /otool -L[\s\S]*\/opt\/homebrew[\s\S]*\/Cellar/, "macOS packaging must reject unbundled Homebrew dylib references");
+assert.match(macosBundleScriptSource, /LC_RPATH[\s\S]*unbundled dependency/, "macOS packaging must resolve private Mach-O load paths within the app bundle");
+assert.match(macosDmgScript, /dlopen\(argv\[1\], RTLD_NOW[\s\S]*bundle-macos-libmpv\.mjs --verify/, "macOS packaging must load the bundled libmpv and verify the mounted app's dependencies");
 assert.match(macosDmgScript, /codesign --verify --deep --strict/, "macOS packaging must verify the bundle signature after rewriting dylib references");
 assert.match(macosDmgScript, /notarytool submit[\s\S]*stapler staple/, "macOS distribution packages must be notarized and stapled");
 assert.match(packageStagingScript, /createHash\("sha256"\)/, "all release packages must have a SHA-256 checksum");

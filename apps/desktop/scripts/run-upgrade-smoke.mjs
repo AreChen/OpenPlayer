@@ -191,6 +191,9 @@ async function wayland(host, packagePath, media) {
 
 await mkdir(evidenceDirectory, { recursive: true });
 const evidence = { tag, targetTag, commit, platform: from.platform, isolatedFeed: true, packages: [] };
+if (process.platform === "win32" && process.env.OPENPLAYER_WINDOWS_AUDIO_ENDPOINTS === "0") {
+  evidence.audioOutput = "null (no active Windows playback endpoint)";
+}
 try {
   for (const [index, path] of from.files.entries()) {
     const target = to.files[index];
@@ -215,7 +218,7 @@ try {
       const original = await host.checksum();
       const before = await host.readProfile(media.audio, "seed");
       const priorAudio = before.history.find((entry) => basename(entry.path) === basename(media.audio));
-      assert.ok(priorAudio?.position > 0, "v2.0.0 did not persist audio progress");
+      assert.ok(priorAudio?.position > 0, "the original player did not persist audio progress");
 
       if (process.platform === "linux") {
         result.checks.wayland = await wayland(host, target, media.video);
