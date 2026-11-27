@@ -20,7 +20,7 @@ Install NSIS and run the package script from the repository root:
 ./apps/desktop/scripts/build-windows.ps1
 ~~~
 
-The installer is created in `target/release/bundle/nsis/`. The finish page offers two independent options. **Launch OpenPlayer now** is selected by default. **Choose default apps in Windows Settings** opens the system settings page. During upgrade and removal, the installer closes the process that is using the files in the selected installation directory.
+The installer is created in `target/release/bundle/nsis/`. The package includes libmpv and uses a statically linked Visual C++ runtime. The finish page offers two independent options. **Launch OpenPlayer now** is selected by default. **Choose default apps in Windows Settings** opens the system settings page. During upgrade and removal, the installer closes the process that is using the files in the selected installation directory.
 
 ## Default player
 

@@ -21,8 +21,26 @@ if (-not $Makensis) { throw 'Install NSIS or pass its makensis.exe path with -Ma
 Push-Location -LiteralPath $root
 try {
     if (-not $SkipBuild) {
-        cargo build --locked --release -p openplayer-desktop --bin openplayer-desktop
-        if ($LASTEXITCODE -ne 0) { throw "Cargo build failed with exit code $LASTEXITCODE" }
+        $rustflags = $env:RUSTFLAGS
+        $encodedRustflags = $env:CARGO_ENCODED_RUSTFLAGS
+        $staticCrt = '-Ctarget-feature=+crt-static'
+        try {
+            # An installed player must start on Windows without a separate Visual C++ runtime.
+            if ($null -ne $encodedRustflags) {
+                $env:CARGO_ENCODED_RUSTFLAGS = if ($encodedRustflags) {
+                    $encodedRustflags + [char]0x1F + $staticCrt
+                } else {
+                    $staticCrt
+                }
+            } else {
+                $env:RUSTFLAGS = "$rustflags $staticCrt".Trim()
+            }
+            cargo build --locked --release -p openplayer-desktop --bin openplayer-desktop
+            if ($LASTEXITCODE -ne 0) { throw "Cargo build failed with exit code $LASTEXITCODE" }
+        } finally {
+            $env:RUSTFLAGS = $rustflags
+            $env:CARGO_ENCODED_RUSTFLAGS = $encodedRustflags
+        }
     }
     $target = if ($env:CARGO_TARGET_DIR) { (Resolve-Path -LiteralPath $env:CARGO_TARGET_DIR).Path } else { Join-Path $root 'target' }
     $app = Join-Path $target 'release/openplayer-desktop.exe'

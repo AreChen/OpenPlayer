@@ -100,6 +100,27 @@ runs:
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         if ($deps -match '^(tauri|tao|wry|webview2)[ -]') { throw 'Unexpected web runtime dependency' }
         ./apps/desktop/scripts/build-windows.ps1
+
+        $dumpbin = (Get-Command dumpbin.exe -ErrorAction SilentlyContinue).Source
+        if (-not $dumpbin) {
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $dumpbin = & $vswhere -latest -products '*' -find 'VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe' |
+            Select-Object -First 1
+        }
+        if (-not $dumpbin) { throw 'Could not locate dumpbin in the Windows build tools' }
+
+        $images = @('target/release/openplayer-desktop.exe', 'vendor/native/mpv/windows-x64/libmpv-2.dll')
+        foreach ($image in $images) {
+          $headers = & $dumpbin /nologo /headers $image
+          if ($LASTEXITCODE -ne 0 -or -not ($headers -match '^\s*8664 machine \(x64\)')) {
+            throw "Expected an x64 PE image: $image"
+          }
+          $dependencies = & $dumpbin /nologo /dependents $image
+          if ($LASTEXITCODE -ne 0) { throw "Could not inspect runtime imports: $image" }
+          $dependencies | Write-Output
+          $forbidden = $dependencies -match '^\s*(vcruntime|msvcp\d|msvcr\d|vccorlib|concrt|vcomp|webview2loader|microsoft\.web\.webview2)[^\s]*\.dll\s*$'
+          if ($forbidden) { throw "Unexpected runtime dependency in ${image}: $($forbidden.Trim() -join ', ')" }
+        }
         node apps/desktop/scripts/stage-release-packages.mjs stage $env:RELEASE_TAG windows-x64 $env:PACKAGE_OUTPUT native
 
     - name: Build Linux deb and AppImage
