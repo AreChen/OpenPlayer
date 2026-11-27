@@ -343,10 +343,7 @@ mod tests {
 
         assert_eq!(
             names(QuickOpenMode::Open, "FILM family"),
-            [
-                root.0.join("Nested").join("Family Film"),
-                root.0.join("Nested").join("Family [Preview] Film.MP4"),
-            ]
+            [root.0.join("Nested").join("Family [Preview] Film.MP4")]
         );
         assert_eq!(
             names(QuickOpenMode::AppendFiles, "FiLM [preview]"),
@@ -387,6 +384,7 @@ mod tests {
                 directory,
                 Sort::default(),
                 Filter {
+                    only_media: false,
                     show_dot_folders: show_hidden_folders,
                     ..Filter::new(QuickOpenMode::Open)
                 },

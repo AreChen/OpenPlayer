@@ -99,17 +99,18 @@ impl Filter {
     }
 
     pub(super) fn includes(self, kind: EntryKind) -> bool {
-        if kind == EntryKind::Folder {
-            // Keep folders navigable while choosing a file category.
-            return true;
+        if self.mode == QuickOpenMode::AppendFolder {
+            return kind == EntryKind::Folder;
         }
-        self.mode != QuickOpenMode::AppendFolder
-            && match self.category {
-                Category::All => !self.only_media || kind.is_media(),
-                Category::Video => kind == EntryKind::Video,
-                Category::Audio => kind == EntryKind::Audio,
-                Category::Folders => false,
-            }
+        if kind == EntryKind::Folder {
+            return !self.only_media;
+        }
+        match self.category {
+            Category::All => !self.only_media || kind.is_media(),
+            Category::Video => kind == EntryKind::Video,
+            Category::Audio => kind == EntryKind::Audio,
+            Category::Folders => false,
+        }
     }
 }
 
@@ -236,7 +237,10 @@ mod tests {
 
     #[test]
     fn sorts_numbered_names_naturally_and_keeps_folders_first_in_both_directions() {
-        let filter = Filter::new(QuickOpenMode::Open);
+        let filter = Filter {
+            only_media: false,
+            ..Filter::new(QuickOpenMode::Open)
+        };
         let sort = Sort::default();
         let mut listing = Listing::new(
             vec![
@@ -262,5 +266,40 @@ mod tests {
             filter,
         );
         assert_eq!(names(&listing), ["Zebra", "Clip-10.mp4", "Clip-2.mp4"]);
+    }
+
+    #[test]
+    fn only_media_hides_folders_and_non_media_until_turned_off() {
+        let filter = Filter::new(QuickOpenMode::Open);
+        let sort = Sort::default();
+        let mut listing = Listing::new(
+            vec![
+                Entry::new("Clips".into(), EntryKind::Folder, None),
+                Entry::new("Film.mp4".into(), EntryKind::Video, None),
+                Entry::new("Music.wav".into(), EntryKind::Audio, None),
+                Entry::new("Notes.txt".into(), EntryKind::Other, None),
+            ],
+            sort,
+            filter,
+        );
+        assert_eq!(listing.len(), 2);
+        assert!(
+            listing
+                .range(0, listing.len())
+                .all(|entry| entry.kind.is_media())
+        );
+        listing.apply(
+            sort,
+            Filter {
+                only_media: false,
+                ..filter
+            },
+        );
+        assert_eq!(listing.len(), 4);
+        assert!(
+            listing
+                .get(0)
+                .is_some_and(|entry| entry.kind == EntryKind::Folder)
+        );
     }
 }

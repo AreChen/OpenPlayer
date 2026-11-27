@@ -81,6 +81,9 @@ impl PlayerView {
             .on_click(cx.listener(|view, _, _, cx| {
                 if let Some(picker) = &mut view.quick_open {
                     picker.filter.only_media = !picker.filter.only_media;
+                    if picker.filter.only_media && picker.filter.category == Category::Folders {
+                        picker.filter.category = Category::All;
+                    }
                     view.refresh_quick_listing(true, cx);
                 }
             }));
@@ -275,9 +278,12 @@ impl PlayerView {
                 false
             }
             Choice::Category(category) => {
-                let changed = picker.filter.category != category;
+                let previous = picker.filter;
                 picker.filter.category = category;
-                changed
+                if category == Category::Folders {
+                    picker.filter.only_media = false;
+                }
+                picker.filter != previous
             }
         };
         self.refresh_quick_listing(filter_changed, cx);

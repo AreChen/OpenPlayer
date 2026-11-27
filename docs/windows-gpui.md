@@ -28,7 +28,7 @@ Open **Settings → Playback → Default Player** to check how many supported fi
 
 ## File browser
 
-Use **Sort** to order folders and files by name, file type, modified date, or size. Choose ascending or descending in the same menu. **Category** lets you show all items, video, audio, or folders. Folders remain available for navigation when you select video or audio. **Only media** is on by default. Turn it off in the **All** category to see ordinary files. These controls also apply to search results.
+Use **Sort** to order folders and files by name, file type, modified date, or size. Choose ascending or descending in the same menu. **Category** lets you show all items, video, audio, or folders. **Only media** is on by default and limits the list to playable video and audio files. Use the address bar or sidebar to navigate, or turn off **Only media** to show folders in the list. Selecting **Folders** also turns off **Only media**. These controls apply to search results, and the search still scans subfolders.
 
 ## Window fitting
 
