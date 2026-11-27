@@ -341,7 +341,8 @@ assert.match(packageBuildAction, /bundle-macos-libmpv\.mjs[\s\S]*build-macos-dmg
 assert.match(macosBundleScriptSource, /LC_RPATH[\s\S]*unbundled dependency/, "macOS packaging must resolve private Mach-O load paths within the app bundle");
 assert.match(macosDmgScript, /dlopen\(argv\[1\], RTLD_NOW[\s\S]*bundle-macos-libmpv\.mjs --verify/, "macOS packaging must load the bundled libmpv and verify the mounted app's dependencies");
 assert.match(macosDmgScript, /codesign --verify --deep --strict/, "macOS packaging must verify the bundle signature after rewriting dylib references");
-assert.match(macosDmgScript, /notarytool submit[\s\S]*stapler staple/, "macOS distribution packages must be notarized and stapled");
+assert.match(macosDmgScript, /identity="-"[\s\S]*mode=ad-hoc/, "macOS packaging must support ad-hoc signing without Apple credentials");
+assert.doesNotMatch(releaseWorkflow, /macos-distribution:|secrets\.APPLE_/, "standard releases must use the ad-hoc macOS packaging defaults");
 assert.match(packageStagingScript, /createHash\("sha256"\)/, "all release packages must have a SHA-256 checksum");
 assert.match(releaseWorkflow, /stage-assets:[\s\S]*needs: \[prepare, draft, packages\]/, "draft upload must wait for the full package matrix");
 assert.match(releaseWorkflow, /attempts\/\$run_attempt\/jobs[\s\S]*Native installation and upgrade validation/, "publication must check successful native validation for the staged run");

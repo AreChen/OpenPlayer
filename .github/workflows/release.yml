@@ -124,13 +124,6 @@ jobs:
         with:
           tag: ${{ needs.prepare.outputs.tag }}
           output: packages
-          macos-distribution: ${{ needs.prepare.outputs.stage }}
-          apple-certificate: ${{ runner.os == 'macOS' && needs.prepare.outputs.stage == 'true' && secrets.APPLE_CERTIFICATE || '' }}
-          apple-certificate-password: ${{ runner.os == 'macOS' && needs.prepare.outputs.stage == 'true' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
-          apple-signing-identity: ${{ runner.os == 'macOS' && needs.prepare.outputs.stage == 'true' && secrets.APPLE_SIGNING_IDENTITY || '' }}
-          apple-id: ${{ runner.os == 'macOS' && needs.prepare.outputs.stage == 'true' && secrets.APPLE_ID || '' }}
-          apple-password: ${{ runner.os == 'macOS' && needs.prepare.outputs.stage == 'true' && secrets.APPLE_PASSWORD || '' }}
-          apple-team-id: ${{ runner.os == 'macOS' && needs.prepare.outputs.stage == 'true' && secrets.APPLE_TEAM_ID || '' }}
       - uses: actions/upload-artifact@v6
         with:
           name: openplayer-${{ matrix.platform }}
@@ -249,8 +242,7 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
           jq -e --arg tag "$RELEASE_TAG" --arg sha "$RELEASE_COMMIT" \
-            '.tag == $tag and .commit == $sha and
-             ([.builds[] | select(.platform | startswith("macos-")) | .distribution] == ["notarized", "notarized"])' \
+            '.tag == $tag and .commit == $sha' \
             release-files/release-assets.json
           draft="$(gh release view "$RELEASE_TAG" --json isDraft,targetCommitish)"
           jq -e --arg sha "$RELEASE_COMMIT" '.isDraft and .targetCommitish == $sha' <<< "$draft"
