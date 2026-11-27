@@ -88,7 +88,7 @@ jobs:
 
           exe_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
           exe="$app/Contents/MacOS/$exe_name"
-          old_ref="$(otool -L "$exe" | awk '$1 ~ /^@executable_path\/\.\.\/Frameworks\/libmpv[^/]*\.dylib$/ { print $1 }')"
+          old_ref="$(otool -L "$exe" | awk 'index($1, "@executable_path/../Frameworks/libmpv") == 1 && $1 ~ /\.dylib$/ { print $1 }')"
           test -n "$old_ref"
           brew_lib="$(brew --prefix mpv)/lib/${old_ref##*/}"
           test -f "$brew_lib"
