@@ -26,7 +26,7 @@ Common shortcuts are `Ctrl+O` to open media, `Space` to play or pause, `←` / `
 
 Choose your platform and architecture in the release list and use the corresponding SHA-256 file to verify the download. OpenPlayer 2.x checks for stable updates in the background. **Settings → About** also lets you check, download and start installing the update for your package type. Existing 1.x installations keep using GitHub's **Latest** release. [GitHub Releases](https://github.com/AreChen/OpenPlayer/releases)
 
-The Windows installer is unsigned, so SmartScreen may show a prompt. Linux requires the system libmpv runtime. [Native runtime and licenses](docs/native-deps/README.md)
+The Windows installer is unsigned, so SmartScreen may show a prompt. The Linux `.deb` uses the distribution's libmpv runtime. The AppImage bundles libmpv. [Native runtime and licenses](docs/native-deps/README.md)
 
 ## Development
 

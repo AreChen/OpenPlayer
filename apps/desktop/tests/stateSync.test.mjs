@@ -2,6 +2,43 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { deferred, hookHarness, loadSource, settle } from "./sourceHarness.mjs";
 
+test("startup media waits for platform support and skips Wayland without embedding", async () => {
+  for (const displayServer of ["wayland", "x11"]) {
+    const harness = hookHarness();
+    const platform = deferred();
+    const startupMedia = deferred();
+    const opened = [];
+    const { useBackendStateSync } = loadSource("src/hooks/useBackendStateSync.ts", {
+      react: harness.react,
+      "@tauri-apps/api/core": {
+        invoke(command) {
+          if (command === "platform_support") return platform.promise;
+          if (command === "startup_media_paths") return startupMedia.promise;
+          return Promise.resolve(null);
+        },
+      },
+      "./usePersistentStateSync": { usePersistentStateSync() {} },
+      "../app/media": {},
+    });
+    const noop = () => {};
+    harness.render(() => useBackendStateSync({
+      onPlatformSupport: noop,
+      onAppVersion: noop,
+      onAlwaysOnTop: noop,
+      onStartupMediaPaths: (paths) => opened.push(...paths),
+    }));
+
+    startupMedia.resolve(["/tmp/example.mp4"]);
+    await settle();
+    assert.deepEqual(opened, []);
+
+    const mpvEmbedVideo = displayServer === "x11";
+    platform.resolve({ os: "linux", displayServer, mpvEmbedVideo });
+    await settle();
+    assert.deepEqual(opened, mpvEmbedVideo ? ["/tmp/example.mp4"] : []);
+  }
+});
+
 test("unchanged decode preferences never overwrite a native presenter's effective software mode", async () => {
   const harness = hookHarness();
   const defaults = loadSource("src/app/constants/defaults.ts");

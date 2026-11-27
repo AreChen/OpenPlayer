@@ -42,14 +42,16 @@ export function useBackendStateSync({
 }: UseBackendStateSyncOptions) {
   useEffect(() => {
     let disposed = false;
-    invoke<PlatformSupport>("platform_support")
+    const platformSupport = invoke<PlatformSupport>("platform_support")
       .then((support) => {
         if (!disposed) {
           onPlatformSupport(support);
         }
+        return support;
       })
       .catch((error: unknown) => {
         console.warn("Failed to load platform support metadata", error);
+        return null;
       });
 
     invoke<AppVersionInfo>("app_version")
@@ -92,9 +94,9 @@ export function useBackendStateSync({
         console.warn("Failed to load system fonts", error);
       });
 
-    invoke<string[]>("startup_media_paths")
-      .then((paths) => {
-        if (!disposed && Array.isArray(paths) && paths.length > 0) {
+    Promise.all([platformSupport, invoke<string[]>("startup_media_paths")])
+      .then(([support, paths]) => {
+        if (!disposed && support?.mpvEmbedVideo !== false && Array.isArray(paths) && paths.length > 0) {
           onStartupMediaPaths(paths);
         }
       })

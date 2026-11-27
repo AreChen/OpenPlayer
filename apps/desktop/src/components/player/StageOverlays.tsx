@@ -50,17 +50,19 @@ export function StageOverlays({
   recordingState,
   onWindowCommand,
 }: StageOverlaysProps) {
+  const unsupportedPlayback = platformSupport?.mpvEmbedVideo === false;
   return (
     <>
-      {!media && (
+      {(!media || unsupportedPlayback) && (
         <div className="empty-open">
           <div className="openplayer-logo empty-open-logo" aria-hidden="true" />
-          <span>{t.contextMenu.openMedia}</span>
-          {platformSupport && !platformSupport.mpvEmbedVideo && <small className="platform-support-note">{platformUnsupportedPlaybackMessage(platformSupport, t)}</small>}
+          {unsupportedPlayback
+            ? <small className="platform-support-note" role="status">{platformUnsupportedPlaybackMessage(platformSupport, t)}</small>
+            : <span>{t.contextMenu.openMedia}</span>}
         </div>
       )}
 
-      {isAudioOnlyMedia && media && (
+      {isAudioOnlyMedia && media && !unsupportedPlayback && (
         <div className={isPlaying ? "audio-visualizer" : "audio-visualizer audio-visualizer--paused"} aria-hidden="true">
           <div className="audio-visualizer-bars">
             {audioVisualizerBarLevels.map((level, index) => (

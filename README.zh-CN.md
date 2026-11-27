@@ -26,7 +26,7 @@ OpenPlayer 是基于 Rust 和 libmpv 的桌面媒体播放器。`main` 是 2.x �
 
 在发布列表中选择平台和架构，并用配套的 SHA-256 文件验证安装包。OpenPlayer 2.x 会在后台检查稳定版更新，也可以在「设置 → 关于」检查、下载并发起当前安装包类型的升级。现有 1.x 安装继续使用 GitHub 的「Latest」发行版。[GitHub 发布列表](https://github.com/AreChen/OpenPlayer/releases)
 
-Windows 安装包未签名，SmartScreen 可能提示。Linux 包使用系统提供的 libmpv。[原生依赖与许可证](docs/native-deps/README.md)
+Windows 安装包未签名，SmartScreen 可能提示。Linux `.deb` 使用发行版提供的 libmpv，AppImage 自带 libmpv。[原生依赖与许可证](docs/native-deps/README.md)
 
 ## 本地开发
 

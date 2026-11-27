@@ -3,7 +3,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs
 import { tmpdir, userInfo } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { PackageSmokeHost } from "./package-smoke-host.mjs";
-import { capture, generateMedia, packages, run, sha256, start, waitFor, withFixture, writeEvidence } from "./package-smoke-tools.mjs";
+import { generateMedia, packages, run, sha256, start, waitFor, withFixture, writeEvidence } from "./package-smoke-tools.mjs";
 
 const [baseDirectory, targetDirectory, tag, targetTag, commit, evidenceDirectory, profileHelper] = process.argv.slice(2);
 if (!profileHelper) {
@@ -16,10 +16,6 @@ assert.equal(to.commit, commit);
 assert.equal(from.platform, to.platform);
 const oldVersion = tag.slice(1);
 const newVersion = targetTag.slice(1);
-
-async function profile(host, action, media) {
-  return JSON.parse(await capture(resolve(profileHelper), [action, host.storage, media]));
-}
 
 async function processAlive(player) {
   assert.equal(player.child.exitCode, null, "updater unexpectedly exited the original player");
@@ -210,14 +206,14 @@ try {
     evidence.packages.push(result);
     const directory = await mkdtemp(join(tmpdir(), "openplayer-upgrade-"));
     const media = await generateMedia(directory);
-    const host = new PackageSmokeHost(directory);
+    const host = new PackageSmokeHost(directory, profileHelper);
     try {
       await host.prepare();
       await host.install(path, oldVersion);
       await host.play(media.video, false);
       await host.play(media.audio, false);
       const original = await host.checksum();
-      const before = await profile(host, "seed", media.audio);
+      const before = await host.readProfile(media.audio, "seed");
       const priorAudio = before.history.find((entry) => basename(entry.path) === basename(media.audio));
       assert.ok(priorAudio?.position > 0, "v2.0.0 did not persist audio progress");
 
@@ -244,7 +240,7 @@ try {
       assert.notEqual(await host.checksum(), original, "upgrade left the old executable in place");
       if (host.packageKind === "appimage") assert.equal(await host.checksum(), await sha256(target));
       result.checks.launchAfterUpgrade = await verifyRelaunch(host, target, media.video);
-      const after = await profile(host, "read", media.audio);
+      const after = await host.readProfile(media.audio);
       assert.deepEqual(after.settings, before.settings, "playback settings changed during upgrade");
       assert.deepEqual(after.favorites, before.favorites, "favorites changed during upgrade");
       assert.deepEqual(after.history.find((entry) => basename(entry.path) === basename(media.audio)), priorAudio);

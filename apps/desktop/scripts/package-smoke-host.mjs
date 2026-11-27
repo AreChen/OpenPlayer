@@ -1,5 +1,5 @@
 import { chmod, copyFile, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, extname, join } from "node:path";
+import { basename, dirname, extname, join, resolve } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { capture, run, sha256, start, waitFor } from "./package-smoke-tools.mjs";
 
@@ -51,8 +51,9 @@ print("ok")
 `;
 
 export class PackageSmokeHost {
-  constructor(directory) {
+  constructor(directory, profileHelper) {
     this.directory = directory;
+    this.profileHelper = resolve(profileHelper);
     this.environment = { ...process.env };
     this.background = [];
     this.profile = join(directory, "profile");
@@ -259,6 +260,10 @@ export class PackageSmokeHost {
     return sha256(this.binary);
   }
 
+  async readProfile(media, action = "read") {
+    return JSON.parse(await capture(this.profileHelper, [action, this.storage, media]));
+  }
+
   async cleanup() {
     for (const { child } of this.background.reverse()) {
       if (child.exitCode === null && child.signalCode === null) child.kill();
@@ -291,7 +296,14 @@ export class PackageSmokeHost {
   async play(media, controlsRequested = true) {
     const player = this.launch([media]);
     const window = await this.window(player);
-    await setTimeout(3_000);
+    await waitFor(`persisted playback progress for ${basename(media)}`, async () => {
+      if (player.child.exitCode !== null || player.child.signalCode !== null) {
+        throw new Error("OpenPlayer exited before recording playback progress");
+      }
+      // The running player briefly owns the database while writing progress.
+      const profile = await this.readProfile(media).catch(() => null);
+      return profile?.history.some((entry) => basename(entry.path) === basename(media) && entry.position > 0);
+    }, 35_000);
     const controls = controlsRequested && await this.exerciseControls(player, window);
     await setTimeout(1_500);
     const { code, signal } = await this.close(player, window);

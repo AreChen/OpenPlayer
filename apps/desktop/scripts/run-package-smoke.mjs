@@ -3,7 +3,7 @@ import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { PackageSmokeHost } from "./package-smoke-host.mjs";
-import { capture, generateMedia, packages, writeEvidence } from "./package-smoke-tools.mjs";
+import { generateMedia, packages, writeEvidence } from "./package-smoke-tools.mjs";
 
 const [candidateDirectory, tag, commit, evidenceDirectory, profileHelper] = process.argv.slice(2);
 if (!profileHelper) {
@@ -18,7 +18,7 @@ try {
   for (const path of candidate.files) {
     const directory = await mkdtemp(join(tmpdir(), "openplayer-installed-"));
     const media = await generateMedia(directory);
-    const host = new PackageSmokeHost(directory);
+    const host = new PackageSmokeHost(directory, profileHelper);
     const name = basename(path);
     const result = { name, sha256: candidate.assets.find((asset) => asset.name === name).sha256, checks: {} };
     evidence.packages.push(result);
@@ -27,14 +27,14 @@ try {
       await host.install(path, tag.slice(1));
       result.checks.installed = true;
       result.checks.video = await host.play(media.video);
-      const before = JSON.parse(await capture(resolve(profileHelper), ["read", host.storage, media.video]));
+      const before = await host.readProfile(media.video);
       assert.ok(before.history.some((entry) => basename(entry.path) === basename(media.video) && entry.position > 0),
         "the installed player did not persist video progress");
       if (result.checks.video.controlsSent) {
         assert.ok(before.settings?.volume < 82, "the installed player did not apply the volume key");
       }
       result.checks.audio = await host.play(media.audio, false);
-      const after = JSON.parse(await capture(resolve(profileHelper), ["read", host.storage, media.video]));
+      const after = await host.readProfile(media.video);
       assert.ok(after.history.some((entry) => basename(entry.path) === basename(media.audio) && entry.position > 0),
         "the installed player did not persist audio progress");
       assert.deepEqual(after.settings, before.settings, "playback settings changed after relaunch");
