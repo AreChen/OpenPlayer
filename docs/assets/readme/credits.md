@@ -1,12 +1,12 @@
 # README imagery
 
-[OpenPlayer cover](openplayer.webp) was created with the imagegen built-in image generator. The same tool created the original still for the short *Arctic Passage* demo clip.
+[OpenPlayer cover](openplayer-orbit.webp) was created with the imagegen built-in image generator. The same tool created the original still for the short *Arctic Passage* demo clip.
 
 ## Generation prompts
 
 **Cover**
 
-> Create an ultra-wide 2.8:1 editorial cover for the open-source cinema player OpenPlayer. On the left, beautifully typeset the single word “OpenPlayer” in large ivory modern grotesk lettering, clear at phone width. On the right, a single physical 35 mm film ribbon twists into an open, forward-facing triangular loop, lit through amber photographic emulsion. Show precise sprocket holes, translucent frames and a faint teal reflection in dark optical glass. Rich charcoal background, deep shadows, restrained tungsten light, tactile macro studio photography. Balance type and sculpture across the middle of the wide frame, generous breathing room at the edges. No other words, badges, UI, logos or borders.
+> Create a very wide, roughly 3:1 cinematic brand banner for the GitHub README of OpenPlayer, inspired by the new OpenPlayer site's orbital screening room. Understated premium modern art direction. A huge sculptural gas giant with smooth deep violet shadow and a restrained pale peach illuminated crescent fills the right side and extends beyond the right edge. One razor-thin lavender planetary ring cuts diagonally in front; a distant low horizon barely visible. Carbon-black left half, uncluttered typography, fine spatial depth, atmospheric photoreal planetary lighting, quiet elegance, sparse stars. On the left at mid-height typeset exactly “OpenPlayer” in a large crisp off-white contemporary Bricolage-style geometric grotesk, generous optical margins, mixed-case exactly as written. The composition must read beautifully at 450 pixels wide. No other text, no film reels, sprockets, vintage artifacts, device mockups, buttons, badges, decorative border, noisy nebulae or fake interface. Full bleed.
 
 **Demo footage**
 

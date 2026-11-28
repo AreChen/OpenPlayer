@@ -1,7 +1,7 @@
-<p align="center"><img src="docs/assets/readme/openplayer.webp" width="100%" alt="OpenPlayer，金色胶片折成的播放标志"></p>
+<p align="center"><img src="docs/assets/readme/openplayer-orbit.webp" width="100%" alt="OpenPlayer 与紫色环形行星"></p>
 
 <p align="center"><strong>用 Rust 和 libmpv 构建的开源桌面影音播放器。</strong></p>
-<p align="center"><a href="https://github.com/AreChen/OpenPlayer/releases/latest">下载 OpenPlayer</a> · <a href="README.md">English</a> · <a href="docs/architecture/README.md">项目架构</a> · <a href="LICENSE">MIT 许可证</a></p>
+<p align="center"><a href="https://github.com/AreChen/OpenPlayer/releases/latest">下载 OpenPlayer</a> · <a href="https://player.playones.com/">官网</a> · <a href="README.md">English</a> · <a href="docs/architecture/README.md">项目架构</a> · <a href="LICENSE">MIT 许可证</a></p>
 
 ## 播放
 
@@ -37,4 +37,4 @@
 cargo run --locked -p openplayer-desktop -- "/path/to/your/video.mp4"
 ```
 
-[播放与窗口验证](docs/architecture/regression-checks.md) · [原生依赖与许可](docs/native-deps/README.md) · [反馈问题](https://github.com/AreChen/OpenPlayer/issues)
+[Rust 插件 SDK](docs/plugins/native-sdk.md) · [官方插件](https://github.com/AreChen/openplayer-plugins/tree/main/native) · [播放与窗口验证](docs/architecture/regression-checks.md) · [原生依赖与许可](docs/native-deps/README.md) · [反馈问题](https://github.com/AreChen/OpenPlayer/issues)

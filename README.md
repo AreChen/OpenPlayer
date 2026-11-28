@@ -1,7 +1,7 @@
-<p align="center"><img src="docs/assets/readme/openplayer.webp" width="100%" alt="OpenPlayer — a golden film ribbon folded into a play symbol"></p>
+<p align="center"><img src="docs/assets/readme/openplayer-orbit.webp" width="100%" alt="OpenPlayer beside a violet ringed planet"></p>
 
 <p align="center"><strong>An open-source desktop player for video and audio, built with Rust and libmpv.</strong></p>
-<p align="center"><a href="https://github.com/AreChen/OpenPlayer/releases/latest">Download OpenPlayer</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="docs/architecture/README.md">Architecture</a> · <a href="LICENSE">MIT license</a></p>
+<p align="center"><a href="https://github.com/AreChen/OpenPlayer/releases/latest">Download OpenPlayer</a> · <a href="https://player.playones.com/">Website</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="docs/architecture/README.md">Architecture</a> · <a href="LICENSE">MIT license</a></p>
 
 ## Watch
 
@@ -37,4 +37,4 @@ Install Rust 1.100.0 and the libmpv development files for your platform, then ru
 cargo run --locked -p openplayer-desktop -- "/path/to/your/video.mp4"
 ```
 
-[Playback and window checks](docs/architecture/regression-checks.md) · [Native dependencies](docs/native-deps/README.md) · [Report an issue](https://github.com/AreChen/OpenPlayer/issues)
+[Rust plugin SDK](docs/plugins/native-sdk.md) · [Official plugins](https://github.com/AreChen/openplayer-plugins/tree/main/native) · [Playback and window checks](docs/architecture/regression-checks.md) · [Native dependencies](docs/native-deps/README.md) · [Report an issue](https://github.com/AreChen/OpenPlayer/issues)
