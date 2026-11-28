@@ -8,7 +8,7 @@ The desktop binary has one GPUI Fast window. Playback controls, settings, the pl
 | macOS | libmpv software render buffer uploaded into the GPUI scene | Finder opens the verified DMG. Quit the player and drag the new app to Applications. |
 | Linux | The same frame upload in a GPUI X11 or Wayland window | The Debian package uses apt with PolicyKit. The AppImage is replaced atomically. The About panel can restart the upgraded player. |
 
-The release checker filters the stable GitHub releases by installed major version, architecture and package type. The download is verified against the matching SHA-256 before installation. The published 2.0.0 Linux and macOS installers precede the native UI migration. [Updater](../../apps/desktop/native/src/updater/) · [Published release](../releases/v2.0.0.md)
+The release checker filters the stable GitHub releases by installed major version, architecture and package type. The download is verified against the matching SHA-256 before installation. The Linux and macOS packages ship the unified native interface starting with 2.0.1. [Updater](../../apps/desktop/native/src/updater/) · [2.0.1 release notes](../releases/v2.0.1.md)
 
 ## Build
 
@@ -27,7 +27,7 @@ cargo test --locked --workspace
 
 ## GitHub releases
 
-Pushing a stable `v2.x.y` tag builds five packages and stages a draft. To publish that draft automatically when the four native installation and upgrade jobs and the matching repository CI pass, set the repository Actions variable `OPENPLAYER_AUTO_PUBLISH` to `true` before pushing the tag. For a single release, run the Release workflow on `main` with the matching tag and select `auto_publish`. The workflow compares the uploaded files to the validated artifacts before marking the release Latest. The version in Cargo and the corresponding release notes must match the tag. [Release workflow](../../.github/workflows/release.yml)
+Pushing a stable `v2.x.y` tag builds five packages and stages a draft. The repository enables `OPENPLAYER_AUTO_PUBLISH`, so the draft publishes automatically once the four installation and upgrade jobs and the matching repository CI pass. For a single release, run the Release workflow on `main` with the matching tag and select `auto_publish`. The workflow compares the uploaded files to the validated artifacts before marking the release Latest. The version in Cargo and the corresponding release notes must match the tag. [Release workflow](../../.github/workflows/release.yml)
 
 For a verification-only build, leave the dispatch options clear. For a separately approved release, stage a draft and then run the existing `publish` option with its candidate run ID and native acceptance URL.
 

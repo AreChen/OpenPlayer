@@ -17,19 +17,19 @@
 
 两张截图均来自 Windows 正式版的英文界面。封面和演示影片素材为本项目生成。[图像来源](docs/assets/readme/credits.md)
 
-## 下载 OpenPlayer 2.0.0
+## 下载 OpenPlayer 2.0.1
 
 | 平台 | 安装包 |
 | --- | --- |
-| Windows x64 | [Windows 安装程序](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.0/OpenPlayer_2.0.0_x64-setup.exe) |
-| macOS | [Apple Silicon DMG](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.0/OpenPlayer_2.0.0_arm64.dmg) · [Intel DMG](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.0/OpenPlayer_2.0.0_x64.dmg) |
-| Linux x64 | [Debian 安装包](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.0/OpenPlayer_2.0.0_amd64.deb) · [AppImage](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.0/OpenPlayer_2.0.0_amd64.AppImage) |
+| Windows x64 | [Windows 安装程序](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.1/OpenPlayer_2.0.1_x64-setup.exe) |
+| macOS | [Apple Silicon DMG](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.1/OpenPlayer_2.0.1_arm64.dmg) · [Intel DMG](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.1/OpenPlayer_2.0.1_x64.dmg) |
+| Linux x64 | [Debian 安装包](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.1/OpenPlayer_2.0.1_amd64.deb) · [AppImage](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.1/OpenPlayer_2.0.1_amd64.AppImage) |
 
-在**设置 → 关于**中可以检查当前主版本的稳定更新、下载匹配的安装包并校验 SHA-256。发布页也提供了每个安装包的校验文件。[版本说明与校验文件](https://github.com/AreChen/OpenPlayer/releases/tag/v2.0.0)
+在**设置 → 关于**中可以检查当前主版本的稳定更新、下载匹配的安装包并校验 SHA-256。发布页也提供了每个安装包的校验文件。[版本说明与校验文件](https://github.com/AreChen/OpenPlayer/releases/tag/v2.0.1)
 
 ## 从源码运行
 
-`main` 上的 Windows、macOS 和 Linux 共用 Rust 编写的 GPUI Fast 界面。Windows 通过 D3D11 合成视频，macOS 和 Linux 使用 libmpv 软件渲染接口将视频帧放入 GPUI 窗口。已发布的 2.0.0 macOS 和 Linux 安装包早于本次迁移，仍使用当时的桌面界面。
+`main` 上的 Windows、macOS 和 Linux 共用 Rust 编写的 GPUI Fast 界面。Windows 通过 D3D11 合成视频，macOS 和 Linux 使用 libmpv 软件渲染接口将视频帧放入 GPUI 窗口。
 
 安装 Rust 1.100.0 和对应平台的 libmpv 开发文件后，在仓库根目录运行以下命令。[构建依赖](docs/architecture/README.md#build)
 

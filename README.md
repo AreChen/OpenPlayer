@@ -17,19 +17,19 @@ Double-click the empty window to browse. Jump straight to a path, pin a folder, 
 
 Both screenshots show the released Windows player running in English. The cover and the sample footage were created for this project. [Image credits](docs/assets/readme/credits.md)
 
-## Get OpenPlayer 2.0.0
+## Get OpenPlayer 2.0.1
 
 | Platform | Download |
 | --- | --- |
-| Windows x64 | [Windows installer](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.0/OpenPlayer_2.0.0_x64-setup.exe) |
-| macOS | [Apple Silicon DMG](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.0/OpenPlayer_2.0.0_arm64.dmg) · [Intel DMG](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.0/OpenPlayer_2.0.0_x64.dmg) |
-| Linux x64 | [Debian package](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.0/OpenPlayer_2.0.0_amd64.deb) · [AppImage](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.0/OpenPlayer_2.0.0_amd64.AppImage) |
+| Windows x64 | [Windows installer](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.1/OpenPlayer_2.0.1_x64-setup.exe) |
+| macOS | [Apple Silicon DMG](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.1/OpenPlayer_2.0.1_arm64.dmg) · [Intel DMG](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.1/OpenPlayer_2.0.1_x64.dmg) |
+| Linux x64 | [Debian package](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.1/OpenPlayer_2.0.1_amd64.deb) · [AppImage](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.1/OpenPlayer_2.0.1_amd64.AppImage) |
 
-**Settings → About** checks for stable releases in the installed major version, downloads the matching package and verifies its SHA-256. The release includes a checksum for each installer. [Release notes and checksums](https://github.com/AreChen/OpenPlayer/releases/tag/v2.0.0)
+**Settings → About** checks for stable releases in the installed major version, downloads the matching package and verifies its SHA-256. The release includes a checksum for each installer. [Release notes and checksums](https://github.com/AreChen/OpenPlayer/releases/tag/v2.0.1)
 
 ## Play from source
 
-On `main`, Windows, macOS and Linux share a GPUI Fast interface written in Rust. Windows presents video through D3D11. The macOS and Linux builds use libmpv's software render API to place frames in the GPUI scene. The published 2.0.0 DMGs and Linux packages predate this migration and use the earlier desktop interface.
+On `main`, Windows, macOS and Linux share a GPUI Fast interface written in Rust. Windows presents video through D3D11. The macOS and Linux builds use libmpv's software render API to place frames in the GPUI scene.
 
 Install Rust 1.100.0 and the libmpv development files for your platform, then run this from the repository root. [Build prerequisites](docs/architecture/README.md#build)
 

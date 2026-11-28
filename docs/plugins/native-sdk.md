@@ -1,6 +1,6 @@
 # Rust plugin SDK 2
 
-Build OpenPlayer from `main` to use native plugins. Open **Settings → Plugins** to run an action or change which plugins are enabled. This SDK first appears after the 2.0.0 release. [Run from source](../../README.md#play-from-source)
+Native plugins are available starting with OpenPlayer 2.0.1. Open **Settings → Plugins** to run an action or change which plugins are enabled. [Release notes](../releases/v2.0.1.md)
 
 | Bundled plugin | Actions |
 | --- | --- |
