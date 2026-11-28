@@ -6,7 +6,8 @@ cargo build --release --locked --bin openplayer-desktop
 metadata=$(cargo metadata --no-deps --format-version=1)
 target=$(jq -r '.target_directory' <<< "$metadata")
 version=$(jq -r '.packages[] | select(.name=="openplayer-desktop") | .version' <<< "$metadata")
-contents="$target/release/bundle/macos/OpenPlayer.app/Contents"
+app="${1:-$target/release/bundle/macos/OpenPlayer.app}"
+contents="$app/Contents"
 mkdir -p "$contents/MacOS" "$contents/Resources"
 install -m755 "$target/release/openplayer-desktop" "$contents/MacOS/openplayer-desktop"
 install -m644 apps/desktop/native/icons/icon.icns "$contents/Resources/OpenPlayer.icns"

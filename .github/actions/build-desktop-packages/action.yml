@@ -129,13 +129,6 @@ runs:
         PACKAGE_OUTPUT: ${{ inputs.output }}
       run: node apps/desktop/scripts/stage-release-packages.mjs stage "$RELEASE_TAG" linux-x64 "$PACKAGE_OUTPUT" native
 
-    - name: Build macOS app bundle
-      if: runner.os == 'macOS'
-      shell: bash
-      run: |
-        export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Wl,-headerpad_max_install_names"
-        bash apps/desktop/scripts/build-macos-app.sh
-
     - name: Build and validate macOS DMG
       if: runner.os == 'macOS'
       shell: bash
@@ -150,8 +143,6 @@ runs:
         OPENPLAYER_APPLE_PASSWORD: ${{ inputs.apple-password }}
         OPENPLAYER_APPLE_TEAM_ID: ${{ inputs.apple-team-id }}
       run: |
-        bundle="${CARGO_TARGET_DIR:-target}/release/bundle/macos/OpenPlayer.app"
-        node apps/desktop/scripts/bundle-macos-libmpv.mjs "$bundle"
         case "$RUNNER_ARCH" in
           ARM64) arch=arm64 ;;
           X64) arch=x64 ;;

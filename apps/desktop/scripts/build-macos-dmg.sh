@@ -11,9 +11,10 @@ case "$machine_arch:$arch" in
 esac
 
 bundle="${CARGO_TARGET_DIR:-target}/release/bundle"
-app="$bundle/macos/OpenPlayer.app"
 dmg="$bundle/dmg/OpenPlayer_${version}_${arch}.dmg"
 temporary="$(mktemp -d)"
+dmg_root="$temporary/dmg"
+app="$dmg_root/OpenPlayer.app"
 keychain=""
 probe=""
 mountpoint="$temporary/mounted"
@@ -29,6 +30,12 @@ cleanup() {
   rm -rf "$temporary"
 }
 trap cleanup EXIT
+
+# Build straight into a fresh volume tree so earlier packages cannot contribute
+# dylibs, their rewritten install names, or signatures to the next DMG.
+export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Wl,-headerpad_max_install_names"
+bash apps/desktop/scripts/build-macos-app.sh "$app"
+node apps/desktop/scripts/bundle-macos-libmpv.mjs "$app"
 
 exe_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
 exe="$app/Contents/MacOS/$exe_name"
@@ -132,9 +139,7 @@ if [[ "$mode" == notarized ]]; then
   notarize_and_staple "$temporary/OpenPlayer.zip" "$app"
 fi
 
-dmg_root="$temporary/dmg"
-mkdir -p "$(dirname "$dmg")" "$dmg_root" "$mountpoint"
-ditto "$app" "$dmg_root/OpenPlayer.app"
+mkdir -p "$(dirname "$dmg")" "$mountpoint"
 ln -s /Applications "$dmg_root/Applications"
 for attempt in 1 2 3; do
   if hdiutil create -volname OpenPlayer -srcfolder "$dmg_root" -ov -format UDZO "$dmg"; then
