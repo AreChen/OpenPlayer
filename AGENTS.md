@@ -16,4 +16,4 @@ rtk git diff --check
 
 改动窗口、视频、快捷键或更新器时还要走对应的[实机检查](docs/architecture/regression-checks.md)。版本定义在工作区 Cargo.toml。同步 Cargo.lock 中的本包版本，并在 docs/releases/ 下记录对应版本。发布工作流验证四种平台架构、五种安装包和校验文件。稳定 2.x 作为 GitHub Latest，应用内更新只选择同一主版本。[发布流程](.github/workflows/release.yml)
 
-插件 SDK 暂缓。历史 API 和旧插件实现见 [SDK 1.6 文档](docs/plugins/README.md) 和 [1.6.10 源码](https://github.com/AreChen/OpenPlayer/tree/v1.6.10)。
+插件开发使用 [Rust SDK 2](docs/plugins/native-sdk.md)。新增宿主动作时同步维护 SDK 权限、原生分发和测试。内置清单及 Wasm 从[官方插件源码](https://github.com/AreChen/openplayer-plugins/tree/main/native)生成。历史实现见 [SDK 1.6 文档](docs/plugins/README.md)。

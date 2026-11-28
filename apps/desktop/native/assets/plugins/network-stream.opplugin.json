@@ -1,0 +1,24 @@
+{
+  "apiVersion": 2,
+  "id": "dev.openplayer.network.stream",
+  "version": "2.0.0",
+  "name": {
+    "en": "Network Stream",
+    "zhCn": "网络流"
+  },
+  "permissions": [
+    "openStream"
+  ],
+  "actions": [
+    {
+      "id": "open-stream",
+      "label": {
+        "en": "Open network stream…",
+        "zhCn": "打开网络流…"
+      },
+      "command": {
+        "type": "openStreamDialog"
+      }
+    }
+  ]
+}

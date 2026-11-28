@@ -72,7 +72,23 @@
     "switchToSoftware": "切换到软件解码",
     "switchToHardware": "切换到硬件解码"
   },
+  "plugins": {
+    "enabled": "已启用",
+    "disabled": "已停用",
+    "rescan": "重新扫描插件",
+    "folder": "打开插件文件夹",
+    "openStream": "打开网络流",
+    "capture": "截取视频画面",
+    "subtitleStyle": "调整字幕样式",
+    "working": "处理中…",
+    "needsMedia": "请先打开媒体。",
+    "needsVideo": "请先播放视频再截图。",
+    "mediaChanged": "当前媒体已切换，请重新执行操作。",
+    "scaleSet": "字幕大小已设为 {scale}。",
+    "saved": "截图已保存到 {path}"
+  },
   "contextMenu": {
+    "plugins": "插件",
     "openMedia": "打开媒体",
     "appendFiles": "加入文件到播放列表",
     "appendFolder": "加入文件夹到播放列表",
@@ -95,6 +111,7 @@
   "settings": {
     "title": "设置",
     "nav": {
+      "plugins": "插件",
       "appearance": "外观",
       "playback": "播放",
       "shortcuts": "快捷键",

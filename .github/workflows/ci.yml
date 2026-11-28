@@ -50,6 +50,11 @@ jobs:
           cargo fmt --all -- --check
           node apps/desktop/scripts/verify-release.mjs
           git diff-tree --check HEAD^ HEAD
+      - name: Build the Rust SDK guest example
+        if: runner.os == 'Linux'
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo build --locked -p openplayer-plugin-sdk --example smart_capture --no-default-features --release --target wasm32-unknown-unknown
       - name: Check native runtime dependencies
         shell: bash
         run: |

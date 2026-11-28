@@ -90,6 +90,10 @@ impl Controller {
             .get(MEDIA_BROWSER_OPTIONS)
             .and_then(|value| serde_json::from_str(value).ok())
             .unwrap_or_default();
+        self.plugin_enablement = stored
+            .get(super::preferences::PLUGIN_ENABLEMENT)
+            .and_then(|value| serde_json::from_str(value).ok())
+            .unwrap_or_default();
         self.last_media_directory = stored
             .get(LAST_MEDIA_DIRECTORY)
             .map(PathBuf::from)
@@ -324,6 +328,13 @@ impl Controller {
                     shortcut: Some("toggleAlwaysOnTop"),
                     enabled: !cfg!(target_os = "linux")
                         || std::env::var_os("WAYLAND_DISPLAY").is_none(),
+                },
+                Row {
+                    action: "openPlugins",
+                    label: "plugins",
+                    icon: "plugin",
+                    shortcut: None,
+                    enabled: true,
                 },
                 Row {
                     action: "openSettings",
@@ -632,6 +643,16 @@ impl Controller {
                 self.ui.panel = None;
             }
             "openSettings" => self.ui.settings = Some("appearance".into()),
+            "openPlugins" => self.ui.settings = Some("plugins".into()),
+            "openPluginDirectory" => {
+                let directory = self.plugin_directory();
+                std::fs::create_dir_all(&directory)?;
+                shell_open(
+                    directory
+                        .to_str()
+                        .ok_or_else(|| anyhow!("Invalid plugin directory"))?,
+                )?;
+            }
             "closeSettings" => {
                 self.ui.settings = None;
                 self.ui.recording_shortcut = None;

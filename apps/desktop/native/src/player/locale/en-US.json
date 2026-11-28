@@ -72,7 +72,23 @@
     "switchToSoftware": "Switch to software decoding",
     "switchToHardware": "Switch to hardware decoding"
   },
+  "plugins": {
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "rescan": "Rescan plugins",
+    "folder": "Open plugin folder",
+    "openStream": "Open streams",
+    "capture": "Capture frames",
+    "subtitleStyle": "Style subtitles",
+    "working": "Working…",
+    "needsMedia": "Open media to use this action.",
+    "needsVideo": "Play a video to capture a frame.",
+    "mediaChanged": "The active media changed. Try the action again.",
+    "scaleSet": "Subtitle size set to {scale}.",
+    "saved": "Screenshot saved to {path}"
+  },
   "contextMenu": {
+    "plugins": "Plugins",
     "openMedia": "Open Media",
     "appendFiles": "Add Files to Playlist",
     "appendFolder": "Add Folder to Playlist",
@@ -95,6 +111,7 @@
   "settings": {
     "title": "Settings",
     "nav": {
+      "plugins": "Plugins",
       "appearance": "Appearance",
       "playback": "Playback",
       "shortcuts": "Shortcuts",

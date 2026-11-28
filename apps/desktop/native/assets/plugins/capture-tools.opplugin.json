@@ -1,0 +1,24 @@
+{
+  "apiVersion": 2,
+  "id": "dev.openplayer.capture.tools",
+  "version": "2.0.0",
+  "name": {
+    "en": "Capture Tools",
+    "zhCn": "截图工具"
+  },
+  "permissions": [
+    "capture"
+  ],
+  "actions": [
+    {
+      "id": "save-screenshot",
+      "label": {
+        "en": "Save screenshot",
+        "zhCn": "保存截图"
+      },
+      "command": {
+        "type": "captureScreenshot"
+      }
+    }
+  ]
+}

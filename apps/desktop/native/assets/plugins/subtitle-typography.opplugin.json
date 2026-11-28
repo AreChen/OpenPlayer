@@ -1,0 +1,48 @@
+{
+  "apiVersion": 2,
+  "id": "dev.openplayer.subtitle.typography",
+  "version": "2.0.0",
+  "name": {
+    "en": "Subtitle Typography",
+    "zhCn": "字幕排版"
+  },
+  "runtime": "wasm",
+  "permissions": [
+    "subtitleStyle"
+  ],
+  "actions": [
+    {
+      "id": "smaller",
+      "label": {
+        "en": "Decrease subtitle size",
+        "zhCn": "缩小字幕"
+      },
+      "command": {
+        "type": "setSubtitleScale",
+        "scale": 0.8
+      }
+    },
+    {
+      "id": "reset",
+      "label": {
+        "en": "Reset subtitle size",
+        "zhCn": "还原字幕大小"
+      },
+      "command": {
+        "type": "setSubtitleScale",
+        "scale": 1.0
+      }
+    },
+    {
+      "id": "larger",
+      "label": {
+        "en": "Increase subtitle size",
+        "zhCn": "放大字幕"
+      },
+      "command": {
+        "type": "setSubtitleScale",
+        "scale": 1.25
+      }
+    }
+  ]
+}

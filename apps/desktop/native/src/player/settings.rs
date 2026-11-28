@@ -29,6 +29,7 @@ impl PlayerView {
             ("appearance", "palette"),
             ("playback", "play"),
             ("shortcuts", "settings"),
+            ("plugins", "plugin"),
             ("about", "info"),
         ];
         let size = window.viewport_size();
@@ -36,6 +37,7 @@ impl PlayerView {
         let content = match section {
             "playback" => self.playback_settings(cx),
             "shortcuts" => self.shortcut_settings(cx),
+            "plugins" => self.plugin_settings(cx),
             "about" => self.about(cx),
             _ => self.appearance(cx),
         };

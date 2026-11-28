@@ -1,3 +1,5 @@
+#![cfg(feature = "manifest")]
+
 use openplayer_plugin_sdk::{
     API_VERSION, Action, HostAction, LocalizedText, Permission, PluginManifest,
 };

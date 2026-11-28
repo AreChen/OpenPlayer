@@ -1,6 +1,7 @@
 mod media_paths;
 mod playback_store;
 mod player;
+pub mod plugins;
 #[cfg(windows)]
 mod shell_preview;
 mod store_schema;

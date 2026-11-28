@@ -3,6 +3,7 @@ mod preferences;
 mod ui;
 
 use std::{
+    collections::BTreeMap,
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant},
@@ -79,6 +80,7 @@ pub(super) struct Controller {
     stream_history: Arc<Vec<NetworkStreamHistoryEntry>>,
     store_path: PathBuf,
     preferences: Preferences,
+    plugin_enablement: BTreeMap<String, bool>,
     favorite_directories: Vec<PathBuf>,
     favorite_media: Vec<PathBuf>,
     media_browser_options: BrowserOptions,
@@ -107,6 +109,7 @@ impl Controller {
             stream_history: Arc::default(),
             store_path,
             preferences,
+            plugin_enablement: BTreeMap::new(),
             favorite_directories: Vec::new(),
             favorite_media: Vec::new(),
             media_browser_options: BrowserOptions::default(),
@@ -190,6 +193,28 @@ impl Controller {
 
     pub(super) fn has_queue(&self) -> bool {
         !self.queue.is_empty()
+    }
+
+    pub(super) fn plugin_directory(&self) -> PathBuf {
+        self.store_path.with_file_name("plugins")
+    }
+
+    pub(super) fn plugin_enabled(&self, id: &str, bundled: bool) -> bool {
+        self.plugin_enablement.get(id).copied().unwrap_or(bundled)
+    }
+
+    pub(super) fn set_plugin_enabled(&mut self, id: &str, enabled: bool) {
+        self.plugin_enablement.insert(id.to_owned(), enabled);
+        self.preferences.set(
+            preferences::PLUGIN_ENABLEMENT,
+            Some(serde_json::to_string(&self.plugin_enablement).expect("boolean preferences")),
+        );
+        self.schedule_settings();
+    }
+
+    pub(super) fn plugin_media(&self) -> Option<(Arc<Mpv>, &str)> {
+        self.ui.loaded.then_some(())?;
+        Some((self.mpv.clone()?, &self.current.as_ref()?.source))
     }
 
     pub(super) fn media_browser_options(&self) -> BrowserOptions {

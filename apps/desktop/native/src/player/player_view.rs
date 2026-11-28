@@ -1,6 +1,7 @@
 mod decode;
 mod input;
 mod media_properties;
+mod plugins;
 mod quick_open;
 mod timeline;
 mod update_flow;
@@ -73,6 +74,7 @@ pub(super) struct PlayerView {
     render_updates: Option<Task<()>>,
     video_adapter: Option<u32>,
     controller: Controller,
+    plugins: plugins::PluginPanel,
     platform: Rc<dyn Platform>,
     pub(super) ui: Arc<UiState>,
     pub(super) palette: Palette,
@@ -171,6 +173,7 @@ impl PlayerView {
             render_updates: None,
             video_adapter,
             controller,
+            plugins: plugins::PluginPanel::default(),
             platform,
             palette: palette_for(&ui),
             playback_clock: PlaybackClock::new(&ui),
@@ -447,6 +450,21 @@ impl PlayerView {
 
     pub(super) fn send(&mut self, kind: &'static str, value: Value, cx: &mut Context<Self>) {
         match kind {
+            "reloadPlugins" => {
+                self.load_plugins(cx);
+                return;
+            }
+            "togglePlugin" => {
+                if let Some(id) = value.as_str() {
+                    self.toggle_plugin(id);
+                }
+            }
+            "runPluginAction" => {
+                if let (Some(plugin), Some(action)) = (value[0].as_str(), value[1].as_str()) {
+                    self.run_plugin_action(plugin.to_owned(), action.to_owned(), cx);
+                }
+                return;
+            }
             "checkForUpdates" => {
                 self.check_for_updates(cx);
                 return;
@@ -490,6 +508,9 @@ impl PlayerView {
         let entered_playback_settings = self.ui.settings.as_deref() != Some("playback")
             && state.settings.as_deref() == Some("playback");
         self.apply(state, cx, true);
+        if self.ui.settings.as_deref() == Some("plugins") && self.plugins.needs_discovery() {
+            self.load_plugins(cx);
+        }
         #[cfg(windows)]
         if entered_playback_settings {
             self.refresh_default_app_status(cx);

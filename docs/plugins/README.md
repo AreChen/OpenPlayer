@@ -1,6 +1,6 @@
 # OpenPlayer Plugins
 
-This document covers SDK 1.6 and the Tauri plugin host. The 1.6.10 host and examples are available in the [tagged source](https://github.com/AreChen/OpenPlayer/tree/v1.6.10). The 2.x native UI and the deferred plugin SDK are described in the runtime overview. [Runtime architecture](../architecture/README.md)
+This document covers SDK 1.6 and the Tauri plugin host. The 1.6.10 host and examples are available in the [tagged source](https://github.com/AreChen/OpenPlayer/tree/v1.6.10). For the native 2.x player, see the [Rust plugin SDK](native-sdk.md).
 
 OpenPlayer 1.x plugins are **package-based extensions**. A user-facing
 plugin ships as a `.opplugin` file, which is a zip archive with a root
