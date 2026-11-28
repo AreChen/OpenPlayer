@@ -16,7 +16,10 @@ pub(super) fn loadfile(mpv: &Mpv, media: &Media, resume: f64) -> libmpv2::Result
         None
     };
     match options {
-        Some(options) => mpv.command("loadfile", &[&media.source, "replace", "-1", &options]),
+        Some(options) if crate::player::loadfile_has_playlist_index() => {
+            mpv.command("loadfile", &[&media.source, "replace", "-1", &options])
+        }
+        Some(options) => mpv.command("loadfile", &[&media.source, "replace", &options]),
         None => mpv.command("loadfile", &[&media.source, "replace"]),
     }
 }

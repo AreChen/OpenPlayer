@@ -30,13 +30,19 @@ pub(in crate::player) fn install(
     version: &str,
     smoke: Option<&UpdateSmoke>,
 ) -> Result<InstallResult> {
-    match package()?.install(file, version)? {
+    let installed = package()?;
+    #[cfg(target_os = "linux")]
+    let restart_path = match installed {
+        InstalledPackage::AppImage { path, .. } => path.clone(),
+        InstalledPackage::Deb(_) => std::env::current_exe()?,
+    };
+    match installed.install(file, version)? {
         #[cfg(target_os = "linux")]
         InstallOutcome::Installed => {
             if let Some(s) = smoke {
                 s.record("installed");
             }
-            Ok(InstallResult::Installed)
+            Ok(InstallResult::Installed(restart_path))
         }
         #[cfg(target_os = "macos")]
         InstallOutcome::InstallerOpened => {

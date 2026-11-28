@@ -2,7 +2,9 @@ use gpui::Window;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 pub(super) fn set_above(window: &Window, above: bool) -> anyhow::Result<()> {
-    let handle = HasWindowHandle::window_handle(window)?.as_raw();
+    let handle = HasWindowHandle::window_handle(window)
+        .map_err(|error| anyhow::anyhow!("OpenPlayer window handle is unavailable: {error}"))?
+        .as_raw();
     set_level(handle, above)
 }
 

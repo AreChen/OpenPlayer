@@ -6,7 +6,7 @@ The desktop binary has one GPUI Fast window. Playback controls, settings, the pl
 | --- | --- | --- |
 | Windows | D3D11 swap chain composed with the GPUI window | The verified NSIS installer closes the matching installation and replaces it. |
 | macOS | libmpv software render buffer uploaded into the GPUI scene | Finder opens the verified DMG. Quit the player and drag the new app to Applications. |
-| Linux | The same frame upload in a GPUI X11 or Wayland window | The Debian package uses apt with PolicyKit. The AppImage is replaced atomically. Reopen the player after installation. |
+| Linux | The same frame upload in a GPUI X11 or Wayland window | The Debian package uses apt with PolicyKit. The AppImage is replaced atomically. The About panel can restart the upgraded player. |
 
 The release checker filters the stable GitHub releases by installed major version, architecture and package type. The download is verified against the matching SHA-256 before installation. The published 2.0.0 Linux and macOS installers precede the native UI migration. [Updater](../../apps/desktop/native/src/updater/) · [Published release](../releases/v2.0.0.md)
 

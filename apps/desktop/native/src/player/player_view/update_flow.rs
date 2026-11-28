@@ -170,9 +170,9 @@ impl PlayerView {
                     #[cfg(target_os = "macos")]
                     Ok(updates::InstallResult::Opened) => UpdateStatus::Opened(installer),
                     #[cfg(target_os = "linux")]
-                    Ok(updates::InstallResult::Installed) => {
+                    Ok(updates::InstallResult::Installed(path)) => {
                         let _ = installer.remove();
-                        UpdateStatus::Installed
+                        UpdateStatus::Installed(path)
                     }
                     Err(error) => {
                         if let Some(smoke) = &view.update_smoke {

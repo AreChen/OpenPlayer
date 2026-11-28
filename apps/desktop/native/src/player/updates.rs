@@ -21,7 +21,7 @@ pub(super) enum InstallResult {
     #[cfg(target_os = "macos")]
     Opened,
     #[cfg(target_os = "linux")]
-    Installed,
+    Installed(PathBuf),
 }
 
 #[derive(Default)]
@@ -35,13 +35,21 @@ pub(super) enum UpdateStatus {
     Ready(String, DownloadedUpdate, Option<String>),
     Installing,
     #[cfg(target_os = "linux")]
-    Installed,
+    Installed(PathBuf),
     #[cfg(target_os = "macos")]
     Opened(DownloadedUpdate),
     Failed(String),
 }
 
 impl UpdateStatus {
+    pub(super) fn restart_path(&self) -> Option<&std::path::Path> {
+        #[cfg(target_os = "linux")]
+        if let Self::Installed(path) = self {
+            return Some(path);
+        }
+        None
+    }
+
     pub(super) fn can_check(&self) -> bool {
         matches!(
             self,

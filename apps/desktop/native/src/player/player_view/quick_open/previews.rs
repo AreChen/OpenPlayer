@@ -365,7 +365,12 @@ impl Decoder {
         request: &Request,
     ) -> PreviewFrames {
         while self.event().event_id != sys::mpv_event_id_MPV_EVENT_NONE {}
-        if !self.command(1, &[c"loadfile", path, c"replace", c"-1", options]) {
+        let load = if crate::player::loadfile_has_playlist_index() {
+            self.command(1, &[c"loadfile", path, c"replace", c"-1", options])
+        } else {
+            self.command(1, &[c"loadfile", path, c"replace", options])
+        };
+        if !load {
             return Vec::new();
         }
         let frames = self.collect(count, request);

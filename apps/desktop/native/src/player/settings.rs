@@ -564,7 +564,7 @@ impl PlayerView {
                 .replace("{message}", error)
                 .into(),
             #[cfg(target_os = "linux")]
-            UpdateStatus::Installed => ui.label("settings.about.updateInstalled"),
+            UpdateStatus::Installed(_) => ui.label("settings.about.updateInstalled"),
             #[cfg(target_os = "macos")]
             UpdateStatus::Opened(_) => ui.label("settings.about.updateInstallerOpened"),
             UpdateStatus::Installing => ui.label(if cfg!(unix) {
@@ -602,6 +602,16 @@ impl PlayerView {
                             "download-update",
                             "settings.about.downloadUpdate",
                             "downloadUpdate",
+                            Value::Null,
+                            true,
+                            cx,
+                        ))
+                    })
+                    .when(status.restart_path().is_some(), |row| {
+                        row.child(self.setting_button(
+                            "restart-update",
+                            "settings.about.restartUpdate",
+                            "restartUpdate",
                             Value::Null,
                             true,
                             cx,

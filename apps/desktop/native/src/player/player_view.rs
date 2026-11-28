@@ -245,6 +245,8 @@ impl PlayerView {
             let mpv = Arc::new(Mpv::with_initializer(|init| {
                 init.set_option("vo", "libmpv")?;
                 let _ = init.set_option("audio-fallback-to-null", true);
+                #[cfg(unix)]
+                let _ = init.set_option("sws-allow-zimg", false);
                 init.set_option("hwdec", "no")?;
                 init.set_option("keep-open", true)?;
                 init.set_option("input-default-bindings", false)?;
@@ -451,6 +453,13 @@ impl PlayerView {
             }
             "downloadUpdate" => {
                 self.download_update(cx);
+                return;
+            }
+            "restartUpdate" => {
+                if let Some(path) = self.update_status.restart_path() {
+                    cx.set_restart_path(path.to_owned());
+                    cx.restart();
+                }
                 return;
             }
             "installUpdate" => {

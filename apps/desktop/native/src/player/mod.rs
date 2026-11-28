@@ -33,6 +33,11 @@ use self::{controller::Controller, player_view::PlayerView, video::VideoRenderer
 
 const WINDOW_TITLE: &str = "OpenPlayer";
 
+fn loadfile_has_playlist_index() -> bool {
+    // mpv 0.38 (client API 2.3) inserted the playlist index before file-local options.
+    (unsafe { libmpv2_sys::mpv_client_api_version() }) >= (2 << 16 | 3)
+}
+
 #[derive(Default)]
 struct Options {
     media: Vec<PathBuf>,
