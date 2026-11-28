@@ -1,6 +1,10 @@
-# OpenPlayer Themes
+# OpenPlayer themes
 
-The Windows GPUI player provides Studio Dark, a user-selected accent and separate title-bar and transport opacity controls. The Tauri player also supports manifest-only theme plugins. The following format applies to those plugins. [Runtime architecture](../architecture/README.md)
+The native player uses Studio Dark with a selectable accent color and independent title bar and transport opacity. These controls are in Settings → Appearance. [Rust theme implementation](../../apps/desktop/native/src/player/theme.rs)
+
+## SDK 1.6 archive
+
+The following manifest format belongs to the published 1.x host. [Historical implementation](https://github.com/AreChen/OpenPlayer/tree/v1.6.10/apps/desktop/src)
 
 ## Theme Manifest
 
@@ -57,5 +61,5 @@ The Windows GPUI player provides Studio Dark, a user-selected accent and separat
 
 - Theme plugin manifests are documented in [plugins](../plugins/README.md).
 - Runtime theme and accent state is stored by
-  `apps/desktop/src-tauri/src/appearance_store.rs`.
+  `the 1.x appearance store`.
 - The overlay applies theme values through CSS variables.

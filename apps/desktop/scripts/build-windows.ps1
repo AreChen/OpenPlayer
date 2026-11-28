@@ -4,9 +4,10 @@ param([string]$Makensis, [switch]$SkipBuild)
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../../..')).Path
 $desktop = Join-Path $root 'apps/desktop'
-$source = Join-Path $desktop 'src-tauri'
+$source = Join-Path $desktop 'native'
 $mpv = Join-Path $root 'vendor/native/mpv/windows-x64'
-$version = (Get-Content -Raw -LiteralPath (Join-Path $desktop 'package.json') | ConvertFrom-Json).version
+$manifest = Get-Content -Raw -LiteralPath (Join-Path $root 'Cargo.toml')
+$version = [regex]::Match($manifest, '(?m)^version = "([0-9.]+)"').Groups[1].Value
 if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid version $version" }
 
 if (-not $Makensis) {

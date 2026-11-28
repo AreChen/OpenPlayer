@@ -88,8 +88,6 @@ jobs:
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
           RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
         run: |
-          legacy_tag="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
-          [[ "$legacy_tag" =~ ^v1\.[0-9]+\.[0-9]+$ ]]
           if draft="$(gh release view "$RELEASE_TAG" --json isDraft,targetCommitish)"; then
             jq -e --arg sha "$RELEASE_COMMIT" '.isDraft and .targetCommitish == $sha' <<< "$draft"
             gh release edit "$RELEASE_TAG" --notes-file "docs/releases/$RELEASE_TAG.md" --latest=false
@@ -235,7 +233,7 @@ jobs:
           path: release-files
           github-token: ${{ github.token }}
           run-id: ${{ inputs.candidate_run_id }}
-      - name: Verify release and preserve the 1.x Latest tag
+      - name: Publish the verified stable release as Latest
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -256,7 +254,9 @@ jobs:
           gh release download "$RELEASE_TAG" --dir uploaded
           diff --brief --recursive release-files uploaded
 
-          legacy_tag="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
-          [[ "$legacy_tag" =~ ^v1\.[0-9]+\.[0-9]+$ ]]
-          gh release edit "$RELEASE_TAG" --draft=false --latest=false
-          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)" == "$legacy_tag"
+          current="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
+          if [[ "$current" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            test "$(printf '%s\n' "$current" "$RELEASE_TAG" | sort -V | tail -1)" = "$RELEASE_TAG"
+          fi
+          gh release edit "$RELEASE_TAG" --draft=false --latest
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)" == "$RELEASE_TAG"

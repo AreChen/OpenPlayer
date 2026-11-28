@@ -32,14 +32,6 @@ async function awaitStatus(file, predicate) {
   }, 150_000);
 }
 
-function jsonOrNull(text) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
-
 const policyPath = "/etc/polkit-1/rules.d/00-openplayer-package-smoke.rules";
 
 async function polkit(host, allow) {
@@ -96,29 +88,24 @@ async function attemptUpdate(host, packagePath, mode, media) {
         assert.ok(!result.includes("installer:"), "installer was invoked on an unusable download");
       }
     } else {
-      const confirm = mode !== "cancel" || host.packageKind === "deb";
-      player = host.launch([media], {
-        ...environment,
-        OPENPLAYER_TEST_UPDATE_ACTION: confirm ? "install" : "download",
-        OPENPLAYER_TEST_UPDATE_RESULT: file,
-      });
+      const install = mode !== "cancel" || host.packageKind === "deb";
+      player = host.launch(["--smoke-update", install ? "install" : "verify", file, media], environment);
       window = await host.window(player);
-      result = await awaitStatus(file, jsonOrNull);
-      assert.equal(result.currentVersion, oldVersion);
-      assert.equal(result.playing, true, "the original player was not playing at the update attempt");
-      if (mode === "install") {
-        assert.equal(result.status, host.packageKind === "dmg" ? "installerOpened" : "installed", result.error);
-        assert.equal(result.version, newVersion);
-        if (host.packageKind === "dmg") {
-          downloadedCopy = join(host.directory, basename(packagePath));
-          await copyFile(result.path, downloadedCopy);
-          assert.equal(await sha256(downloadedCopy), await sha256(packagePath));
-        }
-      } else if (confirm) {
-        assert.equal(result.status, "failed", JSON.stringify(result));
-      } else {
-        assert.equal(result.status, "ready", JSON.stringify(result));
-        assert.equal(result.version, newVersion);
+      const complete = mode === "install"
+        ? (host.packageKind === "dmg" ? "opened:" : "installed")
+        : install ? "error:" : "verified:";
+      result = await awaitStatus(file, (text) => {
+        if (mode === "install" && text.includes("error:")) throw new Error(text.trim());
+        return text.includes(complete) && text.trim();
+      });
+      assert.ok(result.includes("started:" + oldVersion) && result.includes("playing"));
+      if (mode === "install" || !install) assert.ok(result.includes("verified:" + newVersion));
+      if (mode === "install" && host.packageKind === "dmg") {
+        downloadedCopy = join(host.directory, basename(packagePath));
+        const path = /^opened:(.+)$/m.exec(result)?.[1];
+        assert.ok(path, "the updater did not open the verified DMG");
+        await copyFile(path, downloadedCopy);
+        assert.equal(await sha256(downloadedCopy), await sha256(packagePath));
       }
     }
     await processAlive(player);
@@ -138,21 +125,12 @@ async function verifyRelaunch(host, packagePath, media) {
   const file = join(host.directory, "relaunch.status");
   let result;
   await withFixture(packagePath, targetTag, "current", async (origin) => {
-    const windows = process.platform === "win32";
-    const player = host.launch(windows ? ["--smoke-update", "playback", file, media] : [media], {
-      OPENPLAYER_TEST_UPDATE_ORIGIN: origin,
-      OPENPLAYER_TEST_UPDATE_ACTION: "check",
-      OPENPLAYER_TEST_UPDATE_RESULT: file,
-    });
+    const player = host.launch(["--smoke-update", "verify", file, media], { OPENPLAYER_TEST_UPDATE_ORIGIN: origin });
     const window = await host.window(player);
-    if (windows) {
-      result = await awaitStatus(file, (text) => text.includes(`started:${newVersion}`) && text.includes("playing") && text.trim());
-    } else {
-      result = await awaitStatus(file, jsonOrNull);
-      assert.equal(result.currentVersion, newVersion);
-      assert.equal(result.status, "current");
-      assert.equal(result.playing, true);
-    }
+    result = await awaitStatus(file, (text) => {
+      if (text.includes("error:")) throw new Error(text.trim());
+      return text.includes("started:" + newVersion) && text.includes("playing") && text.includes("current") && text.trim();
+    });
     const { code, signal } = await host.close(player, window);
     assert.equal(code, 0, `the upgraded player exited with ${code ?? signal}`);
   });
@@ -170,18 +148,13 @@ async function wayland(host, packagePath, media) {
   const file = join(host.directory, "wayland.status");
   let result;
   const requests = await withFixture(packagePath, targetTag, "wayland", async (origin) => {
-    const player = host.launch([media], {
-      ...env,
-      DISPLAY: "",
-      GDK_BACKEND: "wayland",
-      OPENPLAYER_TEST_UPDATE_ORIGIN: origin,
-      OPENPLAYER_TEST_UPDATE_ACTION: "check",
-      OPENPLAYER_TEST_UPDATE_RESULT: file,
+    const player = host.launch(["--smoke-update", "playback", file, media], {
+      ...env, DISPLAY: "", OPENPLAYER_TEST_UPDATE_ORIGIN: origin,
     });
-    result = await awaitStatus(file, jsonOrNull);
-    assert.equal(result.displayServer, "wayland");
-    assert.equal(result.mpvEmbedVideo, false);
-    assert.equal(result.playing, false);
+    result = await awaitStatus(file, (text) => {
+      if (text.includes("error:")) throw new Error(text.trim());
+      return text.includes("playing") && text.includes("presented") && text.trim();
+    });
     await processAlive(player);
     await host.close(player);
   });

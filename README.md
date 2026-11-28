@@ -1,46 +1,40 @@
-# OpenPlayer
+<p align="center"><img src="docs/assets/readme/openplayer.webp" width="100%" alt="OpenPlayer — a golden film ribbon folded into a play symbol"></p>
 
-[简体中文](README.zh-CN.md) · [GitHub Releases](https://github.com/AreChen/OpenPlayer/releases) · [2.0.0 release notes](docs/releases/v2.0.0.md)
+<p align="center"><strong>An open-source desktop player for video and audio, built with Rust and libmpv.</strong></p>
+<p align="center"><a href="https://github.com/AreChen/OpenPlayer/releases/latest">Download OpenPlayer</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="docs/architecture/README.md">Architecture</a> · <a href="LICENSE">MIT license</a></p>
 
-<img src="apps/desktop/src-tauri/icons/icon.png" alt="OpenPlayer app icon" width="96" />
+## Watch
 
-OpenPlayer is a desktop media player built with Rust and libmpv. The `main` branch is the 2.x development line.
+Open a film and the window fits its frame, including portrait footage. Move the pointer out of the picture and the controls disappear. Bring it back to scrub, switch tracks or step through individual frames.
 
-| Platform | Runtime | Release package |
-| --- | --- | --- |
-| Windows x64 | Native GPUI Fast window, D3D11 video composition and GPUI Motion | NSIS installer with libmpv |
-| Linux | Tauri and React with a native libmpv video host | `.deb` and AppImage |
-| macOS Apple Silicon and Intel | Tauri and React with a native libmpv video host | DMG with bundled libmpv |
+![OpenPlayer playing Arctic Passage with its compact transport and elapsed-time display](docs/assets/readme/playback.webp)
 
-## Windows player
+## Browse
 
-- Play local media and network streams with speed, loop, frame stepping, subtitle and audio-track controls. Resume from playback history or use incognito mode.
-- Double-click the empty player to open media. The file browser remembers the last folder and provides an editable path, favorites, and video thumbnails with silent hover previews. Use `Ctrl+F` to search filenames in the current folder and its subfolders.
-- View container, video and audio details from the file browser or the playback menu. Copy the details from the properties panel.
-- Adjust the accent color and the opacity of the title bar and transport. The controls hide on pointer exit or after three seconds of inactivity.
-- Configure keyboard shortcuts and Windows Explorer media previews. Use the installer finish page to open OpenPlayer or go to Windows Default Apps to select it as your player.
+Double-click the empty window to browse. Jump straight to a path, pin a folder, or save individual titles to Media favorites. Videos have thumbnails and silent hover previews. Search includes subfolders, and the browser remembers your last folder, sorting and filters.
 
-Common shortcuts are `Ctrl+O` to open media, `Space` to play or pause, `←` / `→` to seek, `D` / `F` to step frames, and `Enter` to toggle fullscreen. Use the mouse wheel or `↑` / `↓` for volume.
+![The English media browser showing two folders and three Arctic Passage video previews](docs/assets/readme/media-browser.webp)
 
-## Install and update
+Both screenshots show the released Windows player running in English. The cover and the sample footage were created for this project. [Image credits](docs/assets/readme/credits.md)
 
-Choose your platform and architecture in the release list and use the corresponding SHA-256 file to verify the download. OpenPlayer 2.x checks for stable updates in the background. **Settings → About** also lets you check, download and start installing the update for your package type. Existing 1.x installations keep using GitHub's **Latest** release. [GitHub Releases](https://github.com/AreChen/OpenPlayer/releases)
+## Get OpenPlayer 2.0.0
 
-The Windows installer is unsigned, so SmartScreen may show a prompt. The Linux `.deb` uses the distribution's libmpv runtime. The AppImage bundles libmpv. [Native runtime and licenses](docs/native-deps/README.md)
+| Platform | Download |
+| --- | --- |
+| Windows x64 | [Windows installer](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.0/OpenPlayer_2.0.0_x64-setup.exe) |
+| macOS | [Apple Silicon DMG](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.0/OpenPlayer_2.0.0_arm64.dmg) · [Intel DMG](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.0/OpenPlayer_2.0.0_x64.dmg) |
+| Linux x64 | [Debian package](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.0/OpenPlayer_2.0.0_amd64.deb) · [AppImage](https://github.com/AreChen/OpenPlayer/releases/download/v2.0.0/OpenPlayer_2.0.0_amd64.AppImage) |
 
-## Development
+**Settings → About** checks for stable releases in the installed major version, downloads the matching package and verifies its SHA-256. The release includes a checksum for each installer. [Release notes and checksums](https://github.com/AreChen/OpenPlayer/releases/tag/v2.0.0)
 
-Use rustup to select Rust 1.100.0 from the project toolchain file and install the platform prerequisites in CI. Windows builds use Cargo, PowerShell and NSIS. [Windows development](docs/windows-gpui.md) · [CI prerequisites](.github/workflows/ci.yml)
+## Play from source
 
-On Linux or macOS, use Node.js 26 as in CI. From `apps/desktop`:
+On `main`, Windows, macOS and Linux share a GPUI Fast interface written in Rust. Windows presents video through D3D11. The macOS and Linux builds use libmpv's software render API to place frames in the GPUI scene. The published 2.0.0 DMGs and Linux packages predate this migration and use the earlier desktop interface.
 
-~~~sh
-npm ci
-npm run tauri:dev
-~~~
+Install Rust 1.100.0 and the libmpv development files for your platform, then run this from the repository root. [Build prerequisites](docs/architecture/README.md#build)
 
-[Runtime architecture](docs/architecture/README.md) · [Verification](docs/architecture/regression-checks.md)
+```sh
+cargo run --locked -p openplayer-desktop -- "/path/to/your/video.mp4"
+```
 
-The native Windows player focuses on core playback. The plugin documentation covers SDK 1.6 and the Tauri plugin host. [Plugin documentation](docs/plugins/README.md)
-
-OpenPlayer source code is available under the [MIT License](LICENSE). Bundled dependencies retain their upstream licenses.
+[Playback and window checks](docs/architecture/regression-checks.md) · [Native dependencies](docs/native-deps/README.md) · [Report an issue](https://github.com/AreChen/OpenPlayer/issues)

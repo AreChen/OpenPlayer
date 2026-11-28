@@ -1,39 +1,9 @@
-# libmpv Smoke Test
+# libmpv playback checks
 
-The optional `mpv-smoke` feature verifies that the desktop Rust crate can
-compile, link, and initialize libmpv in a headless mode.
+The native player's thumbnail renderer test decodes an actual odd-sized YUV fixture with libmpv. Run it from the repository root after installing the [native dependencies](../native-deps/README.md).
 
-For video rendering, window lifecycle and user input, use the platform [regression checks](regression-checks.md).
+~~~sh
+cargo test --locked -p openplayer-desktop renders_thumbnail_from_odd_sized_chroma_subsampled_video
+~~~
 
-## Local Requirements
-
-Windows builds use ignored native artifacts under:
-
-```text
-vendor/native/mpv/windows-x64
-```
-
-You can also set `OPENPLAYER_MPV_DIR` to a directory containing the required
-libmpv import/runtime libraries.
-
-## Run
-
-From the repository root:
-
-```powershell
-$env:PATH = "$PWD\vendor\native\mpv\windows-x64;$env:PATH"
-cargo test -p openplayer-desktop --features mpv-smoke mpv_smoke -- --nocapture
-```
-
-This proves:
-
-- The Rust crate can enable the optional libmpv smoke feature.
-- libmpv can initialize with `vo=null` and `ao=null`.
-- The local native runtime can be found by the process.
-
-This does not prove:
-
-- Embedded video playback.
-- Resume seek behavior.
-- Overlay input handling.
-- Release package dependency layout.
+For playback, use the [installed-package workflow](../../.github/workflows/package-validation.yml). It opens generated video and audio in the installed player and checks progress, controls and saved history. The Linux updater fixture separately verifies frame presentation over Wayland. [Window and playback checklist](regression-checks.md)

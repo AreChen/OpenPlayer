@@ -1,0 +1,78 @@
+[package]
+name = "openplayer-desktop"
+default-run = "openplayer-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "openplayer_desktop_lib"
+
+[dependencies]
+anyhow = "1"
+gpui = { package = "gpui-fast", version = "=0.1.19", default-features = false }
+gpui-platform = { package = "gpui-fast-platform", version = "=0.1.19", default-features = false }
+gpui-ce-motion = { version = "=0.4.0", default-features = false }
+hex = "0.4"
+ignore = "0.4.35"
+image = { version = "0.25", default-features = false }
+libmpv2 = { version = "7.0.1", default-features = false }
+libmpv2-sys = "4"
+raw-window-handle = "0.6"
+redb = "5"
+reqwest = { version = "0.13.3", default-features = false, features = ["blocking", "http2", "native-tls", "system-proxy"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+tempfile = "3"
+tokio = { version = "1", features = ["time", "sync"] }
+
+[target.'cfg(unix)'.dependencies]
+dirs = "6"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gpui-platform = { package = "gpui-fast-platform", version = "=0.1.19", default-features = false, features = ["x11", "wayland"] }
+libc = "0.2"
+x11rb = "0.13"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+gpui-platform = { package = "gpui-fast-platform", version = "=0.1.19", default-features = false, features = ["runtime_shaders"] }
+objc2 = "0.6"
+url = "2"
+
+[target.'cfg(windows)'.dependencies]
+gpui = { package = "gpui-fast", version = "=0.1.19", default-features = false, features = ["windows-manifest-provided-by-host"] }
+rusty-leveldb = { version = "4.0.2", default-features = false }
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Direct3D",
+  "Win32_Graphics_Direct3D11",
+  "Win32_Graphics_DirectComposition",
+  "Win32_Graphics_Dxgi",
+  "Win32_Graphics_Dxgi_Common",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+[target.'cfg(windows)'.dependencies.windows-sys]
+version = "0.61"
+features = [
+  "Win32_Foundation",
+  "Win32_Globalization",
+  "Win32_Graphics_Gdi",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Com",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Registry",
+  "Win32_System_SystemInformation",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_Security",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+]
+
+[target.'cfg(windows)'.build-dependencies]
+embed-resource = "3"

@@ -1,67 +1,8 @@
-# Regression checks
+# Native player checks
 
-## Shared CI checks
+Run the Rust tests and Clippy on each target. Use a disposable OS account or profile when validating installation and file associations. The [package workflow](../../.github/workflows/package-validation.yml) exercises installed copies and records evidence for the candidate binaries.
 
-Install the host dependencies declared in [CI](../../.github/workflows/ci.yml). From the repository root:
-
-~~~sh
-cargo fmt --all -- --check
-cargo test --locked -p openplayer-desktop
-cargo clippy --locked --workspace --all-targets -- -D warnings
-git diff --check
-~~~
-
-From `apps/desktop` with Node.js 26:
-
-~~~sh
-npm ci
-npm run verify:shell
-npm test
-npm run build
-npm run verify:release -- --tag=v2.0.0
-~~~
-
-The frontend tests exercise hooks, timer-driven updates and IPC responses. The shell check covers runtime and build-time structure. For native locale changes, run `node apps/desktop/scripts/sync-native-locales.mjs --check` from the repository root.
-
-## Windows GPUI smoke
-
-Prepare [the native runtime](../windows-gpui.md#run-and-package). Use a temporary profile and a known local video. From the repository root in PowerShell:
-
-~~~powershell
-$env:OPENPLAYER_WINDOWS_SMOKE_PROFILE = 'regression'
-cargo tree -p openplayer-desktop --locked --target x86_64-pc-windows-msvc -e normal,build --prefix none
-cargo run --locked -p openplayer-desktop --bin openplayer-desktop -- "C:\Media\sample.mp4"
-~~~
-
-The Windows dependency tree should be free of Tauri, Tao, Wry and WebView2. Check video through window resize, maximize and fullscreen, and check playback independently of the controls animation. Use an interactive idle desktop to check blank-stage double-click, stage drag, mouse wheel, volume slider, hover, timeout and pointer exit. Check media properties and clipboard output with a file that has video, audio and subtitles. Remove the smoke profile variable from the session before a normal launch.
-
-For installer changes, build the NSIS bundle and test finish, upgrade and uninstall on an isolated Windows profile. Exercise both final-page actions separately and together, including the required selection in Windows Default Apps.
-
-## Tauri window smoke on macOS
-
-Install the macOS native runtime and build the React frontend first. From the repository root:
-
-~~~sh
-cargo build -p openplayer-desktop --locked --features window-smoke --bin window-smoke
-node apps/desktop/scripts/run-window-smoke.mjs
-~~~
-
-The harness opens temporary windows in an interactive desktop, loads a video into the embedded libmpv host and checks resizing, overlay alignment, fullscreen restoration and coordinated closure. CI runs the harness on macOS. The standard Windows player has its own single-window pipeline.
-
-## Release package and upgrade validation
-
-[The native validation workflow](../../.github/workflows/package-validation.yml) runs on Windows x64, Linux x64 and both macOS architectures. It checks the candidate package checksums against the source commit, installs the packages, opens generated video and audio, sends playback shortcuts when desktop permissions allow, closes the player and checks its stored settings and history after relaunch.
-
-The workflow separately builds the release version and the next patch version with a loopback-only update fixture. It records the installed and upgrade package SHA-256s and the results for network failure, corrupt downloads, cancellation, upgrade while playing, relaunch and profile retention. Windows cancellation uses the NSIS window, and the successful upgrade goes through the same setup in silent mode. Linux exercises PolicyKit authorization and denial, atomic AppImage replacement and the Wayland capability fallback. macOS opens the verified DMG and the script copies its app to a temporary Applications directory. The native runner uploads `installed-packages.json` and `isolated-upgrade.json` as workflow artifacts.
-
-Before publishing, record the remaining interactive checks against the candidate hashes. Confirm visible video and playback-control results, the Windows interactive setup finish and relaunch, the macOS Finder replacement and Gatekeeper verification, and the Linux PolicyKit prompt, cancellation and relaunch. For Linux confirm the Wayland notice and the AppImage FUSE launch on a desktop when the runner used extraction mode.
-
-## React timeline check
-
-Run from `apps/desktop` with Playwright and Chromium available:
-
-~~~sh
-node scripts/verify-playback-rendering.mjs
-~~~
-
-The script tests the real React timeline at desktop and narrow widths and saves screenshots in `target/playback-rendering/`. Set `OPENPLAYER_PLAYWRIGHT_MODULE` or `OPENPLAYER_BROWSER_EXECUTABLE` to point to existing installations. The measurements cover the React timeline.
+- **Open and browse.** Double-click the empty window. Navigate using the editable address, play from a thumbnail, save a folder and a media favorite, then relaunch. Check the last folder, sort, category, media filter and favorites. Open several media files together and check the playlist.
+- **Play.** Try video, pure audio, subtitles and a stream. Verify moving frames, audio, seek, pause, frame stepping, track selection, volume and media properties. Check that narrow controls fit and the pointer and controls hide after inactivity.
+- **Window.** Play portrait and landscape footage, drag-resize, then press Ctrl+H to resume fitting. Check dragging from the stage, fullscreen, titlebar actions, focus and keyboard input. On Linux verify both X11 and Wayland. On macOS also open a file from Finder with the application already running.
+- **Update.** Exercise the installed package on an isolated release feed. Verify the original package survives a failed download, bad checksum or cancellation. Install the next fixture and confirm playback, favorites and history after relaunch. Windows uses NSIS, macOS opens the downloaded DMG, and Linux tests both apt and AppImage replacement. [Harness](../../apps/desktop/scripts/run-upgrade-smoke.mjs)

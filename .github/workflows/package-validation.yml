@@ -34,6 +34,7 @@ jobs:
             platform: macos-x64
     env:
       PACKAGE_TAG: ${{ inputs.tag }}
+      ZED_ALLOW_EMULATED_GPU: "1"
       PACKAGE_COMMIT: ${{ inputs.commit }}
     steps:
       - uses: actions/checkout@v7.0.1

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=OpenPlayer
+Comment=Play video and audio files
+Exec=openplayer-desktop %F
+Icon=openplayer
+Terminal=false
+Categories=AudioVideo;Player;Video;
+MimeType=video/mp4;video/mpeg;video/webm;video/quicktime;video/x-matroska;video/x-msvideo;video/x-flv;video/mp2t;audio/mpeg;audio/mp4;audio/flac;audio/ogg;audio/wav;audio/x-wav;audio/x-matroska;application/ogg;application/vnd.apple.mpegurl;

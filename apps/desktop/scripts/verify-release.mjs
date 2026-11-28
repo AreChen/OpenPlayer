@@ -15,10 +15,6 @@ async function readText(path) {
   return readFile(rootFile(path), "utf8");
 }
 
-async function readJson(path) {
-  return JSON.parse(await readText(path));
-}
-
 function matchVersion(source, pattern, label) {
   const match = pattern.exec(source);
   if (!match) {
@@ -39,21 +35,12 @@ function cargoLockPackageVersion(source, packageName) {
 
 const workspaceToml = await readText("Cargo.toml");
 const cargoLock = await readText("Cargo.lock");
-const packageJson = await readJson("apps/desktop/package.json");
-const packageLock = await readJson("apps/desktop/package-lock.json");
-const tauriConfig = await readJson("apps/desktop/src-tauri/tauri.conf.json");
-const pluginRuntimeConstants = await readText("apps/desktop/src/app/pluginRuntime/constants.ts");
 const macosDmgScript = await readText("apps/desktop/scripts/build-macos-dmg.sh");
 const semverPattern = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 
 const versions = new Map([
   ["Cargo workspace", matchVersion(workspaceToml, /\[workspace\.package\][\s\S]*?^version = "([^"]+)"$/m, "Cargo workspace")],
   ["Cargo.lock openplayer-desktop", cargoLockPackageVersion(cargoLock, "openplayer-desktop")],
-  ["package.json", packageJson.version],
-  ["package-lock.json", packageLock.version],
-  ["package-lock root package", packageLock.packages?.[""]?.version],
-  ["tauri.conf.json", tauriConfig.version],
-  ["plugin runtime host", matchVersion(pluginRuntimeConstants, /OPENPLAYER_HOST_VERSION = "([^"]+)"/, "plugin runtime host")],
 ]);
 
 const uniqueVersions = new Set(versions.values());
@@ -65,11 +52,6 @@ if (uniqueVersions.size !== 1) {
 const [version] = uniqueVersions;
 if (!semverPattern.test(version)) {
   fail(`version is not valid semver: ${version}`);
-}
-
-const sdkVersion = matchVersion(pluginRuntimeConstants, /PLUGIN_SDK_VERSION = "([^"]+)"/, "plugin runtime SDK");
-if (!semverPattern.test(sdkVersion)) {
-  fail(`plugin runtime SDK version is not valid semver: ${sdkVersion}`);
 }
 
 const expectedTag = `v${version}`;

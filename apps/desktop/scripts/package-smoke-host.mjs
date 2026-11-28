@@ -47,7 +47,7 @@ func focusControls() -> Bool {
     let application = AXUIElementCreateApplication(pid)
     let windows = attribute(application, kAXWindowsAttribute as CFString) as? [AXUIElement] ?? []
     guard let overlay = windows.first(where: {
-        (attribute($0, kAXTitleAttribute as CFString) as? String) == "OpenPlayer Controls"
+        (attribute($0, kAXTitleAttribute as CFString) as? String) == "OpenPlayer"
     }) else { return false }
     _ = AXUIElementPerformAction(overlay, kAXRaiseAction as CFString)
     _ = AXUIElementSetAttributeValue(application, kAXFocusedWindowAttribute as CFString, overlay)
@@ -77,7 +77,7 @@ case "keys":
     }
     guard waitUntil(3, { NSWorkspace.shared.frontmostApplication?.processIdentifier == pid }),
           focusControls() else {
-        fputs("Could not focus the OpenPlayer Controls window.", stderr)
+        fputs("Could not focus the OpenPlayer window.", stderr)
         exit(1)
     }
     let source = CGEventSource(stateID: .hidSystemState)
@@ -99,7 +99,7 @@ export class PackageSmokeHost {
   constructor(directory, profileHelper) {
     this.directory = directory;
     this.profileHelper = resolve(profileHelper);
-    this.environment = { ...process.env };
+    this.environment = { ...process.env, OPENPLAYER_SMOKE_PROFILE: "packages" };
     this.background = [];
     this.profile = join(directory, "profile");
   }
@@ -226,7 +226,12 @@ export class PackageSmokeHost {
         "-c", "Print CFBundleShortVersionString", join(this.installDirectory, "Contents", "Info.plist"),
       ]);
     }
-    return null;
+    const output = await capture(this.binary, ["--version"], {
+      env: { ...this.environment, APPIMAGE_EXTRACT_AND_RUN: "1" },
+    });
+    const match = /^OpenPlayer (\d+\.\d+\.\d+)$/.exec(output);
+    if (!match) throw new Error("The installed AppImage did not report its version");
+    return match[1];
   }
 
   launch(args, environment = {}) {
