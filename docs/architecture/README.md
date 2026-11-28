@@ -25,6 +25,12 @@ cargo run --locked -p openplayer-desktop -- "/path/to/video.mp4"
 cargo test --locked --workspace
 ~~~
 
+## GitHub releases
+
+Pushing a stable `v2.x.y` tag builds five packages and stages a draft. To publish that draft automatically when the four native installation and upgrade jobs and the matching repository CI pass, set the repository Actions variable `OPENPLAYER_AUTO_PUBLISH` to `true` before pushing the tag. For a single release, run the Release workflow on `main` with the matching tag and select `auto_publish`. The workflow compares the uploaded files to the validated artifacts before marking the release Latest. The version in Cargo and the corresponding release notes must match the tag. [Release workflow](../../.github/workflows/release.yml)
+
+For a verification-only build, leave the dispatch options clear. For a separately approved release, stage a draft and then run the existing `publish` option with its candidate run ID and native acceptance URL.
+
 ## User data
 
 Windows uses the roaming application data directory and Linux uses XDG_DATA_HOME (normally ~/.local/share). Both store data under dev.openplayer.app/storage. macOS retains ~/Library/Application Support/dev.openplayer.desktop/storage. History and playback settings live in playback-history.redb. The native settings database holds theme, language, keybindings and browser preferences. [Playback storage](../../apps/desktop/native/src/playback_store/) · [Preferences](../../apps/desktop/native/src/player/controller/preferences.rs)

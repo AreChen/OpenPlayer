@@ -15,6 +15,10 @@ on:
         description: "Stage a GitHub draft from this exact source commit"
         default: false
         type: boolean
+      auto_publish:
+        description: "Stage and publish from main once CI and all installed-package tests pass"
+        default: false
+        type: boolean
       publish:
         description: "Publish a previously staged and accepted draft"
         default: false
@@ -51,7 +55,7 @@ jobs:
         id: source
         env:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
-          STAGE_RELEASE: ${{ github.event_name == 'push' || inputs.stage_release }}
+          STAGE_RELEASE: ${{ github.event_name == 'push' || inputs.stage_release || inputs.auto_publish }}
         run: |
           if [[ ! "$RELEASE_TAG" =~ ^v2\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo "Expected a stable 2.x tag, got $RELEASE_TAG" >&2
@@ -62,6 +66,7 @@ jobs:
             if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
               test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" == "$commit"
             fi
+            git merge-base --is-ancestor "$commit" refs/remotes/origin/main
           fi
           test -s "docs/releases/$RELEASE_TAG.md"
           {
@@ -188,7 +193,13 @@ jobs:
 
   publish:
     name: Publish the verified draft
-    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    needs: [prepare, stage-assets, package-validation]
+    if: >-
+      !cancelled() &&
+      ((github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main') ||
+       (needs.stage-assets.result == 'success' && needs.package-validation.result == 'success' &&
+        ((github.event_name == 'workflow_dispatch' && inputs.auto_publish && github.ref == 'refs/heads/main') ||
+         (github.event_name == 'push' && vars.OPENPLAYER_AUTO_PUBLISH == 'true'))))
     runs-on: ubuntu-24.04
     permissions:
       actions: read
@@ -199,6 +210,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Verify successful staged run and native acceptance record
+        if: inputs.publish
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
@@ -214,11 +226,6 @@ jobs:
           candidate="$(gh api "$candidate_api")"
           commit="$(jq -er 'select(.conclusion == "success" and .path == ".github/workflows/release.yml") | .head_sha' <<< "$candidate")"
           git merge-base --is-ancestor "$commit" refs/remotes/origin/main
-          successful_ci="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$commit&status=success&per_page=1" --jq .total_count)"
-          if [[ ! "$successful_ci" =~ ^[1-9][0-9]*$ ]]; then
-            echo "Repository CI must pass for candidate commit $commit before publishing." >&2
-            exit 1
-          fi
           run_attempt="$(jq -er '.run_attempt' <<< "$candidate")"
           gh api "$candidate_api/attempts/$run_attempt/jobs?per_page=100" | jq -e '
             [.jobs[] | select(.name == "Verify and upload all draft assets") | .conclusion] == ["success"] and
@@ -227,17 +234,32 @@ jobs:
           echo "RELEASE_COMMIT=$commit" >> "$GITHUB_ENV"
           printf 'Native acceptance for commit `%s`, run `%s`\n\n%s\n' \
             "$commit" "$CANDIDATE_RUN_ID" "$NATIVE_VERIFICATION" >> "$GITHUB_STEP_SUMMARY"
+      - name: Use the packages validated in this run
+        if: ${{ !inputs.publish }}
+        env:
+          COMMIT: ${{ needs.prepare.outputs.commit }}
+        run: echo "RELEASE_COMMIT=$COMMIT" >> "$GITHUB_ENV"
+      - name: Require green repository CI for the release commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          commit="$RELEASE_COMMIT"
+          successful_ci="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$commit&status=success&per_page=1" --jq .total_count)"
+          if [[ ! "$successful_ci" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Repository CI must pass for candidate commit $commit before publishing." >&2
+            exit 1
+          fi
       - uses: actions/download-artifact@v7
         with:
           name: openplayer-release-files
           path: release-files
           github-token: ${{ github.token }}
-          run-id: ${{ inputs.candidate_run_id }}
+          run-id: ${{ (inputs.publish && inputs.candidate_run_id) || github.run_id }}
       - name: Publish the verified stable release as Latest
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           jq -e --arg tag "$RELEASE_TAG" --arg sha "$RELEASE_COMMIT" \
             '.tag == $tag and .commit == $sha' \
