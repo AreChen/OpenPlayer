@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "apps/desktop/native",
+    "crates/openplayer-plugin-sdk",
 ]
 resolver = "2"
 

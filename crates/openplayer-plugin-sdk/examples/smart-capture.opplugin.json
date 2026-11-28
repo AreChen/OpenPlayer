@@ -1,0 +1,20 @@
+{
+  "apiVersion": 2,
+  "id": "example.smart-capture",
+  "version": "1.0.0",
+  "name": { "en": "Smart capture", "zhCn": "智能截图" },
+  "runtime": "wasm",
+  "permissions": ["capture", "openStream"],
+  "actions": [
+    {
+      "id": "capture",
+      "label": { "en": "Capture or open stream", "zhCn": "截图或打开网络流" },
+      "command": { "type": "captureScreenshot" }
+    },
+    {
+      "id": "open",
+      "label": { "en": "Open stream", "zhCn": "打开网络流" },
+      "command": { "type": "openStreamDialog" }
+    }
+  ]
+}

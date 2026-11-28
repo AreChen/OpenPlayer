@@ -1,0 +1,19 @@
+[package]
+name = "openplayer-plugin-sdk"
+version = "2.0.0"
+edition.workspace = true
+license.workspace = true
+description = "Typed plugin actions and portable Rust guests for OpenPlayer"
+
+[features]
+default = ["manifest"]
+manifest = ["dep:serde", "dep:serde_json", "dep:semver"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+semver = { version = "1", optional = true }
+
+[[example]]
+name = "smart_capture"
+crate-type = ["cdylib"]
