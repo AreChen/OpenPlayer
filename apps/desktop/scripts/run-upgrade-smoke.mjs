@@ -140,18 +140,26 @@ async function verifyRelaunch(host, packagePath, media) {
 async function wayland(host, packagePath, media) {
   const runtime = join(host.directory, "wayland");
   await mkdir(runtime, { mode: 0o700 });
-  const env = { ...host.environment, XDG_RUNTIME_DIR: runtime, WAYLAND_DISPLAY: "openplayer-test" };
-  delete env.DISPLAY;
-  const compositor = start("weston", ["--backend=headless-backend.so", "--socket=openplayer-test", "--idle-time=0"], { env });
+  // Weston's X11 backend supplies a real input seat from Xvfb. The player
+  // connects only to the nested Wayland socket, including on software Vulkan.
+  const env = { ...host.environment, XDG_RUNTIME_DIR: runtime };
+  const socket = "openplayer-test";
+  const compositor = start("weston", [
+    "--backend=x11-backend.so", "--renderer=pixman", "--socket=" + socket, "--idle-time=0",
+  ], { env });
   host.background.push(compositor);
-  await waitFor("Wayland socket", async () => (await stat(join(runtime, env.WAYLAND_DISPLAY)).catch(() => null))?.isSocket());
+  await waitFor("Wayland socket", async () => {
+    if (compositor.child.exitCode !== null || compositor.child.signalCode !== null) throw new Error("Weston exited before creating its Wayland socket");
+    return (await stat(join(runtime, socket)).catch(() => null))?.isSocket();
+  });
   const file = join(host.directory, "wayland.status");
   let result;
   const requests = await withFixture(packagePath, targetTag, "wayland", async (origin) => {
     const player = host.launch(["--smoke-update", "playback", file, media], {
-      ...env, DISPLAY: "", OPENPLAYER_TEST_UPDATE_ORIGIN: origin,
+      ...env, DISPLAY: "", WAYLAND_DISPLAY: socket, OPENPLAYER_TEST_UPDATE_ORIGIN: origin,
     });
-    result = await awaitStatus(file, (text) => {
+    result = await awaitStatus(file, async (text) => {
+      await processAlive(player);
       if (text.includes("error:")) throw new Error(text.trim());
       return text.includes("playing") && text.includes("presented") && text.trim();
     });
